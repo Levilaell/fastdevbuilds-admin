@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { sendWhatsApp } from '@/lib/whatsapp'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -18,8 +19,8 @@ export async function POST(request: NextRequest) {
 
   const supabase = await createClient()
 
-  // If channel is whatsapp and Evolution API is configured, send via Evolution
-  if (channel === 'whatsapp' && process.env.EVOLUTION_API_URL) {
+  // If channel is whatsapp, send via Evolution API (normalizes phone with country code)
+  if (channel === 'whatsapp') {
     const leadRes = await supabase
       .from('leads')
       .select('phone')
@@ -27,28 +28,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (leadRes.data?.phone) {
-      const phone = leadRes.data.phone.replace(/\D/g, '')
-      try {
-        const evoRes = await fetch(
-          `${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: process.env.EVOLUTION_API_KEY ?? '',
-            },
-            body: JSON.stringify({
-              number: phone,
-              textMessage: { text: message },
-            }),
-          }
-        )
-        console.log('[send] Evolution API response status:', evoRes.status)
-        const evoBody = await evoRes.text()
-        console.log('[send] Evolution API response body:', evoBody.slice(0, 200))
-      } catch (err) {
-        console.error('[send] Evolution API error:', err instanceof Error ? err.message : err)
-      }
+      const sent = await sendWhatsApp(leadRes.data.phone, message)
+      console.log('[send] WhatsApp sent:', sent, 'to', leadRes.data.phone)
     }
   }
 
