@@ -10,7 +10,7 @@ export async function sendWhatsApp(phone: string, text: string): Promise<boolean
           'Content-Type': 'application/json',
           apikey: process.env.EVOLUTION_API_KEY ?? '',
         },
-        body: JSON.stringify({ number: cleanPhone, text }),
+        body: JSON.stringify({ number: cleanPhone, textMessage: { text } }),
       },
     )
     return true

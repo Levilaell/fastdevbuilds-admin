@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               number: phone,
-              text: message,
+              textMessage: { text: message },
             }),
           }
         )
