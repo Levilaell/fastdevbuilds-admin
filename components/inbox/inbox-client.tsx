@@ -233,6 +233,114 @@ function InboxReplyBox({
   )
 }
 
+// ─── Pipeline action button ───
+
+type PipelineActionFn = (placeId: string) => Promise<void>
+
+function InboxPipelineAction({
+  leadStatus,
+  project,
+  placeId,
+  loading,
+  onAction,
+}: {
+  leadStatus: string
+  project: Project | null
+  placeId: string
+  loading: boolean
+  onAction: (action: PipelineActionFn) => void
+}) {
+  const projectStatus = project?.status ?? null
+
+  // Determine which button to show based on lead + project state
+  let label: string | null = null
+  let action: PipelineActionFn | null = null
+  let color = 'bg-accent/15 border-accent/30 text-accent hover:bg-accent/25'
+
+  if (leadStatus === 'closed' || leadStatus === 'lost') {
+    return null
+  }
+
+  if (!projectStatus && leadStatus !== 'scoped') {
+    // No project yet — offer to generate scope
+    label = 'Gerar Escopo'
+    color = 'bg-purple-500/15 border-purple-500/30 text-purple-400 hover:bg-purple-500/25'
+    action = async (pid) => {
+      await fetch(`/api/leads/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scoped' }),
+      })
+      // Poll for proposal
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/status`)
+        if (res.ok) {
+          const p = await res.json()
+          if (p?.proposal_message) break
+        }
+      }
+    }
+  } else if (projectStatus === 'approved') {
+    label = 'Marcar em progresso →'
+    action = async (pid) => {
+      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in_progress' }),
+      })
+    }
+  } else if (projectStatus === 'in_progress') {
+    label = 'Marcar entregue →'
+    action = async (pid) => {
+      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'delivered' }),
+      })
+    }
+  } else if (projectStatus === 'delivered') {
+    label = 'Cliente aprovou →'
+    action = async (pid) => {
+      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'client_approved' }),
+      })
+    }
+  } else if (projectStatus === 'client_approved') {
+    label = 'Marcar pago →'
+    color = 'bg-success/15 border-success/30 text-success hover:bg-success/25'
+    action = async (pid) => {
+      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paid' }),
+      })
+    }
+  } else if (projectStatus === 'paid') {
+    return (
+      <span className="text-[10px] text-success px-1.5 py-0.5 rounded bg-success/10">
+        Pago
+      </span>
+    )
+  }
+  // scoped without proposal = waiting, with proposal = shown via ProposalCard
+
+  if (!label || !action) return null
+
+  const actionFn = action
+  return (
+    <button
+      onClick={() => onAction(actionFn)}
+      disabled={loading}
+      className={`px-3 py-1.5 text-xs font-medium rounded-lg border disabled:opacity-50 ${color}`}
+    >
+      {loading ? 'Aguarde…' : label}
+    </button>
+  )
+}
+
 // ─── Main Inbox Page ───
 
 export default function InboxClient() {
@@ -245,7 +353,8 @@ export default function InboxClient() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [suggestion, setSuggestion] = useState<AiSuggestion | null>(null)
   const [proposal, setProposal] = useState<Project | null>(null)
-  const [scopeLoading, setScopeLoading] = useState(false)
+  const [project, setProject] = useState<Project | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -262,11 +371,12 @@ export default function InboxClient() {
     setLoading(false)
   }, [])
 
-  // Fetch conversation + suggestion + proposal for active lead
+  // Fetch conversation + suggestion + project for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
     setConvLoading(true)
     setSuggestion(null)
     setProposal(null)
+    setProject(null)
     const [convRes, sugRes, projRes] = await Promise.all([
       fetch(`/api/conversations/${encodeURIComponent(placeId)}`),
       fetch(`/api/ai-suggestions?place_id=${encodeURIComponent(placeId)}`),
@@ -277,12 +387,14 @@ export default function InboxClient() {
       const s = await sugRes.json()
       setSuggestion(s ?? null)
     }
-    // Load existing proposal if project is scoped
     if (projRes && projRes.ok) {
       try {
         const p = await projRes.json()
-        if (p && p.status === 'scoped' && p.proposal_message) {
-          setProposal(p)
+        if (p) {
+          setProject(p)
+          if (p.status === 'scoped' && p.proposal_message) {
+            setProposal(p)
+          }
         }
       } catch { /* no project */ }
     }
@@ -550,44 +662,34 @@ export default function InboxClient() {
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {activeItem && !proposal && activeItem.status !== 'scoped' && activeItem.status !== 'closed' && (
-                  <button
-                    onClick={async () => {
-                      if (!activePlaceId || scopeLoading) return
-                      setScopeLoading(true)
-                      try {
-                        // Move lead to scoped
-                        await fetch(`/api/leads/${encodeURIComponent(activePlaceId)}/status`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ status: 'scoped' }),
-                        })
-                        // Update local status
-                        setItems(prev => prev.map(i =>
-                          i.place_id === activePlaceId ? { ...i, status: 'scoped' } : i
-                        ))
-                        // Poll for proposal (generateProposal is fire-and-forget, takes ~5s)
-                        for (let i = 0; i < 10; i++) {
-                          await new Promise(r => setTimeout(r, 2000))
-                          const res = await fetch(`/api/projects/${encodeURIComponent(activePlaceId)}/status`)
-                          if (res.ok) {
-                            const p = await res.json()
-                            if (p && p.proposal_message) {
-                              setProposal(p)
-                              break
-                            }
-                          }
+                <InboxPipelineAction
+                  leadStatus={activeItem?.status ?? 'prospected'}
+                  project={project}
+                  placeId={activePlaceId}
+                  loading={actionLoading}
+                  onAction={async (action) => {
+                    if (!activePlaceId || actionLoading) return
+                    setActionLoading(true)
+                    try {
+                      await action(activePlaceId)
+                      // Refresh project + lead state
+                      const [projRes] = await Promise.all([
+                        fetch(`/api/projects/${encodeURIComponent(activePlaceId)}/status`),
+                        fetchInbox(),
+                      ])
+                      if (projRes.ok) {
+                        const p = await projRes.json()
+                        if (p) {
+                          setProject(p)
+                          if (p.status === 'scoped' && p.proposal_message) setProposal(p)
+                          else setProposal(null)
                         }
-                      } finally {
-                        setScopeLoading(false)
                       }
-                    }}
-                    disabled={scopeLoading}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 disabled:opacity-50"
-                  >
-                    {scopeLoading ? 'Gerando proposta…' : 'Gerar Escopo'}
-                  </button>
-                )}
+                    } finally {
+                      setActionLoading(false)
+                    }
+                  }}
+                />
                 <Link
                   href={`/leads/${encodeURIComponent(activePlaceId)}`}
                   className="text-xs text-accent hover:underline"
