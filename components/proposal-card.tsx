@@ -12,15 +12,16 @@ interface Props {
   project: Project
   placeId: string
   onApproved?: () => void
+  onDismissed?: () => void
 }
 
-export default function ProposalCard({ project, placeId, onApproved }: Props) {
+export default function ProposalCard({ project, placeId, onApproved, onDismissed }: Props) {
   const [price, setPrice] = useState(project.price ?? 0)
   const [message, setMessage] = useState(project.proposal_message ?? '')
   const [loading, setLoading] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
+  const [error, setError] = useState('')
 
-  if (dismissed || project.status !== 'scoped') return null
+  if (project.status !== 'scoped') return null
 
   let scopeItems: string[] = []
   try {
@@ -31,6 +32,7 @@ export default function ProposalCard({ project, placeId, onApproved }: Props) {
 
   async function handleApprove() {
     setLoading(true)
+    setError('')
     try {
       const res = await fetch(
         `/api/projects/${encodeURIComponent(placeId)}/approve-proposal`,
@@ -43,8 +45,22 @@ export default function ProposalCard({ project, placeId, onApproved }: Props) {
       if (res.ok) {
         onApproved?.()
       } else {
-        console.error('[proposal-card] approve failed:', res.status, await res.text())
+        const data = await res.json()
+        setError(data.error ?? 'Erro ao enviar proposta')
       }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDismiss() {
+    setLoading(true)
+    try {
+      // Clear proposal_message in DB so it won't reappear on reload
+      await fetch(`/api/projects/${encodeURIComponent(placeId)}/dismiss-proposal`, {
+        method: 'POST',
+      })
+      onDismissed?.()
     } finally {
       setLoading(false)
     }
@@ -104,10 +120,15 @@ export default function ProposalCard({ project, placeId, onApproved }: Props) {
         )}
       </div>
 
+      {/* Error */}
+      {error && (
+        <p className="text-xs text-danger px-4 pb-2">{error}</p>
+      )}
+
       {/* Actions */}
       <div className="flex items-center justify-between px-4 py-3 border-t border-border">
         <button
-          onClick={() => setDismissed(true)}
+          onClick={handleDismiss}
           disabled={loading}
           className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-text disabled:opacity-50"
         >

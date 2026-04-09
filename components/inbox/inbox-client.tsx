@@ -811,6 +811,7 @@ export default function InboxClient() {
                       if (p) setProject(p)
                     }
                   }}
+                  onDismissed={() => setProposal(null)}
                 />
               </div>
             )}
