@@ -20,8 +20,11 @@ function phoneMatch(a: string, b: string): boolean {
 
 /**
  * Resolve a LID (Link ID) to a real phone number via Evolution API.
- * LID format: 240552629022900@lid — does NOT contain the phone number.
- * We call the Evolution API findContacts endpoint to get the real number.
+ * Evolution API v1.x sends LID format (240552629022900@lid) in webhooks
+ * which does NOT contain the phone number and cannot be used for sending.
+ *
+ * Strategy: get the LID contact's profilePictureUrl, then find the
+ * @s.whatsapp.net contact with the same picture — that has the real number.
  */
 async function resolvePhoneFromLid(lid: string): Promise<string | null> {
   const evoUrl = process.env.EVOLUTION_API_URL
@@ -30,36 +33,49 @@ async function resolvePhoneFromLid(lid: string): Promise<string | null> {
 
   if (!evoUrl || !instance || !apiKey) return null
 
+  const headers = { 'Content-Type': 'application/json', apikey: apiKey }
+
   try {
-    const res = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+    // Step 1: get the LID contact's profile picture
+    const lidRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: apiKey,
-      },
+      headers,
       body: JSON.stringify({ where: { id: `${lid}@lid` } }),
     })
+    if (!lidRes.ok) return null
 
-    if (!res.ok) {
-      console.error('[webhook] findContacts failed:', res.status)
+    const lidContacts = await lidRes.json()
+    if (!Array.isArray(lidContacts) || lidContacts.length === 0) return null
+
+    const lidPic: string = lidContacts[0].profilePictureUrl ?? ''
+    if (!lidPic) {
+      console.log('[webhook] LID contact has no profile picture, cannot resolve')
       return null
     }
 
-    const contacts = await res.json()
-    console.log('[webhook] findContacts response:', JSON.stringify(contacts).slice(0, 300))
+    // Step 2: find all contacts and match by profilePictureUrl
+    const allRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    })
+    if (!allRes.ok) return null
 
-    // Response is an array of contacts, each with an `id` field like "5517992005945@s.whatsapp.net"
-    if (Array.isArray(contacts) && contacts.length > 0) {
-      const contact = contacts[0]
-      // Try various fields where the real number might be
-      const realJid: string = contact.id ?? contact.jid ?? contact.number ?? ''
-      const realPhone = realJid.split('@')[0].replace(/\D/g, '')
-      if (realPhone && realPhone.length >= 10) {
-        console.log('[webhook] resolved LID', lid, '→', realPhone)
-        return realPhone
-      }
+    const allContacts = await allRes.json()
+    if (!Array.isArray(allContacts)) return null
+
+    const match = allContacts.find(
+      (c: { id: string; profilePictureUrl?: string }) =>
+        c.id.endsWith('@s.whatsapp.net') && c.profilePictureUrl === lidPic,
+    )
+
+    if (match) {
+      const realPhone = match.id.split('@')[0].replace(/\D/g, '')
+      console.log('[webhook] resolved LID', lid, '→', realPhone)
+      return realPhone
     }
 
+    console.log('[webhook] no @s.whatsapp.net match found for LID profile picture')
     return null
   } catch (err) {
     console.error('[webhook] resolvePhoneFromLid error:', err)
