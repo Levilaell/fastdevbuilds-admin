@@ -56,7 +56,9 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │   │   │   ├── [place_id]/read/route.ts # PATCH — mark inbound as read
 │   │   │   ├── suggest/route.ts         # POST — Claude AI reply suggestion
 │   │   │   └── send/route.ts            # POST — send message via Evolution/save
-│   │   └── inbox/route.ts               # GET — leads with conversations + unread counts
+│   │   ├── inbox/route.ts               # GET — leads with conversations + unread counts
+│   │   └── webhook/
+│   │       └── whatsapp/route.ts        # POST — Evolution API inbound messages (public)
 │   ├── (auth)/
 │   │   ├── layout.tsx                   # Auth root layout — no sidebar
 │   │   └── login/page.tsx

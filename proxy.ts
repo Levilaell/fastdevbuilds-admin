@@ -5,6 +5,11 @@ import { createServerClient } from '@supabase/ssr'
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Public routes — no auth required
+  if (pathname.startsWith('/api/webhook/')) {
+    return NextResponse.next()
+  }
+
   // Build a response we can mutate cookies on
   let supabaseResponse = NextResponse.next({ request })
 
