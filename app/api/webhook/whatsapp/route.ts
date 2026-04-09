@@ -3,7 +3,12 @@ import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
 import type { Lead } from '@/lib/types'
 
-const normalize = (phone: string) => phone.replace(/\D/g, '')
+function normalize(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.startsWith('55') && digits.length >= 12) return digits
+  const clean = digits.startsWith('0') ? digits.slice(1) : digits
+  return `55${clean}`
+}
 
 function phoneMatch(a: string, b: string): boolean {
   const na = normalize(a)
