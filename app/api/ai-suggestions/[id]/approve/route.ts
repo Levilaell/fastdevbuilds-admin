@@ -32,9 +32,14 @@ export async function POST(
     .eq('place_id', suggestion.place_id)
     .single()
 
+  if (!lead?.phone) {
+    return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
+  }
+
   // Send via WhatsApp
-  if (lead?.phone) {
-    await sendWhatsApp(lead.phone, message)
+  const sent = await sendWhatsApp(lead.phone, message)
+  if (!sent) {
+    return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }
 
   // Save outbound conversation

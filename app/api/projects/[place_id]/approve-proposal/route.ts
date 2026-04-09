@@ -11,8 +11,6 @@ export async function POST(
   const editedMessage: string | undefined = body.message
   const editedPrice: number | undefined = body.price
 
-  console.log('[approve-proposal] place_id:', place_id)
-
   const supabase = createServiceClient()
 
   // Fetch project
@@ -23,10 +21,8 @@ export async function POST(
     .single()
 
   if (error || !project) {
-    console.log('[approve-proposal] project not found for', place_id, error?.message)
     return Response.json({ error: 'Project not found' }, { status: 404 })
   }
-  console.log('[approve-proposal] found project, current status:', project.status)
 
   const message = editedMessage ?? project.proposal_message
   if (!message) {
@@ -40,9 +36,14 @@ export async function POST(
     .eq('place_id', place_id)
     .single()
 
+  if (!lead?.phone) {
+    return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
+  }
+
   // Send via WhatsApp
-  if (lead?.phone) {
-    await sendWhatsApp(lead.phone, message)
+  const sent = await sendWhatsApp(lead.phone, message)
+  if (!sent) {
+    return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }
 
   // Save outbound conversation
@@ -55,7 +56,7 @@ export async function POST(
     suggested_by_ai: true,
   })
 
-  // Update project
+  // Update project status to approved
   const updates: Record<string, unknown> = {
     status: 'approved',
     proposal_message: message,
@@ -68,10 +69,8 @@ export async function POST(
     .eq('place_id', place_id)
 
   if (updateError) {
-    console.error('[approve-proposal] update failed:', updateError.message)
     return Response.json({ error: updateError.message }, { status: 500 })
   }
 
-  console.log('[approve-proposal] done, status → approved')
   return Response.json({ ok: true })
 }

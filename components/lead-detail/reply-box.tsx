@@ -5,15 +5,14 @@ import type { Conversation } from '@/lib/types'
 
 interface ReplyBoxProps {
   placeId: string
-  defaultChannel: 'whatsapp' | 'email'
   onNewMessage: (conv: Conversation) => void
 }
 
-export default function ReplyBox({ placeId, defaultChannel, onNewMessage }: ReplyBoxProps) {
+export default function ReplyBox({ placeId, onNewMessage }: ReplyBoxProps) {
   const [message, setMessage] = useState('')
-  const [channel, setChannel] = useState<'whatsapp' | 'email'>(defaultChannel)
   const [sending, setSending] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
+  const channel = 'whatsapp' as const
 
   async function handleSuggest() {
     setSuggesting(true)
@@ -62,30 +61,9 @@ export default function ReplyBox({ placeId, defaultChannel, onNewMessage }: Repl
       />
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {/* Channel toggle */}
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button
-              onClick={() => setChannel('whatsapp')}
-              className={`px-3 py-1.5 text-xs font-medium ${
-                channel === 'whatsapp'
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'text-muted hover:text-text bg-sidebar'
-              }`}
-            >
-              WhatsApp
-            </button>
-            <button
-              onClick={() => setChannel('email')}
-              className={`px-3 py-1.5 text-xs font-medium border-l border-border ${
-                channel === 'email'
-                  ? 'bg-blue-500/15 text-blue-400'
-                  : 'text-muted hover:text-text bg-sidebar'
-              }`}
-            >
-              Email
-            </button>
-          </div>
-
+          <span className="text-[10px] text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            WhatsApp
+          </span>
           <button
             onClick={handleSuggest}
             disabled={suggesting}

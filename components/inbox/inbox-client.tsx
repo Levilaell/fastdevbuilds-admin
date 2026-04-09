@@ -124,17 +124,15 @@ function MessageBubble({ conv }: { conv: Conversation }) {
 
 function InboxReplyBox({
   placeId,
-  defaultChannel,
   onNewMessage,
 }: {
   placeId: string
-  defaultChannel: 'whatsapp' | 'email'
   onNewMessage: (conv: Conversation) => void
 }) {
   const [message, setMessage] = useState('')
-  const [channel, setChannel] = useState<'whatsapp' | 'email'>(defaultChannel)
   const [sending, setSending] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
+  const channel = 'whatsapp' as const
 
   async function handleSuggest() {
     setSuggesting(true)
@@ -191,28 +189,9 @@ function InboxReplyBox({
       />
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button
-              onClick={() => setChannel('whatsapp')}
-              className={`px-3 py-1.5 text-xs font-medium ${
-                channel === 'whatsapp'
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'text-muted hover:text-text bg-sidebar'
-              }`}
-            >
-              WhatsApp
-            </button>
-            <button
-              onClick={() => setChannel('email')}
-              className={`px-3 py-1.5 text-xs font-medium border-l border-border ${
-                channel === 'email'
-                  ? 'bg-blue-500/15 text-blue-400'
-                  : 'text-muted hover:text-text bg-sidebar'
-              }`}
-            >
-              Email
-            </button>
-          </div>
+          <span className="text-[10px] text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            WhatsApp
+          </span>
           <button
             onClick={handleSuggest}
             disabled={suggesting}
@@ -442,7 +421,7 @@ export default function InboxClient() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversations.length])
 
-  // Realtime subscription
+  // Realtime subscription — conversations + AI suggestions
   useEffect(() => {
     const supabase = createClient()
 
@@ -500,6 +479,21 @@ export default function InboxClient() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ai_suggestions',
+        },
+        (payload) => {
+          const row = payload.new as AiSuggestion
+          // Show suggestion if it's for the active conversation and pending
+          if (row.place_id === activePlaceId && row.status === 'pending') {
+            setSuggestion(row)
+          }
+        }
+      )
       .subscribe()
 
     return () => {
@@ -529,8 +523,6 @@ export default function InboxClient() {
 
   const totalUnread = items.reduce((acc, i) => acc + i.unread_count, 0)
   const activeItem = items.find((i) => i.place_id === activePlaceId)
-  const activeChannel: 'whatsapp' | 'email' =
-    activeItem?.outreach_channel === 'email' ? 'email' : 'whatsapp'
 
   return (
     <div className="flex h-[calc(100vh-56px)]">
@@ -734,7 +726,15 @@ export default function InboxClient() {
                 <ProposalCard
                   project={proposal}
                   placeId={activePlaceId}
-                  onApproved={() => setProposal(null)}
+                  onApproved={async () => {
+                    setProposal(null)
+                    // Refresh project state so next pipeline button appears
+                    const res = await fetch(`/api/projects/${encodeURIComponent(activePlaceId)}/status`)
+                    if (res.ok) {
+                      const p = await res.json()
+                      if (p) setProject(p)
+                    }
+                  }}
                 />
               </div>
             )}
@@ -754,7 +754,6 @@ export default function InboxClient() {
             {/* Reply box */}
             <InboxReplyBox
               placeId={activePlaceId}
-              defaultChannel={activeChannel}
               onNewMessage={handleNewMessage}
             />
           </>

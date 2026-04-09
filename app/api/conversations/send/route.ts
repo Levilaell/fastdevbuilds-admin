@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { sendWhatsApp } from '@/lib/whatsapp'
 
 export async function POST(request: NextRequest) {
@@ -13,24 +13,36 @@ export async function POST(request: NextRequest) {
   if (!place_id || !message || !channel) {
     return Response.json(
       { error: 'place_id, message, and channel are required' },
-      { status: 400 }
+      { status: 400 },
     )
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
-  // If channel is whatsapp, send via Evolution API (normalizes phone with country code)
+  // Fetch lead for phone/email check
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('phone, email')
+    .eq('place_id', place_id)
+    .single()
+
+  // Send via WhatsApp
   if (channel === 'whatsapp') {
-    const leadRes = await supabase
-      .from('leads')
-      .select('phone')
-      .eq('place_id', place_id)
-      .single()
-
-    if (leadRes.data?.phone) {
-      const sent = await sendWhatsApp(leadRes.data.phone, message)
-      console.log('[send] WhatsApp sent:', sent, 'to', leadRes.data.phone)
+    if (!lead?.phone) {
+      return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
     }
+    const sent = await sendWhatsApp(lead.phone, message)
+    if (!sent) {
+      return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
+    }
+  }
+
+  // Email not implemented — block if attempted
+  if (channel === 'email') {
+    if (!lead?.email) {
+      return Response.json({ error: 'Lead não tem email cadastrado' }, { status: 400 })
+    }
+    return Response.json({ error: 'Envio de email ainda não implementado' }, { status: 501 })
   }
 
   // Save conversation
@@ -59,13 +71,13 @@ export async function POST(request: NextRequest) {
     .eq('status', 'pending')
 
   // Auto-advance status: replied → negotiating
-  const leadCheck = await supabase
+  const { data: leadCheck } = await supabase
     .from('leads')
     .select('status')
     .eq('place_id', place_id)
     .single()
 
-  if (leadCheck.data?.status === 'replied') {
+  if (leadCheck?.status === 'replied') {
     await supabase
       .from('leads')
       .update({

@@ -30,11 +30,15 @@ export async function POST(
   const lead = leadRes.data as Lead
   const project = projectRes.data as Project
 
+  if (!lead.phone) {
+    return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
+  }
+
   const message = generatePixMessage(lead, project, pixKey)
 
-  // Send via WhatsApp
-  if (lead.phone) {
-    await sendWhatsApp(lead.phone, message)
+  const sent = await sendWhatsApp(lead.phone, message)
+  if (!sent) {
+    return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }
 
   // Save outbound conversation

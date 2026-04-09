@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   const runId = run?.id
+  const runStartedAt = Date.now()
 
   // Call bot server
   try {
@@ -108,12 +109,13 @@ export async function POST(request: NextRequest) {
         if (done) {
           // Finalize run
           if (runId) {
-            const startedAt = run ? new Date().getTime() : Date.now()
+            const durationSeconds = Math.round((Date.now() - runStartedAt) / 1000)
             await supabase
               .from('bot_runs')
               .update({
                 status: 'completed',
                 finished_at: new Date().toISOString(),
+                duration_seconds: durationSeconds,
                 collected,
                 qualified,
                 sent,

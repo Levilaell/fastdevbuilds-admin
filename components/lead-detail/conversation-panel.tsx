@@ -9,14 +9,12 @@ import AiSuggestionCard from '@/components/ai-suggestion-card'
 interface ConversationPanelProps {
   placeId: string
   initialConversations: Conversation[]
-  defaultChannel: 'whatsapp' | 'email'
   initialSuggestion?: AiSuggestion | null
 }
 
 export default function ConversationPanel({
   placeId,
   initialConversations,
-  defaultChannel,
   initialSuggestion,
 }: ConversationPanelProps) {
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
@@ -41,7 +39,6 @@ export default function ConversationPanel({
       )}
       <ReplyBox
         placeId={placeId}
-        defaultChannel={defaultChannel}
         onNewMessage={handleNewMessage}
       />
     </div>

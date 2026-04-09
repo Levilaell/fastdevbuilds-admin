@@ -31,7 +31,7 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
   const [project, setProject] = useState(initial)
   const [loading, setLoading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
-  const [pixKey, setPixKey] = useState(process.env.NEXT_PUBLIC_PIX_KEY ?? '')
+  const [pixKey, setPixKey] = useState('')
   const [promptVisible, setPromptVisible] = useState(false)
   const [generatingPrompt, setGeneratingPrompt] = useState(false)
 

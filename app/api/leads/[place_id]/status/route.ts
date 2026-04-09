@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { LEAD_STATUSES, type LeadStatus, type Lead, type Conversation } from '@/lib/types'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateProposal } from '@/lib/ai-workflow'
@@ -16,7 +16,7 @@ export async function PATCH(
     return Response.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('leads')

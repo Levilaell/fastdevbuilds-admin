@@ -31,33 +31,21 @@ export default function StatusSelect({ placeId, initialStatus }: StatusSelectPro
     }
   }
 
-  const showProjectBtn = status === 'scoped' || status === 'closed'
-
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-xs text-muted mb-1.5">Status do pipeline</label>
-        <select
-          value={status}
-          onChange={(e) => handleChange(e.target.value as LeadStatus)}
-          disabled={saving}
-          className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-        >
-          {LEAD_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </div>
-      {showProjectBtn && (
-        <button
-          disabled
-          className="w-full h-9 text-sm rounded-lg border border-border text-muted bg-card-hover cursor-not-allowed"
-        >
-          Abrir projeto (em breve)
-        </button>
-      )}
+    <div>
+      <label className="block text-xs text-muted mb-1.5">Status do pipeline</label>
+      <select
+        value={status}
+        onChange={(e) => handleChange(e.target.value as LeadStatus)}
+        disabled={saving}
+        className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+      >
+        {LEAD_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {STATUS_LABELS[s]}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }

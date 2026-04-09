@@ -102,8 +102,6 @@ async function LeadDetailContent({ id }: { id: string }) {
       .in('id', unreadIds)
   }
 
-  const defaultChannel: 'whatsapp' | 'email' =
-    lead.outreach_channel === 'email' ? 'email' : 'whatsapp'
 
   return (
     <div className="flex h-[calc(100vh-56px)]">
@@ -221,7 +219,6 @@ async function LeadDetailContent({ id }: { id: string }) {
         <ConversationPanel
           placeId={lead.place_id}
           initialConversations={conversations}
-          defaultChannel={defaultChannel}
           initialSuggestion={suggestion}
         />
       </div>
