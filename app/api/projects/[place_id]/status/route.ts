@@ -4,6 +4,28 @@ import { PROJECT_STATUSES, type ProjectStatus, type Lead, type Conversation, typ
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ place_id: string }> },
+) {
+  const { place_id } = await params
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('place_id', place_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  return Response.json(data)
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },

@@ -5,8 +5,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
-import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type AiSuggestion } from '@/lib/types'
+import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type AiSuggestion, type Project } from '@/lib/types'
 import AiSuggestionCard from '@/components/ai-suggestion-card'
+import ProposalCard from '@/components/proposal-card'
 
 // ─── Conversation list item ───
 
@@ -243,6 +244,8 @@ export default function InboxClient() {
   const [activePlaceId, setActivePlaceId] = useState<string | null>(initialLead)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [suggestion, setSuggestion] = useState<AiSuggestion | null>(null)
+  const [proposal, setProposal] = useState<Project | null>(null)
+  const [scopeLoading, setScopeLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -259,18 +262,29 @@ export default function InboxClient() {
     setLoading(false)
   }, [])
 
-  // Fetch conversation + suggestion for active lead
+  // Fetch conversation + suggestion + proposal for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
     setConvLoading(true)
     setSuggestion(null)
-    const [convRes, sugRes] = await Promise.all([
+    setProposal(null)
+    const [convRes, sugRes, projRes] = await Promise.all([
       fetch(`/api/conversations/${encodeURIComponent(placeId)}`),
       fetch(`/api/ai-suggestions?place_id=${encodeURIComponent(placeId)}`),
+      fetch(`/api/projects/${encodeURIComponent(placeId)}/status`).catch(() => null),
     ])
     if (convRes.ok) setConversations(await convRes.json())
     if (sugRes.ok) {
       const s = await sugRes.json()
       setSuggestion(s ?? null)
+    }
+    // Load existing proposal if project is scoped
+    if (projRes && projRes.ok) {
+      try {
+        const p = await projRes.json()
+        if (p && p.status === 'scoped' && p.proposal_message) {
+          setProposal(p)
+        }
+      } catch { /* no project */ }
     }
     setConvLoading(false)
   }, [])
@@ -535,12 +549,52 @@ export default function InboxClient() {
                   </div>
                 )}
               </div>
-              <Link
-                href={`/leads/${encodeURIComponent(activePlaceId)}`}
-                className="text-xs text-accent hover:underline shrink-0"
-              >
-                Ver lead completo
-              </Link>
+              <div className="flex items-center gap-2 shrink-0">
+                {activeItem && !proposal && activeItem.status !== 'scoped' && activeItem.status !== 'closed' && (
+                  <button
+                    onClick={async () => {
+                      if (!activePlaceId || scopeLoading) return
+                      setScopeLoading(true)
+                      try {
+                        // Move lead to scoped
+                        await fetch(`/api/leads/${encodeURIComponent(activePlaceId)}/status`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ status: 'scoped' }),
+                        })
+                        // Update local status
+                        setItems(prev => prev.map(i =>
+                          i.place_id === activePlaceId ? { ...i, status: 'scoped' } : i
+                        ))
+                        // Poll for proposal (generateProposal is fire-and-forget, takes ~5s)
+                        for (let i = 0; i < 10; i++) {
+                          await new Promise(r => setTimeout(r, 2000))
+                          const res = await fetch(`/api/projects/${encodeURIComponent(activePlaceId)}/status`)
+                          if (res.ok) {
+                            const p = await res.json()
+                            if (p && p.proposal_message) {
+                              setProposal(p)
+                              break
+                            }
+                          }
+                        }
+                      } finally {
+                        setScopeLoading(false)
+                      }
+                    }}
+                    disabled={scopeLoading}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 disabled:opacity-50"
+                  >
+                    {scopeLoading ? 'Gerando proposta…' : 'Gerar Escopo'}
+                  </button>
+                )}
+                <Link
+                  href={`/leads/${encodeURIComponent(activePlaceId)}`}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Ver lead
+                </Link>
+              </div>
             </div>
 
             {/* Messages */}
@@ -571,6 +625,17 @@ export default function InboxClient() {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Proposal card */}
+            {proposal && activePlaceId && (
+              <div className="px-4 pb-3">
+                <ProposalCard
+                  project={proposal}
+                  placeId={activePlaceId}
+                  onApproved={() => setProposal(null)}
+                />
+              </div>
+            )}
 
             {/* AI suggestion */}
             {suggestion && (
