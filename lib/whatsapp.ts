@@ -6,22 +6,30 @@ function normalizePhone(phone: string): string {
 }
 
 export async function sendWhatsApp(phone: string, text: string): Promise<boolean> {
-  if (!process.env.EVOLUTION_API_URL) return false
+  const url = process.env.EVOLUTION_API_URL
+  const instance = process.env.EVOLUTION_INSTANCE
+  if (!url) {
+    console.error('[whatsapp] EVOLUTION_API_URL not configured')
+    return false
+  }
   const cleanPhone = normalizePhone(phone)
+  const endpoint = `${url}/message/sendText/${instance}`
+  const payload = { number: cleanPhone, textMessage: { text } }
+  console.log('[whatsapp] sending to', cleanPhone, 'via', endpoint)
   try {
-    await fetch(
-      `${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: process.env.EVOLUTION_API_KEY ?? '',
-        },
-        body: JSON.stringify({ number: cleanPhone, textMessage: { text } }),
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: process.env.EVOLUTION_API_KEY ?? '',
       },
-    )
-    return true
-  } catch {
+      body: JSON.stringify(payload),
+    })
+    const body = await res.text()
+    console.log('[whatsapp] status:', res.status, 'body:', body.slice(0, 300))
+    return res.ok
+  } catch (err) {
+    console.error('[whatsapp] fetch error:', err instanceof Error ? err.message : err)
     return false
   }
 }
