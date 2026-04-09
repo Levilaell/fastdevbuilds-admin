@@ -70,6 +70,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: convError.message }, { status: 500 })
   }
 
+  // Dismiss any pending AI suggestions — user replied manually
+  await supabase
+    .from('ai_suggestions')
+    .update({ status: 'rejected' })
+    .eq('place_id', place_id)
+    .eq('status', 'pending')
+
   // Auto-advance status: replied → negotiating
   const leadCheck = await supabase
     .from('leads')

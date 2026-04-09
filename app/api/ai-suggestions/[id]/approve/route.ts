@@ -62,5 +62,12 @@ export async function POST(
     })
     .eq('id', id)
 
+  // Dismiss any other pending suggestions for this lead
+  await supabase
+    .from('ai_suggestions')
+    .update({ status: 'rejected' })
+    .eq('place_id', suggestion.place_id)
+    .eq('status', 'pending')
+
   return Response.json({ ok: true, conversation: conv })
 }
