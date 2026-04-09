@@ -32,10 +32,10 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    // Log full key + participant info for debugging LID format
+    // Log payload to find real phone number (LID format doesn't include it)
     console.log('[webhook] key:', JSON.stringify(data.key))
-    console.log('[webhook] participant:', data.key.participant, 'remotePhone:', data.remotePhone, 'phone:', data.phone)
-    console.log('[webhook] top-level keys:', Object.keys(data).join(', '))
+    console.log('[webhook] source:', JSON.stringify(data.source)?.slice(0, 500))
+    console.log('[webhook] full payload:', JSON.stringify(data).slice(0, 1000))
 
     // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''
