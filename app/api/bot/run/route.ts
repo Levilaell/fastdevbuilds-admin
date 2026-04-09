@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 interface BotParams {
   niche: string
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Create bot_run record
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const { data: run } = await supabase
     .from('bot_runs')
     .insert({
@@ -122,6 +122,49 @@ export async function POST(request: NextRequest) {
               })
               .eq('id', runId)
           }
+
+          // Sync outreach messages to conversations table so they appear in inbox.
+          // The bot saves leads with outreach_sent=true and message, but doesn't
+          // create conversation records. Find leads sent during this run window
+          // that have no outbound conversation yet and create one for each.
+          try {
+            const runStart = new Date(runStartedAt).toISOString()
+            const { data: sentLeads } = await supabase
+              .from('leads')
+              .select('place_id, message, outreach_sent_at, outreach_channel')
+              .eq('outreach_sent', true)
+              .gte('outreach_sent_at', runStart)
+              .not('message', 'is', null)
+
+            if (sentLeads && sentLeads.length > 0) {
+              // Get place_ids that already have outbound conversations
+              const placeIds = sentLeads.map(l => l.place_id)
+              const { data: existingConvs } = await supabase
+                .from('conversations')
+                .select('place_id')
+                .in('place_id', placeIds)
+                .eq('direction', 'out')
+
+              const hasConv = new Set((existingConvs ?? []).map(c => c.place_id))
+              const missing = sentLeads.filter(l => !hasConv.has(l.place_id))
+
+              if (missing.length > 0) {
+                await supabase.from('conversations').insert(
+                  missing.map(l => ({
+                    place_id: l.place_id,
+                    direction: 'out' as const,
+                    channel: (l.outreach_channel ?? 'whatsapp') as string,
+                    message: l.message,
+                    sent_at: l.outreach_sent_at ?? new Date().toISOString(),
+                    suggested_by_ai: false,
+                  })),
+                )
+              }
+            }
+          } catch (err) {
+            console.error('[bot/run] conversation sync failed:', err)
+          }
+
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
           return
