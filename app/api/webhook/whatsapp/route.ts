@@ -61,10 +61,7 @@ export async function POST(request: Request) {
       l.phone ? phoneMatch(phone, l.phone) : false
     )
 
-    if (!lead) {
-      console.log('[webhook] no matching lead for phone', phone)
-      return Response.json({ ok: true })
-    }
+    const normalizedPhone = normalize(phone)
 
     // Convert unix timestamp to ISO
     const timestamp = data.messageTimestamp
@@ -72,9 +69,39 @@ export async function POST(request: Request) {
       ? new Date(Number(timestamp) * 1000).toISOString()
       : new Date().toISOString()
 
+    let placeId: string
+    let leadStatus: string | null = null
+
+    if (lead) {
+      placeId = lead.place_id
+      leadStatus = lead.status
+    } else {
+      // Create minimal lead for unknown inbound contact
+      const pushName: string = data.pushName ?? ''
+      placeId = `unknown_${normalizedPhone}`
+
+      console.log('[webhook] creating inbound lead for', normalizedPhone)
+
+      const { error: leadError } = await supabase.from('leads').upsert({
+        place_id: placeId,
+        business_name: pushName || normalizedPhone,
+        phone: normalizedPhone,
+        outreach_channel: 'whatsapp',
+        status: 'replied',
+        niche: 'inbound',
+        status_updated_at: new Date().toISOString(),
+      }, { onConflict: 'place_id' })
+
+      if (leadError) {
+        console.error('[webhook] failed to upsert inbound lead:', leadError.message)
+      }
+
+      console.log('[webhook] novo contato inbound:', phone)
+    }
+
     // Save conversation
-    await supabase.from('conversations').insert({
-      place_id: lead.place_id,
+    const { error: convError } = await supabase.from('conversations').insert({
+      place_id: placeId,
       direction: 'in',
       channel: 'whatsapp',
       message: text,
@@ -82,18 +109,22 @@ export async function POST(request: Request) {
       suggested_by_ai: false,
     })
 
+    if (convError) {
+      console.error('[webhook] failed to save conversation:', convError.message)
+    }
+
     // Auto-advance: sent → replied
-    if (lead.status === 'sent') {
+    if (leadStatus === 'sent') {
       await supabase
         .from('leads')
         .update({
           status: 'replied',
           status_updated_at: new Date().toISOString(),
         })
-        .eq('place_id', lead.place_id)
+        .eq('place_id', placeId)
     }
 
-    console.log('[webhook] saved message for lead', lead.place_id)
+    console.log('[webhook] saved message for lead', placeId)
     return Response.json({ ok: true })
   } catch (err) {
     console.error('[webhook] error:', err)
