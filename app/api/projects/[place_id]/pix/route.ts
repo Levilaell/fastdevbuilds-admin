@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { generatePixMessage } from '@/lib/ai-workflow'
+import { buildPixMessage as generatePixMessage } from '@/lib/prompts'
 import { sendWhatsApp } from '@/lib/whatsapp'
 import type { Lead, Project } from '@/lib/types'
 

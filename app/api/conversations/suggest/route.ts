@@ -2,6 +2,11 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { SCORE_REASON_LABELS, STATUS_LABELS, type Lead, type Conversation } from '@/lib/types'
+import {
+  buildSuggestionSystemPrompt,
+  SUGGESTION_USER_WITH_HISTORY,
+  SUGGESTION_USER_NO_HISTORY,
+} from '@/lib/prompts'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -40,23 +45,7 @@ export async function POST(request: NextRequest) {
     .map((c) => `[${c.direction === 'out' ? 'Levi' : 'Lead'}] ${c.message}`)
     .join('\n')
 
-  const systemPrompt = `Você é Levi, desenvolvedor freelancer da FastDevBuilds. Você prospecta clientes que precisam de melhorias nos seus sites/apps.
-
-Contexto do lead:
-- Negócio: ${lead.business_name ?? 'Desconhecido'}
-- Cidade: ${lead.city ?? '—'}
-- Tech stack: ${lead.tech_stack ?? '—'}
-- Score de dor: ${lead.pain_score ?? '—'}/10
-- Problemas detectados: ${reasons || 'Nenhum'}
-- Score mobile: ${lead.mobile_score ?? '—'}
-- Estágio no pipeline: ${STATUS_LABELS[lead.status]}
-
-Regras:
-- Sugira a próxima resposta mais adequada para avançar esse lead no pipeline
-- Tom: informal, direto, em português BR
-- Máximo 4 frases curtas
-- NÃO sugira calls ou ligações
-- Foque em valor concreto que você pode entregar baseado nos problemas detectados`
+  const systemPrompt = buildSuggestionSystemPrompt(lead, reasons, STATUS_LABELS[lead.status])
 
   const anthropic = new Anthropic()
 
@@ -68,8 +57,8 @@ Regras:
       {
         role: 'user',
         content: historyText
-          ? `Histórico da conversa:\n${historyText}\n\nSugira a próxima mensagem.`
-          : 'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.',
+          ? SUGGESTION_USER_WITH_HISTORY(historyText)
+          : SUGGESTION_USER_NO_HISTORY,
       },
     ],
   })

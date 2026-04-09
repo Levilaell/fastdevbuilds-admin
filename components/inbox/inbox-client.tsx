@@ -132,6 +132,7 @@ function InboxReplyBox({
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [sendError, setSendError] = useState('')
   const [phoneInput, setPhoneInput] = useState('')
   const [needsPhone, setNeedsPhone] = useState(false)
@@ -193,13 +194,14 @@ function InboxReplyBox({
       }
     } finally {
       setSending(false)
+      setConfirming(false)
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
-      handleSend()
+      setConfirming(true)
     }
   }
 
@@ -213,6 +215,28 @@ function InboxReplyBox({
         rows={3}
         className="w-full px-3 py-2 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y min-h-[72px]"
       />
+      {/* Confirmation bar */}
+      {confirming && (
+        <div className="flex items-center justify-between gap-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
+          <span className="text-xs text-warning">Confirmar envio desta mensagem?</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={sending}
+              className="px-3 py-1 text-xs rounded-lg border border-border text-muted hover:text-text disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              className="px-3 py-1 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
+            >
+              {sending ? 'Enviando…' : 'Confirmar'}
+            </button>
+          </div>
+        </div>
+      )}
       {needsPhone && (
         <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
           <span className="text-xs text-warning shrink-0">Telefone necessário:</span>
@@ -242,18 +266,18 @@ function InboxReplyBox({
           </span>
           <button
             onClick={handleSuggest}
-            disabled={suggesting}
+            disabled={suggesting || confirming}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
           >
             {suggesting ? 'Gerando…' : 'Sugerir com IA'}
           </button>
         </div>
         <button
-          onClick={handleSend}
-          disabled={sending || !message.trim()}
+          onClick={() => setConfirming(true)}
+          disabled={sending || !message.trim() || confirming}
           className="px-4 py-1.5 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
         >
-          {sending ? 'Enviando…' : 'Enviar'}
+          Enviar
         </button>
       </div>
     </div>
@@ -385,18 +409,20 @@ export default function InboxClient() {
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Fetch inbox list
   const fetchInbox = useCallback(async () => {
-    const res = await fetch('/api/inbox')
+    const url = showArchived ? '/api/inbox?archived=true' : '/api/inbox'
+    const res = await fetch(url)
     if (res.ok) {
       const data = await res.json()
       setItems(data)
     }
     setLoading(false)
-  }, [])
+  }, [showArchived])
 
   // Fetch conversation + suggestion + project for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
@@ -577,6 +603,26 @@ export default function InboxClient() {
     return () => clearInterval(interval)
   }, [fetchInbox])
 
+  // Archive / unarchive a conversation
+  async function handleArchive(placeId: string, unarchive = false) {
+    const url = `/api/inbox/${encodeURIComponent(placeId)}/archive`
+    await fetch(url, { method: unarchive ? 'DELETE' : 'POST' })
+    // Remove from current list
+    setItems((prev) => prev.filter((i) => i.place_id !== placeId))
+    if (activePlaceId === placeId) {
+      setActivePlaceId(null)
+      setConversations([])
+    }
+  }
+
+  // Refetch when switching tabs
+  useEffect(() => {
+    setLoading(true)
+    setActivePlaceId(null)
+    setConversations([])
+    fetchInbox()
+  }, [showArchived, fetchInbox])
+
   // Handle new outbound message
   function handleNewMessage(conv: Conversation) {
     setConversations((prev) => [...prev, conv])
@@ -606,13 +652,25 @@ export default function InboxClient() {
       <div className="w-[360px] flex-none border-r border-border flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border space-y-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-text">Inbox</h1>
-            {totalUnread > 0 && (
-              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-white text-xs font-semibold">
-                {totalUnread > 99 ? '99+' : totalUnread}
-              </span>
-            )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-text">Inbox</h1>
+              {totalUnread > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-white text-xs font-semibold">
+                  {totalUnread > 99 ? '99+' : totalUnread}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`text-[10px] px-2 py-1 rounded-lg border ${
+                showArchived
+                  ? 'border-accent/30 text-accent bg-accent/10'
+                  : 'border-border text-muted hover:text-text'
+              }`}
+            >
+              {showArchived ? 'Ativas' : 'Arquivadas'}
+            </button>
           </div>
           <div className="relative">
             <svg
@@ -758,6 +816,12 @@ export default function InboxClient() {
                     }
                   }}
                 />
+                <button
+                  onClick={() => handleArchive(activePlaceId, showArchived)}
+                  className="px-2 py-1 text-[10px] rounded-lg border border-border text-muted hover:text-text"
+                >
+                  {showArchived ? 'Desarquivar' : 'Arquivar'}
+                </button>
                 <Link
                   href={`/leads/${encodeURIComponent(activePlaceId)}`}
                   className="text-xs text-accent hover:underline"
