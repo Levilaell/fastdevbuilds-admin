@@ -18,6 +18,55 @@ function phoneMatch(a: string, b: string): boolean {
   return na.slice(-tail) === nb.slice(-tail)
 }
 
+/**
+ * Resolve a LID (Link ID) to a real phone number via Evolution API.
+ * LID format: 240552629022900@lid — does NOT contain the phone number.
+ * We call the Evolution API findContacts endpoint to get the real number.
+ */
+async function resolvePhoneFromLid(lid: string): Promise<string | null> {
+  const evoUrl = process.env.EVOLUTION_API_URL
+  const instance = process.env.EVOLUTION_INSTANCE
+  const apiKey = process.env.EVOLUTION_API_KEY
+
+  if (!evoUrl || !instance || !apiKey) return null
+
+  try {
+    const res = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
+      },
+      body: JSON.stringify({ where: { id: `${lid}@lid` } }),
+    })
+
+    if (!res.ok) {
+      console.error('[webhook] findContacts failed:', res.status)
+      return null
+    }
+
+    const contacts = await res.json()
+    console.log('[webhook] findContacts response:', JSON.stringify(contacts).slice(0, 300))
+
+    // Response is an array of contacts, each with an `id` field like "5517992005945@s.whatsapp.net"
+    if (Array.isArray(contacts) && contacts.length > 0) {
+      const contact = contacts[0]
+      // Try various fields where the real number might be
+      const realJid: string = contact.id ?? contact.jid ?? contact.number ?? ''
+      const realPhone = realJid.split('@')[0].replace(/\D/g, '')
+      if (realPhone && realPhone.length >= 10) {
+        console.log('[webhook] resolved LID', lid, '→', realPhone)
+        return realPhone
+      }
+    }
+
+    return null
+  } catch (err) {
+    console.error('[webhook] resolvePhoneFromLid error:', err)
+    return null
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -32,17 +81,28 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    // Log payload to find real phone number (LID format doesn't include it)
-    console.log('[webhook] key:', JSON.stringify(data.key))
-    console.log('[webhook] source:', JSON.stringify(data.source)?.slice(0, 500))
-    console.log('[webhook] full payload:', JSON.stringify(data).slice(0, 1000))
-
     // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''
-    const phone = remoteJid.split('@')[0]
+    const jidValue = remoteJid.split('@')[0]
+    const isLid = remoteJid.endsWith('@lid')
 
-    if (!phone) {
+    if (!jidValue) {
       return Response.json({ ok: true })
+    }
+
+    // Resolve real phone number
+    let phone: string
+    if (isLid) {
+      console.log('[webhook] LID detected:', jidValue, '— resolving real phone...')
+      const resolved = await resolvePhoneFromLid(jidValue)
+      if (resolved) {
+        phone = resolved
+      } else {
+        console.log('[webhook] could not resolve LID, using as-is')
+        phone = jidValue
+      }
+    } else {
+      phone = jidValue
     }
 
     // Extract message text from various WhatsApp message formats
@@ -55,9 +115,9 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
+    const normalizedPhone = normalize(phone)
     const preview = text.length > 60 ? text.slice(0, 60) + '…' : text
-    console.log('[webhook] remoteJid:', remoteJid, 'phone:', phone, 'normalized:', normalize(phone))
-    console.log('[webhook]', phone, preview)
+    console.log('[webhook] phone:', normalizedPhone, preview)
 
     // Use service key to bypass RLS
     const supabase = createClient(
@@ -72,10 +132,8 @@ export async function POST(request: Request) {
       .not('phone', 'is', null)
 
     const lead = (leads ?? []).find((l) =>
-      l.phone ? phoneMatch(phone, l.phone) : false
+      l.phone ? phoneMatch(normalizedPhone, l.phone) : false
     )
-
-    const normalizedPhone = normalize(phone)
 
     // Convert unix timestamp to ISO
     const timestamp = data.messageTimestamp
@@ -89,6 +147,15 @@ export async function POST(request: Request) {
     if (lead) {
       placeId = lead.place_id
       leadStatus = lead.status
+
+      // Update phone if we resolved a better one (e.g. from LID)
+      if (isLid && normalizedPhone !== lead.phone) {
+        await supabase
+          .from('leads')
+          .update({ phone: normalizedPhone })
+          .eq('place_id', placeId)
+        console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
+      }
     } else {
       // Create minimal lead for unknown inbound contact
       const pushName: string = data.pushName ?? ''
@@ -109,8 +176,6 @@ export async function POST(request: Request) {
       if (leadError) {
         console.error('[webhook] failed to upsert inbound lead:', leadError.message)
       }
-
-      console.log('[webhook] novo contato inbound:', phone)
     }
 
     // Save conversation
