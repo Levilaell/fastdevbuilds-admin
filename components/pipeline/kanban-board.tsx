@@ -1,0 +1,222 @@
+'use client'
+
+import { useState, useMemo, useCallback } from 'react'
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from '@hello-pangea/dnd'
+import {
+  LEAD_STATUSES,
+  STATUS_LABELS,
+  type LeadCard,
+  type LeadStatus,
+} from '@/lib/types'
+import LeadCardComponent from './lead-card'
+import PipelineFilters from './pipeline-filters'
+
+function EmptyColumn() {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 text-muted">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 opacity-30">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+      </svg>
+      <span className="text-xs">Nenhum lead</span>
+    </div>
+  )
+}
+
+function SkeletonCard() {
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 animate-pulse">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="h-4 bg-border rounded w-3/4" />
+        <div className="h-4 bg-border rounded w-12" />
+      </div>
+      <div className="h-1.5 bg-border rounded-full w-full mb-2" />
+      <div className="flex justify-between">
+        <div className="h-3 bg-border rounded w-16" />
+        <div className="h-3 bg-border rounded w-10" />
+      </div>
+    </div>
+  )
+}
+
+export function KanbanSkeleton() {
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-4 px-6 pt-4">
+      {LEAD_STATUSES.map((status) => (
+        <div key={status} className="flex-none w-72">
+          <div className="flex items-center gap-2 mb-3 px-3 pt-3">
+            <div className="h-4 bg-border rounded w-20" />
+            <div className="h-5 bg-border rounded w-7" />
+          </div>
+          <div className="space-y-2 px-2 pb-3">
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+interface KanbanBoardProps {
+  initialLeads: LeadCard[]
+}
+
+export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
+  const [leads, setLeads] = useState<LeadCard[]>(initialLeads)
+  const [search, setSearch] = useState('')
+  const [channel, setChannel] = useState('')
+  const [minScore, setMinScore] = useState(0)
+  const [niche, setNiche] = useState('')
+
+  const niches = useMemo(() => {
+    const set = new Set<string>()
+    initialLeads.forEach((l) => {
+      if (l.niche) set.add(l.niche)
+    })
+    return Array.from(set).sort()
+  }, [initialLeads])
+
+  const filtered = useMemo(() => {
+    return leads.filter((l) => {
+      if (search && !(l.business_name ?? '').toLowerCase().includes(search.toLowerCase())) return false
+      if (channel && l.outreach_channel !== channel) return false
+      if (minScore > 0 && (l.pain_score ?? 0) < minScore) return false
+      if (niche && l.niche !== niche) return false
+      return true
+    })
+  }, [leads, search, channel, minScore, niche])
+
+  const grouped = useMemo(() => {
+    const map: Record<LeadStatus, LeadCard[]> = {
+      prospected: [],
+      sent: [],
+      replied: [],
+      negotiating: [],
+      scoped: [],
+      closed: [],
+      lost: [],
+    }
+    filtered.forEach((l) => map[l.status].push(l))
+    return map
+  }, [filtered])
+
+  const handleDragEnd = useCallback(async (result: DropResult) => {
+    const { draggableId, destination, source } = result
+    if (!destination) return
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return
+
+    const newStatus = destination.droppableId as LeadStatus
+
+    // Optimistic update
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.place_id === draggableId
+          ? { ...l, status: newStatus, status_updated_at: new Date().toISOString() }
+          : l
+      )
+    )
+
+    try {
+      const res = await fetch(`/api/leads/${encodeURIComponent(draggableId)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!res.ok) {
+        setLeads((prev) =>
+          prev.map((l) =>
+            l.place_id === draggableId
+              ? { ...l, status: source.droppableId as LeadStatus }
+              : l
+          )
+        )
+      }
+    } catch {
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.place_id === draggableId
+            ? { ...l, status: source.droppableId as LeadStatus }
+            : l
+        )
+      )
+    }
+  }, [])
+
+  return (
+    <>
+      <div className="px-6 pt-4">
+        <PipelineFilters
+          search={search}
+          onSearchChange={setSearch}
+          channel={channel}
+          onChannelChange={setChannel}
+          minScore={minScore}
+          onMinScoreChange={setMinScore}
+          niche={niche}
+          onNicheChange={setNiche}
+          niches={niches}
+        />
+      </div>
+
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 overflow-x-auto pb-4 px-6">
+          {LEAD_STATUSES.map((status) => {
+            const cards = grouped[status]
+            return (
+              <div key={status} className="flex-none w-72 bg-sidebar border border-border rounded-xl">
+                {/* Column header */}
+                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                  <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
+                    {STATUS_LABELS[status]}
+                  </h2>
+                  <span className="bg-border text-text text-[11px] font-mono px-1.5 py-0.5 rounded min-w-[22px] text-center">
+                    {cards.length}
+                  </span>
+                </div>
+
+                {/* Droppable column */}
+                <Droppable droppableId={status}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`space-y-2 overflow-y-auto px-2 pb-3 min-h-[80px] ${
+                        snapshot.isDraggingOver ? 'bg-accent/5' : ''
+                      }`}
+                      style={{ maxHeight: 'calc(100vh - 200px)' }}
+                    >
+                      {cards.length === 0 && !snapshot.isDraggingOver && <EmptyColumn />}
+                      {cards.map((lead, index) => (
+                        <Draggable key={lead.place_id} draggableId={lead.place_id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={snapshot.isDragging ? 'opacity-90 rotate-1' : ''}
+                            >
+                              <LeadCardComponent lead={lead} />
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            )
+          })}
+        </div>
+      </DragDropContext>
+    </>
+  )
+}
