@@ -102,6 +102,25 @@ export interface InboxItem {
   unread_count: number
 }
 
+export interface BotRun {
+  id: string
+  niche: string | null
+  city: string | null
+  limit_count: number | null
+  min_score: number | null
+  lang: string | null
+  export_target: string | null
+  dry_run: boolean | null
+  send: boolean | null
+  collected: number | null
+  qualified: number | null
+  sent: number | null
+  status: 'running' | 'completed' | 'failed'
+  started_at: string
+  finished_at: string | null
+  duration_seconds: number | null
+}
+
 /** Subset of Lead columns needed for pipeline cards */
 export type LeadCard = Pick<
   Lead,

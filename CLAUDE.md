@@ -57,6 +57,9 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │   │   │   ├── suggest/route.ts         # POST — Claude AI reply suggestion
 │   │   │   └── send/route.ts            # POST — send message via Evolution/save
 │   │   ├── inbox/route.ts               # GET — leads with conversations + unread counts
+│   │   ├── bot/
+│   │   │   ├── run/route.ts             # POST — start bot, stream SSE output
+│   │   │   └── runs/route.ts            # GET — last 5 bot run history
 │   │   └── webhook/
 │   │       └── whatsapp/route.ts        # POST — Evolution API inbound messages (public)
 │   ├── (auth)/
@@ -80,6 +83,8 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │   │   └── pipeline-filters.tsx         # Search, channel, min score, niche
 │   ├── inbox/
 │   │   └── inbox-client.tsx             # Full inbox client (realtime, search, reply)
+│   ├── bot/
+│   │   └── bot-client.tsx               # Bot runner form + terminal + run history
 │   └── lead-detail/
 │       ├── tech-analysis.tsx            # Boolean audit + PageSpeed scores
 │       ├── pain-score-card.tsx          # Score display + translated reasons
@@ -95,6 +100,8 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │       ├── client.ts                    # Browser client
 │       └── server.ts                    # Server client
 ├── proxy.ts                             # Auth route protection
+├── bot-server/
+│   └── server.js                        # Railway bot server (SSE streaming runner)
 ├── .env.local                           # Secrets — never commit
 └── .env.example
 ```
@@ -191,6 +198,29 @@ CREATE TYPE lead_status AS ENUM (
 | created_at | timestamptz |
 | updated_at | timestamptz |
 
+### `bot_runs` table
+
+```sql
+CREATE TABLE bot_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  niche TEXT,
+  city TEXT,
+  limit_count INTEGER,
+  min_score INTEGER,
+  lang TEXT,
+  export_target TEXT,
+  dry_run BOOLEAN,
+  send BOOLEAN,
+  collected INTEGER,
+  qualified INTEGER,
+  sent INTEGER,
+  status TEXT CHECK (status IN ('running', 'completed', 'failed')),
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  duration_seconds INTEGER
+);
+```
+
 ## Environment Variables
 
 ```bash
@@ -201,7 +231,8 @@ ANTHROPIC_API_KEY=              # Claude API key
 EVOLUTION_API_URL=              # WhatsApp gateway URL
 EVOLUTION_API_KEY=              # WhatsApp gateway key
 EVOLUTION_INSTANCE=             # WhatsApp instance name
-BOT_SERVER_URL=                 # Prospect bot server URL
+BOT_SERVER_URL=                 # Railway bot server URL
+BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
 ```
 
 ## Code Rules
