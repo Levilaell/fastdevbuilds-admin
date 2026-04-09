@@ -12,6 +12,11 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function OutreachCard({ lead }: { lead: Lead }) {
+  // Inbound leads were never prospected — hide outreach section
+  if (lead.niche === 'inbound' && !lead.outreach_sent) {
+    return null
+  }
+
   const sentLabel = lead.outreach_sent ? 'Enviado' : 'Pendente'
   const sentColor = lead.outreach_sent
     ? 'text-success bg-success/10 border-success/20'

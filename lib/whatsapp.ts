@@ -1,8 +1,9 @@
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('55') && digits.length >= 12) return digits
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) return digits
   const clean = digits.startsWith('0') ? digits.slice(1) : digits
-  return `55${clean}`
+  if (clean.length >= 10 && clean.length <= 11) return `55${clean}`
+  return digits
 }
 
 export async function sendWhatsApp(phone: string, text: string): Promise<boolean> {

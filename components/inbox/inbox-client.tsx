@@ -421,7 +421,11 @@ export default function InboxClient() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversations.length])
 
-  // Realtime subscription — conversations + AI suggestions
+  // Refs for realtime callbacks — avoids recreating the channel on every state change
+  const activePlaceIdRef = useRef(activePlaceId)
+  activePlaceIdRef.current = activePlaceId
+
+  // Realtime subscription — stable, no dependencies that cause recreation
   useEffect(() => {
     const supabase = createClient()
 
@@ -437,6 +441,7 @@ export default function InboxClient() {
         },
         (payload) => {
           const newConv = payload.new as Conversation
+          const currentActive = activePlaceIdRef.current
 
           // Update inbox list
           setItems((prev) => {
@@ -448,7 +453,7 @@ export default function InboxClient() {
                       ...i,
                       last_message: newConv.message,
                       last_message_at: newConv.sent_at,
-                      unread_count: activePlaceId === newConv.place_id ? 0 : i.unread_count + 1,
+                      unread_count: currentActive === newConv.place_id ? 0 : i.unread_count + 1,
                     }
                   : i
               )
@@ -458,15 +463,15 @@ export default function InboxClient() {
                 return tb - ta
               })
             }
-            // New lead with conversation — refetch
-            fetchInbox()
             return prev
           })
 
+          // Refetch inbox if it's a new lead we don't have yet
+          fetchInbox()
+
           // If active conversation, add message
-          if (activePlaceId === newConv.place_id) {
+          if (currentActive === newConv.place_id) {
             setConversations((prev) => [...prev, newConv])
-            // Mark as read immediately
             markAsRead(newConv.place_id)
           }
 
@@ -488,8 +493,7 @@ export default function InboxClient() {
         },
         (payload) => {
           const row = payload.new as AiSuggestion
-          // Show suggestion if it's for the active conversation and pending
-          if (row.place_id === activePlaceId && row.status === 'pending') {
+          if (row.place_id === activePlaceIdRef.current && row.status === 'pending') {
             setSuggestion(row)
           }
         }
@@ -499,7 +503,8 @@ export default function InboxClient() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [activePlaceId, fetchInbox, markAsRead])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Handle new outbound message
   function handleNewMessage(conv: Conversation) {

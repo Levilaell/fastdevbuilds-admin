@@ -2,6 +2,11 @@ import type { Lead } from '@/lib/types'
 import { SCORE_REASON_LABELS } from '@/lib/types'
 
 export default function PainScoreCard({ lead }: { lead: Lead }) {
+  // Inbound leads have no pain score — hide entirely
+  if (lead.niche === 'inbound' && !lead.pain_score) {
+    return null
+  }
+
   const score = lead.pain_score ?? 0
 
   let barColor = 'bg-emerald-500/70'

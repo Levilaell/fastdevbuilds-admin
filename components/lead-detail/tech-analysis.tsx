@@ -48,6 +48,17 @@ function MetricPill({ label, value, unit }: { label: string; value: number | nul
 }
 
 export default function TechAnalysis({ lead }: { lead: Lead }) {
+  // Inbound leads (niche='inbound') were never scraped — don't show misleading ❌
+  const isInbound = lead.niche === 'inbound'
+  if (isInbound && !lead.website) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-4">
+        <h2 className="text-xs font-semibold text-text uppercase tracking-wide mb-2">Análise técnica</h2>
+        <p className="text-xs text-muted">Lead inbound — sem site analisado</p>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-card border border-border rounded-xl p-4 space-y-4">
       <h2 className="text-xs font-semibold text-text uppercase tracking-wide">Análise técnica</h2>

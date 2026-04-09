@@ -3,11 +3,21 @@ import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
 import type { Lead } from '@/lib/types'
 
+/** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
 function normalize(phone: string): string {
   const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('55') && digits.length >= 12) return digits
+  // Already has country code and valid length
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) return digits
+  // Domestic format: 10-11 digits (DDD + number)
   const clean = digits.startsWith('0') ? digits.slice(1) : digits
-  return `55${clean}`
+  if (clean.length >= 10 && clean.length <= 11) return `55${clean}`
+  // Unknown format — return as-is (don't blindly prepend 55 to LID garbage)
+  return digits
+}
+
+/** Check if a normalized phone looks like a valid BR number. */
+function isValidPhone(phone: string): boolean {
+  return phone.startsWith('55') && phone.length >= 12 && phone.length <= 13
 }
 
 function phoneMatch(a: string, b: string): boolean {
@@ -114,8 +124,9 @@ export async function POST(request: Request) {
       if (resolved) {
         phone = resolved
       } else {
-        console.log('[webhook] could not resolve LID, using as-is')
-        phone = jidValue
+        // LID couldn't be resolved — use pushName as identifier, not the LID number
+        console.log('[webhook] could not resolve LID, phone will be empty')
+        phone = ''
       }
     } else {
       phone = jidValue
@@ -131,9 +142,9 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    const normalizedPhone = normalize(phone)
+    const normalizedPhone = phone ? normalize(phone) : ''
     const preview = text.length > 60 ? text.slice(0, 60) + '…' : text
-    console.log('[webhook] phone:', normalizedPhone, preview)
+    console.log('[webhook] phone:', normalizedPhone || '(unresolved LID)', preview)
 
     // Use service key to bypass RLS
     const supabase = createClient(
@@ -165,7 +176,7 @@ export async function POST(request: Request) {
       leadStatus = lead.status
 
       // Update phone if we resolved a better one (e.g. from LID)
-      if (isLid && normalizedPhone !== lead.phone) {
+      if (isLid && isValidPhone(normalizedPhone) && normalizedPhone !== lead.phone) {
         await supabase
           .from('leads')
           .update({ phone: normalizedPhone })
@@ -175,14 +186,17 @@ export async function POST(request: Request) {
     } else {
       // Create minimal lead for unknown inbound contact
       const pushName: string = data.pushName ?? ''
-      placeId = `unknown_${normalizedPhone}`
+      // Use phone if resolved, otherwise use the raw JID value for a stable ID
+      placeId = normalizedPhone && isValidPhone(normalizedPhone)
+        ? `unknown_${normalizedPhone}`
+        : `unknown_${jidValue}`
 
-      console.log('[webhook] creating inbound lead for', normalizedPhone)
+      console.log('[webhook] creating inbound lead for', placeId)
 
       const { error: leadError } = await supabase.from('leads').upsert({
         place_id: placeId,
-        business_name: pushName || normalizedPhone,
-        phone: normalizedPhone,
+        business_name: pushName || normalizedPhone || jidValue,
+        phone: isValidPhone(normalizedPhone) ? normalizedPhone : null,
         outreach_channel: 'whatsapp',
         status: 'replied',
         niche: 'inbound',
