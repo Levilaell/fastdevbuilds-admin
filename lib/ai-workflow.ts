@@ -104,8 +104,10 @@ export async function generateProposal(
   conversations: Conversation[],
 ): Promise<void> {
   try {
+    console.log('[proposal] starting for', lead.place_id)
     const anthropic = new Anthropic()
 
+    console.log('[proposal] calling Claude API...')
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1000,
@@ -131,6 +133,7 @@ ${formatHistory(conversations, 10)}`,
     })
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    console.log('[proposal] response:', text.slice(0, 150))
     const parsed = JSON.parse(cleanJson(text)) as {
       scope: string[]
       timeline_days: number
@@ -139,20 +142,45 @@ ${formatHistory(conversations, 10)}`,
     }
 
     const supabase = serviceClient()
-    await supabase.from('projects').upsert(
-      {
+
+    // Check if project already exists for this lead
+    const { data: existing } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('place_id', lead.place_id)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      console.log('[proposal] updating existing project', existing.id)
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          scope: JSON.stringify(parsed.scope),
+          price: parsed.price_brl,
+          currency: 'BRL',
+          status: 'scoped',
+          proposal_message: parsed.whatsapp_message,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+      if (error) console.error('[proposal] update error:', error.message)
+    } else {
+      console.log('[proposal] inserting new project')
+      const { error } = await supabase.from('projects').insert({
         place_id: lead.place_id,
         scope: JSON.stringify(parsed.scope),
         price: parsed.price_brl,
         currency: 'BRL',
         status: 'scoped',
         proposal_message: parsed.whatsapp_message,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'place_id' },
-    )
+      })
+      if (error) console.error('[proposal] insert error:', error.message)
+    }
+
+    console.log('[proposal] done for', lead.place_id)
   } catch (err) {
-    console.error('[ai-workflow] generateProposal failed:', err)
+    console.error('[proposal] failed:', err)
   }
 }
 
