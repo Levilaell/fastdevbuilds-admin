@@ -32,7 +32,12 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    // Extract phone number — remove @s.whatsapp.net suffix
+    // Log full key + participant info for debugging LID format
+    console.log('[webhook] key:', JSON.stringify(data.key))
+    console.log('[webhook] participant:', data.key.participant, 'remotePhone:', data.remotePhone, 'phone:', data.phone)
+    console.log('[webhook] top-level keys:', Object.keys(data).join(', '))
+
+    // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''
     const phone = remoteJid.split('@')[0]
 
