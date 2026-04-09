@@ -223,26 +223,24 @@ export async function POST(request: Request) {
         .eq('place_id', placeId)
     }
 
-    // Fire and forget — AI classify + suggest
-    if (lead) {
-      const fullLead = await supabase
-        .from('leads')
-        .select('*')
-        .eq('place_id', placeId)
-        .single()
+    // Fire and forget — AI classify + suggest (for both existing and new leads)
+    const fullLead = await supabase
+      .from('leads')
+      .select('*')
+      .eq('place_id', placeId)
+      .single()
 
-      if (fullLead.data) {
-        const history = await getRecentConversations(supabase, placeId, 5)
-        console.log('[webhook] firing classifyAndSuggest for', placeId)
-        classifyAndSuggest(
-          fullLead.data as Lead,
-          text,
-          history,
-          conv?.id,
-        ).catch((err) => {
-          console.error('[classify] failed:', err.message)
-        })
-      }
+    if (fullLead.data) {
+      const history = await getRecentConversations(supabase, placeId, 5)
+      console.log('[webhook] firing classifyAndSuggest for', placeId)
+      classifyAndSuggest(
+        fullLead.data as Lead,
+        text,
+        history,
+        conv?.id,
+      ).catch((err) => {
+        console.error('[classify] failed:', err.message)
+      })
     }
 
     console.log('[webhook] saved message for lead', placeId)
