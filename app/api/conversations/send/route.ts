@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (leadRes.data?.phone) {
       const phone = leadRes.data.phone.replace(/\D/g, '')
       try {
-        await fetch(
+        const evoRes = await fetch(
           `${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`,
           {
             method: 'POST',
@@ -43,8 +43,11 @@ export async function POST(request: NextRequest) {
             }),
           }
         )
-      } catch {
-        // Log but don't fail — still save the conversation
+        console.log('[send] Evolution API response status:', evoRes.status)
+        const evoBody = await evoRes.text()
+        console.log('[send] Evolution API response body:', evoBody.slice(0, 200))
+      } catch (err) {
+        console.error('[send] Evolution API error:', err instanceof Error ? err.message : err)
       }
     }
   }

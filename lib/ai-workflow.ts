@@ -4,6 +4,14 @@ import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project } from 
 
 const MODEL = 'claude-haiku-4-5-20251001'
 
+function cleanJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+}
+
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,7 +76,7 @@ Current pipeline stage: ${lead.status}`,
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
     console.log('[classify] response:', text.slice(0, 100))
-    const parsed = JSON.parse(text) as {
+    const parsed = JSON.parse(cleanJson(text)) as {
       intent: string
       confidence: number
       suggested_reply: string
@@ -123,7 +131,7 @@ ${formatHistory(conversations, 10)}`,
     })
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
-    const parsed = JSON.parse(text) as {
+    const parsed = JSON.parse(cleanJson(text)) as {
       scope: string[]
       timeline_days: number
       price_brl: number
