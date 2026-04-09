@@ -141,12 +141,15 @@ export async function POST(request: Request) {
 
       if (fullLead.data) {
         const history = await getRecentConversations(supabase, placeId, 5)
+        console.log('[webhook] firing classifyAndSuggest for', placeId)
         classifyAndSuggest(
           fullLead.data as Lead,
           text,
           history,
           conv?.id,
-        ).catch(console.error)
+        ).catch((err) => {
+          console.error('[classify] failed:', err.message)
+        })
       }
     }
 

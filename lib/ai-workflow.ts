@@ -36,8 +36,10 @@ export async function classifyAndSuggest(
   conversationId?: string,
 ): Promise<void> {
   try {
+    console.log('[classify] starting for', lead.place_id, 'message:', message.slice(0, 50))
     const anthropic = new Anthropic()
 
+    console.log('[classify] calling Claude API...')
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 500,
@@ -65,12 +67,14 @@ Current pipeline stage: ${lead.status}`,
     })
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    console.log('[classify] response:', text.slice(0, 100))
     const parsed = JSON.parse(text) as {
       intent: string
       confidence: number
       suggested_reply: string
     }
 
+    console.log('[classify] saving suggestion, intent:', parsed.intent)
     const supabase = serviceClient()
     await supabase.from('ai_suggestions').insert({
       place_id: lead.place_id,
