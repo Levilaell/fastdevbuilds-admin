@@ -51,6 +51,7 @@ export async function POST(request: Request) {
     }
 
     const preview = text.length > 60 ? text.slice(0, 60) + '…' : text
+    console.log('[webhook] remoteJid:', remoteJid, 'phone:', phone, 'normalized:', normalize(phone))
     console.log('[webhook]', phone, preview)
 
     // Use service key to bypass RLS
