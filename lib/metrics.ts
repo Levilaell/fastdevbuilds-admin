@@ -28,7 +28,7 @@ interface LeadRow {
   status: string
   outreach_sent: boolean | null
   niche: string | null
-  city: string | null
+  address: string | null
 }
 
 interface ProjectRow {
@@ -66,7 +66,7 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
 
   let leadsQuery = supabase
     .from('leads')
-    .select('status, outreach_sent, niche, city')
+    .select('status, outreach_sent, niche, address')
   if (dateFilter) leadsQuery = leadsQuery.gte('status_updated_at', dateFilter)
 
   let projectsQuery = supabase
@@ -134,20 +134,27 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
     created_at: p.created_at,
   }))
 
-  // --- Top niches ---
+  // --- Top niches (exclude inbound — those are webhook-created, not prospected) ---
   const nicheCounts = new Map<string, number>()
   for (const l of leads) {
-    if (l.niche) nicheCounts.set(l.niche, (nicheCounts.get(l.niche) ?? 0) + 1)
+    if (l.niche && l.niche !== 'inbound') nicheCounts.set(l.niche, (nicheCounts.get(l.niche) ?? 0) + 1)
   }
   const topNiches = [...nicheCounts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([name, count]) => ({ name, count }))
 
-  // --- Top cities ---
+  // --- Top cities (extract from address: "..., City - ST, ZIP, Brazil") ---
   const cityCounts = new Map<string, number>()
   for (const l of leads) {
-    if (l.city) cityCounts.set(l.city, (cityCounts.get(l.city) ?? 0) + 1)
+    if (!l.address) continue
+    // "R. Carolina Soares, 108 - Limão, São Paulo - SP, 02554-000, Brazil"
+    // Split by comma, take 3rd-from-last segment, strip "- SP" state suffix
+    const parts = l.address.split(',')
+    if (parts.length < 3) continue
+    const segment = parts[parts.length - 3].trim() // "São Paulo - SP"
+    const city = segment.replace(/\s*-\s*[A-Z]{2}$/, '').trim()
+    if (city) cityCounts.set(city, (cityCounts.get(city) ?? 0) + 1)
   }
   const topCities = [...cityCounts.entries()]
     .sort((a, b) => b[1] - a[1])
