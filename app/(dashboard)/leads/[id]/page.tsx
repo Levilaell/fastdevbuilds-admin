@@ -2,12 +2,21 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { STATUS_LABELS, STATUS_COLORS, type Lead, type Conversation } from '@/lib/types'
+import {
+  STATUS_LABELS,
+  STATUS_COLORS,
+  type Lead,
+  type Conversation,
+  type AiSuggestion,
+  type Project,
+} from '@/lib/types'
 import TechAnalysis from '@/components/lead-detail/tech-analysis'
 import PainScoreCard from '@/components/lead-detail/pain-score-card'
 import OutreachCard from '@/components/lead-detail/outreach-card'
 import StatusSelect from '@/components/lead-detail/status-select'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
+import ProposalCard from '@/components/proposal-card'
+import ProjectStatusSection from '@/components/lead-detail/project-status'
 
 function LeadDetailSkeleton() {
   return (
@@ -40,13 +49,28 @@ function LeadDetailSkeleton() {
 async function LeadDetailContent({ id }: { id: string }) {
   const supabase = await createClient()
 
-  const [leadResult, convResult] = await Promise.all([
+  const [leadResult, convResult, suggestionResult, projectResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', id).single(),
     supabase
       .from('conversations')
       .select('*')
       .eq('place_id', id)
       .order('sent_at', { ascending: true }),
+    supabase
+      .from('ai_suggestions')
+      .select('*')
+      .eq('place_id', id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('projects')
+      .select('*')
+      .eq('place_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (leadResult.error && leadResult.error.code === 'PGRST116') {
@@ -63,6 +87,8 @@ async function LeadDetailContent({ id }: { id: string }) {
 
   const lead = leadResult.data as Lead
   const conversations = (convResult.data ?? []) as Conversation[]
+  const suggestion = (suggestionResult.data as AiSuggestion | null) ?? null
+  const project = (projectResult.data as Project | null) ?? null
 
   // Mark inbound unread messages as read
   const unreadIds = conversations
@@ -168,6 +194,22 @@ async function LeadDetailContent({ id }: { id: string }) {
             <h2 className="text-xs font-semibold text-text uppercase tracking-wide mb-3">Pipeline</h2>
             <StatusSelect placeId={lead.place_id} initialStatus={lead.status} />
           </div>
+
+          {/* Proposal card (when project is scoped) */}
+          {project && project.status === 'scoped' && project.proposal_message && (
+            <ProposalCard
+              project={project}
+              placeId={lead.place_id}
+            />
+          )}
+
+          {/* Project status (when project exists) */}
+          {project && (
+            <ProjectStatusSection
+              project={project}
+              placeId={lead.place_id}
+            />
+          )}
         </div>
       </div>
 
@@ -180,6 +222,7 @@ async function LeadDetailContent({ id }: { id: string }) {
           placeId={lead.place_id}
           initialConversations={conversations}
           defaultChannel={defaultChannel}
+          initialSuggestion={suggestion}
         />
       </div>
     </div>

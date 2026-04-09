@@ -121,6 +121,82 @@ export interface BotRun {
   duration_seconds: number | null
 }
 
+// ─── AI Suggestions ───
+
+export interface AiSuggestion {
+  id: string
+  place_id: string
+  conversation_id: string | null
+  intent: string
+  confidence: number
+  suggested_reply: string
+  status: 'pending' | 'approved' | 'rejected' | 'sent'
+  created_at: string
+  approved_at: string | null
+  sent_at: string | null
+}
+
+export const INTENT_COLORS: Record<string, string> = {
+  interested: 'text-emerald-400 bg-emerald-500/10',
+  asked_price: 'text-blue-400 bg-blue-500/10',
+  asked_scope: 'text-blue-400 bg-blue-500/10',
+  objection: 'text-yellow-400 bg-yellow-500/10',
+  not_interested: 'text-red-400 bg-red-500/10',
+  scheduling: 'text-purple-400 bg-purple-500/10',
+  other: 'text-muted bg-border',
+}
+
+export const INTENT_LABELS: Record<string, string> = {
+  interested: 'Interessado',
+  asked_price: 'Preço',
+  asked_scope: 'Escopo',
+  objection: 'Objeção',
+  not_interested: 'Não interessado',
+  scheduling: 'Agendamento',
+  other: 'Outro',
+}
+
+// ─── Projects ───
+
+export interface Project {
+  id: string
+  place_id: string
+  scope: string | null
+  price: number | null
+  currency: string | null
+  status: ProjectStatus
+  created_at: string
+  updated_at: string | null
+  proposal_message: string | null
+  claude_code_prompt: string | null
+  pix_key: string | null
+  client_approved_at: string | null
+}
+
+export const PROJECT_STATUSES = [
+  'scoped',
+  'approved',
+  'in_progress',
+  'delivered',
+  'client_approved',
+  'paid',
+  'cancelled',
+] as const
+
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  scoped: 'Escopo',
+  approved: 'Aprovado',
+  in_progress: 'Em progresso',
+  delivered: 'Entregue',
+  client_approved: 'Aprovado pelo cliente',
+  paid: 'Pago',
+  cancelled: 'Cancelado',
+}
+
+// ─── Pipeline cards ───
+
 /** Subset of Lead columns needed for pipeline cards */
 export type LeadCard = Pick<
   Lead,

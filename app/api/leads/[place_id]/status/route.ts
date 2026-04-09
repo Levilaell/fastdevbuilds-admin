@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { LEAD_STATUSES, type LeadStatus } from '@/lib/types'
+import { LEAD_STATUSES, type LeadStatus, type Lead, type Conversation } from '@/lib/types'
+import { getRecentConversations } from '@/lib/supabase/queries'
+import { generateProposal } from '@/lib/ai-workflow'
 
 export async function PATCH(
   request: NextRequest,
@@ -28,6 +30,12 @@ export async function PATCH(
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  // Fire and forget: generate proposal when moving to 'scoped'
+  if (newStatus === 'scoped') {
+    const conversations = await getRecentConversations(supabase, place_id, 10)
+    generateProposal(data as Lead, conversations as Conversation[]).catch(console.error)
   }
 
   return Response.json(data)

@@ -5,7 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
-import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation } from '@/lib/types'
+import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type AiSuggestion } from '@/lib/types'
+import AiSuggestionCard from '@/components/ai-suggestion-card'
 
 // ─── Conversation list item ───
 
@@ -241,6 +242,7 @@ export default function InboxClient() {
   const [items, setItems] = useState<InboxItem[]>([])
   const [activePlaceId, setActivePlaceId] = useState<string | null>(initialLead)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [suggestion, setSuggestion] = useState<AiSuggestion | null>(null)
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -257,13 +259,18 @@ export default function InboxClient() {
     setLoading(false)
   }, [])
 
-  // Fetch conversation for active lead
+  // Fetch conversation + suggestion for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
     setConvLoading(true)
-    const res = await fetch(`/api/conversations/${encodeURIComponent(placeId)}`)
-    if (res.ok) {
-      const data = await res.json()
-      setConversations(data)
+    setSuggestion(null)
+    const [convRes, sugRes] = await Promise.all([
+      fetch(`/api/conversations/${encodeURIComponent(placeId)}`),
+      fetch(`/api/ai-suggestions?place_id=${encodeURIComponent(placeId)}`),
+    ])
+    if (convRes.ok) setConversations(await convRes.json())
+    if (sugRes.ok) {
+      const s = await sugRes.json()
+      setSuggestion(s ?? null)
     }
     setConvLoading(false)
   }, [])
@@ -564,6 +571,18 @@ export default function InboxClient() {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* AI suggestion */}
+            {suggestion && (
+              <AiSuggestionCard
+                suggestion={suggestion}
+                onDismiss={() => setSuggestion(null)}
+                onSent={(conv) => {
+                  setConversations((prev) => [...prev, conv])
+                  setSuggestion(null)
+                }}
+              />
+            )}
 
             {/* Reply box */}
             <InboxReplyBox

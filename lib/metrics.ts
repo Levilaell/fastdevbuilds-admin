@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { extractCity } from '@/lib/extract-city'
 
 export interface MetricsData {
   summary: {
@@ -144,16 +145,11 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
     .slice(0, 5)
     .map(([name, count]) => ({ name, count }))
 
-  // --- Top cities (extract from address: "..., City - ST, ZIP, Brazil") ---
+  // --- Top cities (extract from address) ---
   const cityCounts = new Map<string, number>()
   for (const l of leads) {
     if (!l.address) continue
-    // "R. Carolina Soares, 108 - Limão, São Paulo - SP, 02554-000, Brazil"
-    // Split by comma, take 3rd-from-last segment, strip "- SP" state suffix
-    const parts = l.address.split(',')
-    if (parts.length < 3) continue
-    const segment = parts[parts.length - 3].trim() // "São Paulo - SP"
-    const city = segment.replace(/\s*-\s*[A-Z]{2}$/, '').trim()
+    const city = extractCity(l.address)
     if (city) cityCounts.set(city, (cityCounts.get(city) ?? 0) + 1)
   }
   const topCities = [...cityCounts.entries()]

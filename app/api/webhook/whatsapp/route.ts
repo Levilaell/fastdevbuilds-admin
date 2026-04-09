@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
+import { getRecentConversations } from '@/lib/supabase/queries'
+import { classifyAndSuggest } from '@/lib/ai-workflow'
+import type { Lead } from '@/lib/types'
 
 const normalize = (phone: string) => phone.replace(/\D/g, '')
 
@@ -100,14 +103,18 @@ export async function POST(request: Request) {
     }
 
     // Save conversation
-    const { error: convError } = await supabase.from('conversations').insert({
-      place_id: placeId,
-      direction: 'in',
-      channel: 'whatsapp',
-      message: text,
-      sent_at: sentAt,
-      suggested_by_ai: false,
-    })
+    const { data: conv, error: convError } = await supabase
+      .from('conversations')
+      .insert({
+        place_id: placeId,
+        direction: 'in',
+        channel: 'whatsapp',
+        message: text,
+        sent_at: sentAt,
+        suggested_by_ai: false,
+      })
+      .select('id')
+      .single()
 
     if (convError) {
       console.error('[webhook] failed to save conversation:', convError.message)
@@ -122,6 +129,25 @@ export async function POST(request: Request) {
           status_updated_at: new Date().toISOString(),
         })
         .eq('place_id', placeId)
+    }
+
+    // Fire and forget — AI classify + suggest
+    if (lead) {
+      const fullLead = await supabase
+        .from('leads')
+        .select('*')
+        .eq('place_id', placeId)
+        .single()
+
+      if (fullLead.data) {
+        const history = await getRecentConversations(supabase, placeId, 5)
+        classifyAndSuggest(
+          fullLead.data as Lead,
+          text,
+          history,
+          conv?.id,
+        ).catch(console.error)
+      }
     }
 
     console.log('[webhook] saved message for lead', placeId)
