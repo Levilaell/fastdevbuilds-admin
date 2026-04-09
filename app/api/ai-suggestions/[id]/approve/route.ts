@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { sendWhatsApp } from '@/lib/whatsapp'
 
 export async function POST(
@@ -10,7 +10,7 @@ export async function POST(
   const body = await request.json()
   const editedReply: string | undefined = body.edited_reply
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Fetch the suggestion
   const { data: suggestion, error } = await supabase

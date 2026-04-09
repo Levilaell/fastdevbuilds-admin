@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
 import type { Lead, Project, Conversation } from '@/lib/types'
@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ place_id: string }> },
 ) {
   const { place_id } = await params
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const [leadRes, projectRes] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', place_id).single(),

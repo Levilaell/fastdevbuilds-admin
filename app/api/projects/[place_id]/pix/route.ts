@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { generatePixMessage } from '@/lib/ai-workflow'
 import { sendWhatsApp } from '@/lib/whatsapp'
 import type { Lead, Project } from '@/lib/types'
@@ -16,7 +16,7 @@ export async function POST(
     return Response.json({ error: 'PIX key required' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const [leadRes, projectRes] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', place_id).single(),

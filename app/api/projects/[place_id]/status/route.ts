@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { PROJECT_STATUSES, type ProjectStatus, type Lead, type Conversation, type Project } from '@/lib/types'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ place_id: string }> },
 ) {
   const { place_id } = await params
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('projects')
@@ -38,7 +38,7 @@ export async function PATCH(
     return Response.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Update project status
   const projectUpdates: Record<string, unknown> = {

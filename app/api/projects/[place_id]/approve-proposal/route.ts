@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { sendWhatsApp } from '@/lib/whatsapp'
 
 export async function POST(
@@ -13,7 +13,7 @@ export async function POST(
 
   console.log('[approve-proposal] place_id:', place_id)
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Fetch project
   const { data: project, error } = await supabase
