@@ -40,7 +40,11 @@ export default function ProposalCard({ project, placeId, onApproved }: Props) {
           body: JSON.stringify({ message, price }),
         },
       )
-      if (res.ok) onApproved?.()
+      if (res.ok) {
+        onApproved?.()
+      } else {
+        console.error('[proposal-card] approve failed:', res.status, await res.text())
+      }
     } finally {
       setLoading(false)
     }

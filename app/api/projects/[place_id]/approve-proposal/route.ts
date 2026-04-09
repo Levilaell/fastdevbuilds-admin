@@ -62,7 +62,16 @@ export async function POST(
     updated_at: new Date().toISOString(),
   }
   if (editedPrice !== undefined) updates.price = editedPrice
-  await supabase.from('projects').update(updates).eq('place_id', place_id)
+  const { error: updateError } = await supabase
+    .from('projects')
+    .update(updates)
+    .eq('place_id', place_id)
 
+  if (updateError) {
+    console.error('[approve-proposal] update failed:', updateError.message)
+    return Response.json({ error: updateError.message }, { status: 500 })
+  }
+
+  console.log('[approve-proposal] done, status → approved')
   return Response.json({ ok: true })
 }
