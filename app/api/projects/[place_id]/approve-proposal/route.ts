@@ -11,6 +11,8 @@ export async function POST(
   const editedMessage: string | undefined = body.message
   const editedPrice: number | undefined = body.price
 
+  console.log('[approve-proposal] place_id:', place_id)
+
   const supabase = await createClient()
 
   // Fetch project
@@ -21,8 +23,10 @@ export async function POST(
     .single()
 
   if (error || !project) {
+    console.log('[approve-proposal] project not found for', place_id, error?.message)
     return Response.json({ error: 'Project not found' }, { status: 404 })
   }
+  console.log('[approve-proposal] found project, current status:', project.status)
 
   const message = editedMessage ?? project.proposal_message
   if (!message) {
