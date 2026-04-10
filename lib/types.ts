@@ -71,6 +71,8 @@ export interface Lead {
   has_booking: boolean | null
   tech_stack: string | null
   scrape_failed: boolean | null
+  visual_score: number | null
+  visual_notes: string | null
   pain_score: number | null
   score_reasons: string | null
   message: string | null
@@ -109,6 +111,8 @@ export const SCORE_REASON_LABELS: Record<string, string> = {
   outdated_builder: 'Construído em plataforma ultrapassada',
   no_ssl: 'Sem certificado SSL',
   no_mobile_viewport: 'Não otimizado para mobile',
+  outdated_design: 'Design visual ultrapassado',
+  poor_visual_quality: 'Qualidade visual baixa',
 }
 
 export interface InboxItem {

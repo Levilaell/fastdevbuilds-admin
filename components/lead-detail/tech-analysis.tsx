@@ -80,6 +80,26 @@ export default function TechAnalysis({ lead }: { lead: Lead }) {
         </div>
       )}
 
+      {/* Visual analysis */}
+      {lead.visual_score != null && (
+        <div>
+          <h3 className="text-[11px] text-muted mb-3 uppercase tracking-wide">Análise visual</h3>
+          <div className="flex items-center gap-3 mb-2">
+            <ScoreCircle value={lead.visual_score} label="Visual" />
+            {lead.visual_notes && (
+              <ul className="flex-1 space-y-0.5">
+                {lead.visual_notes.split(',').map((note) => note.trim()).filter(Boolean).map((note) => (
+                  <li key={note} className="text-xs text-text/70 flex items-start gap-1.5">
+                    <span className="text-warning mt-0.5 shrink-0">•</span>
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* PageSpeed scores */}
       <div>
         <h3 className="text-[11px] text-muted mb-3 uppercase tracking-wide">PageSpeed</h3>
