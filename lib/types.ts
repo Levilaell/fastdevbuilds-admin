@@ -4,11 +4,23 @@ export const LEAD_STATUSES = [
   'replied',
   'negotiating',
   'scoped',
+  'closed',
   'finalizado',
   'pago',
-  'closed',
   'lost',
 ] as const
+
+/** Statuses shown as pipeline columns (excludes 'lost' — archived leads go there automatically) */
+export const PIPELINE_STATUSES: LeadStatus[] = [
+  'prospected',
+  'sent',
+  'replied',
+  'negotiating',
+  'scoped',
+  'closed',
+  'finalizado',
+  'pago',
+]
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number]
 

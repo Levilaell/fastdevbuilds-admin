@@ -45,7 +45,7 @@ interface RecentProjectRow {
   leads: { business_name: string | null }[] | null
 }
 
-const FUNNEL_ORDER = ['prospected', 'sent', 'replied', 'negotiating', 'scoped', 'finalizado', 'pago', 'closed'] as const
+const FUNNEL_ORDER = ['prospected', 'sent', 'replied', 'negotiating', 'scoped', 'closed', 'finalizado', 'pago'] as const
 
 function getDateFilter(period: string): string | null {
   const now = new Date()

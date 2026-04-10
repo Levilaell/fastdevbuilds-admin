@@ -9,6 +9,7 @@ import {
 } from '@hello-pangea/dnd'
 import {
   LEAD_STATUSES,
+  PIPELINE_STATUSES,
   STATUS_LABELS,
   type LeadCard,
   type LeadStatus,
@@ -48,7 +49,7 @@ function SkeletonCard() {
 export function KanbanSkeleton() {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 px-6 pt-4">
-      {LEAD_STATUSES.map((status) => (
+      {PIPELINE_STATUSES.map((status) => (
         <div key={status} className="flex-none w-72">
           <div className="flex items-center gap-2 mb-3 px-3 pt-3">
             <div className="h-4 bg-border rounded w-20" />
@@ -103,18 +104,11 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   }, [leads, search, channel, minScore, niche, showArchived])
 
   const grouped = useMemo(() => {
-    const map: Record<LeadStatus, LeadCard[]> = {
-      prospected: [],
-      sent: [],
-      replied: [],
-      negotiating: [],
-      scoped: [],
-      finalizado: [],
-      pago: [],
-      closed: [],
-      lost: [],
-    }
-    filtered.forEach((l) => map[l.status].push(l))
+    const map: Partial<Record<LeadStatus, LeadCard[]>> = {}
+    for (const s of PIPELINE_STATUSES) map[s] = []
+    filtered.forEach((l) => {
+      if (map[l.status]) map[l.status]!.push(l)
+    })
     return map
   }, [filtered])
 
@@ -164,21 +158,22 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   const handleArchive = useCallback(async (placeId: string, unarchive: boolean) => {
     const now = new Date().toISOString()
 
-    // Optimistic update
+    // Optimistic update: archive + mark as lost
     setLeads((prev) =>
-      prev.map((l) =>
-        l.place_id === placeId
-          ? { ...l, inbox_archived_at: unarchive ? null : now }
-          : l
-      )
+      prev.map((l) => {
+        if (l.place_id !== placeId) return l
+        if (unarchive) return { ...l, inbox_archived_at: null }
+        return { ...l, inbox_archived_at: now, status: 'lost' as LeadStatus }
+      })
     )
 
     try {
-      const res = await fetch(`/api/inbox/${encodeURIComponent(placeId)}/archive`, {
+      // Archive/unarchive
+      const archiveRes = await fetch(`/api/inbox/${encodeURIComponent(placeId)}/archive`, {
         method: unarchive ? 'DELETE' : 'POST',
       })
 
-      if (!res.ok) {
+      if (!archiveRes.ok) {
         // Rollback
         setLeads((prev) =>
           prev.map((l) =>
@@ -187,6 +182,16 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
               : l
           )
         )
+        return
+      }
+
+      // When archiving, also set status to 'lost'
+      if (!unarchive) {
+        await fetch(`/api/leads/${encodeURIComponent(placeId)}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'lost' }),
+        })
       }
     } catch {
       setLeads((prev) =>
@@ -220,8 +225,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 px-6">
-          {LEAD_STATUSES.map((status) => {
-            const cards = grouped[status]
+          {PIPELINE_STATUSES.map((status) => {
+            const cards = grouped[status] ?? []
             return (
               <div key={status} className="flex-none w-72 bg-sidebar border border-border rounded-xl">
                 {/* Column header */}
