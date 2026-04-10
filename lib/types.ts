@@ -4,6 +4,8 @@ export const LEAD_STATUSES = [
   'replied',
   'negotiating',
   'scoped',
+  'finalizado',
+  'pago',
   'closed',
   'lost',
 ] as const
@@ -16,6 +18,8 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   replied: 'Respondeu',
   negotiating: 'Negociando',
   scoped: 'Escopo',
+  finalizado: 'Finalizado',
+  pago: 'Pago',
   closed: 'Fechado',
   lost: 'Perdido',
 }
@@ -26,6 +30,8 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
   replied: 'bg-yellow-500/20 text-yellow-400',
   negotiating: 'bg-orange-500/20 text-orange-400',
   scoped: 'bg-purple-500/20 text-purple-400',
+  finalizado: 'bg-cyan-500/20 text-cyan-400',
+  pago: 'bg-emerald-500/20 text-emerald-400',
   closed: 'bg-green-500/20 text-green-400',
   lost: 'bg-red-500/20 text-red-400',
 }
@@ -64,6 +70,7 @@ export interface Lead {
   niche: string | null
   status: LeadStatus
   status_updated_at: string | null
+  inbox_archived_at: string | null
 }
 
 export interface Conversation {
@@ -209,4 +216,5 @@ export type LeadCard = Pick<
   | 'status'
   | 'status_updated_at'
   | 'niche'
+  | 'inbox_archived_at'
 >

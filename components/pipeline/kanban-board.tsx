@@ -74,6 +74,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   const [channel, setChannel] = useState('')
   const [minScore, setMinScore] = useState(0)
   const [niche, setNiche] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
 
   const niches = useMemo(() => {
     const set = new Set<string>()
@@ -83,15 +84,23 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     return Array.from(set).sort()
   }, [initialLeads])
 
+  const archivedCount = useMemo(
+    () => leads.filter((l) => !!l.inbox_archived_at).length,
+    [leads],
+  )
+
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Archive filter: show only matching archive state
+      const isArchived = !!l.inbox_archived_at
+      if (showArchived ? !isArchived : isArchived) return false
       if (search && !(l.business_name ?? '').toLowerCase().includes(search.toLowerCase())) return false
       if (channel && l.outreach_channel !== channel) return false
       if (minScore > 0 && (l.pain_score ?? 0) < minScore) return false
       if (niche && l.niche !== niche) return false
       return true
     })
-  }, [leads, search, channel, minScore, niche])
+  }, [leads, search, channel, minScore, niche, showArchived])
 
   const grouped = useMemo(() => {
     const map: Record<LeadStatus, LeadCard[]> = {
@@ -100,6 +109,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       replied: [],
       negotiating: [],
       scoped: [],
+      finalizado: [],
+      pago: [],
       closed: [],
       lost: [],
     }
@@ -150,6 +161,44 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     }
   }, [])
 
+  const handleArchive = useCallback(async (placeId: string, unarchive: boolean) => {
+    const now = new Date().toISOString()
+
+    // Optimistic update
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.place_id === placeId
+          ? { ...l, inbox_archived_at: unarchive ? null : now }
+          : l
+      )
+    )
+
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(placeId)}/archive`, {
+        method: unarchive ? 'DELETE' : 'POST',
+      })
+
+      if (!res.ok) {
+        // Rollback
+        setLeads((prev) =>
+          prev.map((l) =>
+            l.place_id === placeId
+              ? { ...l, inbox_archived_at: unarchive ? now : null }
+              : l
+          )
+        )
+      }
+    } catch {
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.place_id === placeId
+            ? { ...l, inbox_archived_at: unarchive ? now : null }
+            : l
+        )
+      )
+    }
+  }, [])
+
   return (
     <>
       <div className="px-6 pt-4">
@@ -163,6 +212,9 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
           niche={niche}
           onNicheChange={setNiche}
           niches={niches}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
+          archivedCount={archivedCount}
         />
       </div>
 
@@ -203,7 +255,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                               {...provided.dragHandleProps}
                               className={snapshot.isDragging ? 'opacity-90 rotate-1' : ''}
                             >
-                              <LeadCardComponent lead={lead} />
+                              <LeadCardComponent lead={lead} onArchive={handleArchive} />
                             </div>
                           )}
                         </Draggable>

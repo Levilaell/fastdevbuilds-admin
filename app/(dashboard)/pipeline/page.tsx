@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { LeadCard } from '@/lib/types'
 import KanbanBoard, { KanbanSkeleton } from '@/components/pipeline/kanban-board'
 
-const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channel, status, status_updated_at, niche'
+const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channel, status, status_updated_at, niche, inbox_archived_at'
 
 async function PipelineBoard() {
   const supabase = await createClient()
