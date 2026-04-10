@@ -103,15 +103,13 @@ export const SCORE_REASON_LABELS: Record<string, string> = {
   slow_mobile_severe: 'Site muito lento no celular',
   slow_mobile_moderate: 'Site lento no celular',
   slow_mobile_mild: 'Site com velocidade moderada',
-  no_pixel: 'Sem Meta Pixel',
-  no_analytics: 'Sem Google Analytics',
   no_whatsapp: 'Sem WhatsApp no site',
   no_form: 'Sem formulário de contato',
   no_booking: 'Sem sistema de agendamento',
-  outdated_builder: 'Construído em plataforma ultrapassada',
-  no_ssl: 'Sem certificado SSL',
+  outdated_builder: 'Plataforma limitada (precisa refazer)',
+  no_ssl: 'Sem certificado SSL (site inseguro)',
   no_mobile_viewport: 'Não otimizado para mobile',
-  outdated_design: 'Design visual ultrapassado',
+  outdated_design: 'Design ultrapassado (precisa redesign)',
   poor_visual_quality: 'Qualidade visual baixa',
 }
 
