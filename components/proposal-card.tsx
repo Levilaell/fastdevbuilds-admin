@@ -55,12 +55,19 @@ export default function ProposalCard({ project, placeId, onApproved, onDismissed
 
   async function handleDismiss() {
     setLoading(true)
+    setError('')
     try {
-      // Clear proposal_message in DB so it won't reappear on reload
-      await fetch(`/api/projects/${encodeURIComponent(placeId)}/dismiss-proposal`, {
+      const res = await fetch(`/api/projects/${encodeURIComponent(placeId)}/dismiss-proposal`, {
         method: 'POST',
       })
-      onDismissed?.()
+      if (res.ok) {
+        onDismissed?.()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Erro ao descartar proposta')
+      }
+    } catch {
+      setError('Erro de conexão')
     } finally {
       setLoading(false)
     }
@@ -99,8 +106,10 @@ export default function ProposalCard({ project, placeId, onApproved, onDismissed
             <span className="text-xs text-muted">R$</span>
             <input
               type="number"
+              min={0}
+              step={50}
               value={price}
-              onChange={e => setPrice(Number(e.target.value))}
+              onChange={e => setPrice(Math.max(0, Number(e.target.value)))}
               className="w-28 h-8 px-2 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
             />
             <span className="text-xs text-muted">({fmtCurrency.format(price)})</span>

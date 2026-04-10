@@ -45,7 +45,7 @@ interface RecentProjectRow {
   leads: { business_name: string | null }[] | null
 }
 
-const FUNNEL_ORDER = ['prospected', 'sent', 'replied', 'negotiating', 'scoped', 'closed'] as const
+const FUNNEL_ORDER = ['prospected', 'sent', 'replied', 'negotiating', 'scoped', 'finalizado', 'pago', 'closed'] as const
 
 function getDateFilter(period: string): string | null {
   const now = new Date()
@@ -98,7 +98,7 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
   const totalLeads = leads.length
   const sentCount = leads.filter(l => l.outreach_sent).length
   const respondedCount = leads.filter(l =>
-    ['replied', 'negotiating', 'scoped', 'closed'].includes(l.status),
+    ['replied', 'negotiating', 'scoped', 'finalizado', 'pago', 'closed'].includes(l.status),
   ).length
   const responseRate = sentCount > 0 ? respondedCount / sentCount : 0
   const negotiating = leads.filter(l => l.status === 'negotiating').length

@@ -57,7 +57,14 @@ export default function ReplyBox({ placeId, onNewMessage }: ReplyBoxProps) {
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Escreva sua mensagem…"
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && message.trim()) {
+            e.preventDefault()
+            if (confirming) handleSend()
+            else setConfirming(true)
+          }
+        }}
+        placeholder="Escreva sua mensagem… (Ctrl+Enter para enviar)"
         rows={3}
         className="w-full px-3 py-2 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y min-h-[72px]"
       />

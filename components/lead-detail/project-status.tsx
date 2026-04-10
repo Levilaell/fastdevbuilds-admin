@@ -30,6 +30,7 @@ const FLOW: ProjectStatus[] = [
 export default function ProjectStatusSection({ project: initial, placeId }: Props) {
   const [project, setProject] = useState(initial)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const [pixKey, setPixKey] = useState('')
   const [promptVisible, setPromptVisible] = useState(false)
@@ -40,6 +41,7 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
 
   async function advanceStatus(newStatus: ProjectStatus) {
     setLoading(true)
+    setError('')
     try {
       const res = await fetch(
         `/api/projects/${encodeURIComponent(placeId)}/status`,
@@ -52,7 +54,12 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
       if (res.ok) {
         const updated = await res.json()
         setProject(updated)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Erro ao atualizar status')
       }
+    } catch {
+      setError('Erro de conexão')
     } finally {
       setLoading(false)
     }
@@ -147,6 +154,8 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
           )
         })}
       </div>
+
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       {/* Contextual actions */}
       {status === 'scoped' && (
