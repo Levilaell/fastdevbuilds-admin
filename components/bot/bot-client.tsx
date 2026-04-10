@@ -324,6 +324,26 @@ export default function BotClient() {
     if (run.send !== null) setSend(run.send)
   }
 
+  function showRunLog(run: BotRun) {
+    const header: TermLine[] = [
+      { text: `━━━ ${run.niche ?? '?'} / ${run.city ?? '?'} ━━━`, type: 'accent' },
+      { text: `Status: ${run.status} | Coletados: ${run.collected ?? 0} | Qualificados: ${run.qualified ?? 0} | Enviados: ${run.sent ?? 0} | Duração: ${run.duration_seconds ?? 0}s`, type: 'info' },
+    ]
+    if (run.log) {
+      const logLines: TermLine[] = run.log.split('\n').map(line => ({
+        text: line,
+        type: line.startsWith('❌') ? 'error' as const
+          : line.startsWith('⚠️') ? 'warning' as const
+          : line.startsWith('✅') ? 'success' as const
+          : 'info' as const,
+      }))
+      setLines([...header, ...logLines])
+    } else {
+      setLines([...header, { text: '(log não disponível para esta execução)', type: 'warning' }])
+    }
+    setStatus('done')
+  }
+
   // ─── City badge ───
 
   function cityBadge(cityName: string): Territory | undefined {
@@ -638,19 +658,34 @@ export default function BotClient() {
                     failed: 'text-red-400 bg-red-500/10',
                   }[run.status]
                   return (
-                    <button
+                    <div
                       key={run.id}
-                      onClick={() => fillFromRun(run)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-card-hover text-left"
+                      className="flex items-center gap-1 px-2 py-1.5 rounded text-xs hover:bg-card-hover group/run"
                     >
-                      <span className={`px-1 py-0.5 rounded text-[10px] ${badge}`}>
-                        {run.status}
-                      </span>
-                      <span className="text-text truncate flex-1">
-                        {run.niche ?? '—'} / {run.city ?? '—'}
-                      </span>
-                      <span className="text-muted shrink-0">{timeAgo(run.started_at)}</span>
-                    </button>
+                      <button
+                        onClick={() => showRunLog(run)}
+                        className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                        title="Ver log"
+                      >
+                        <span className={`px-1 py-0.5 rounded text-[10px] shrink-0 ${badge}`}>
+                          {run.status}
+                        </span>
+                        <span className="text-text truncate flex-1">
+                          {run.niche ?? '—'} / {run.city ?? '—'}
+                        </span>
+                        <span className="text-muted shrink-0">{timeAgo(run.started_at)}</span>
+                      </button>
+                      <button
+                        onClick={() => fillFromRun(run)}
+                        title="Reusar parâmetros"
+                        className="p-0.5 rounded text-muted hover:text-accent opacity-0 group-hover/run:opacity-100 transition-opacity shrink-0"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4 1 10 7 10" />
+                          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                      </button>
+                    </div>
                   )
                 })}
               </div>

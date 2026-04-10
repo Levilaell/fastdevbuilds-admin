@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
     let collected = 0
     let qualified = 0
     let sent = 0
+    const logLines: string[] = []
 
     const stream = new ReadableStream({
       async pull(controller) {
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
                 collected,
                 qualified,
                 sent,
+                log: logLines.join('\n'),
               })
               .eq('id', runId)
           }
@@ -178,6 +180,7 @@ export async function POST(request: NextRequest) {
             try {
               const parsed = JSON.parse(line.slice(6))
               const msg: string = parsed.line ?? ''
+              if (msg) logLines.push(msg)
               if (msg.includes('collected')) {
                 const m = msg.match(/(\d+)\s*collected/)
                 if (m) collected = parseInt(m[1])

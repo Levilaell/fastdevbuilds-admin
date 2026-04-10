@@ -7,7 +7,7 @@ export async function GET() {
     .from('bot_runs')
     .select('*')
     .order('started_at', { ascending: false })
-    .limit(5)
+    .limit(20)
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
