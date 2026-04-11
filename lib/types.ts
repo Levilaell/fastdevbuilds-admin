@@ -191,6 +191,9 @@ export interface Project {
   created_at: string
   proposal_message: string | null
   claude_code_prompt: string | null
+  pending_info: string | null
+  info_request_message: string | null
+  prompt_updated_at: string | null
   pix_key: string | null
   client_approved_at: string | null
 }
@@ -231,4 +234,9 @@ export type LeadCard = Pick<
   | 'status_updated_at'
   | 'niche'
   | 'inbox_archived_at'
->
+> & {
+  project_status?: ProjectStatus | null
+  has_unread?: boolean
+  has_pending_suggestion?: boolean
+  has_proposal?: boolean
+}

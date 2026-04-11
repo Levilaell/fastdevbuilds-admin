@@ -77,8 +77,8 @@ export async function PATCH(
       .eq('place_id', place_id)
   }
 
-  // Fire-and-forget: generate Claude Code prompt on client_approved
-  if (newStatus === 'client_approved') {
+  // Fire-and-forget: generate Claude Code prompt on approved (client authorized proposal — step 8)
+  if (newStatus === 'approved') {
     const [leadRes, convs] = await Promise.all([
       supabase.from('leads').select('*').eq('place_id', place_id).single(),
       getRecentConversations(supabase, place_id, 20),

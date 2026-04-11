@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import {
-  PROJECT_STATUSES,
   PROJECT_STATUS_LABELS,
   type Project,
   type ProjectStatus,
@@ -27,17 +26,242 @@ const FLOW: ProjectStatus[] = [
   'paid',
 ]
 
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }}
+      className="text-[10px] text-muted hover:text-text px-1.5 py-0.5 rounded border border-border shrink-0"
+    >
+      {copied ? 'Copiado!' : label ?? 'Copiar'}
+    </button>
+  )
+}
+
+function PromptSection({ project, placeId, onProjectUpdate }: {
+  project: Project
+  placeId: string
+  onProjectUpdate: (p: Project) => void
+}) {
+  const [promptVisible, setPromptVisible] = useState(false)
+  const [infoVisible, setInfoVisible] = useState(false)
+  const [msgVisible, setMsgVisible] = useState(false)
+  const [generatingPrompt, setGeneratingPrompt] = useState(false)
+  const [sendingInfo, setSendingInfo] = useState(false)
+  const [infoSent, setInfoSent] = useState(false)
+
+  let placeholders: string[] = []
+  if (project.pending_info) {
+    try {
+      placeholders = JSON.parse(project.pending_info) as string[]
+    } catch {
+      placeholders = [project.pending_info]
+    }
+  }
+
+  async function handleGeneratePrompt() {
+    setGeneratingPrompt(true)
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(placeId)}/generate-prompt`,
+        { method: 'POST' },
+      )
+      if (res.ok) {
+        // Re-fetch full project to get all new fields
+        const projRes = await fetch(`/api/projects/${encodeURIComponent(placeId)}/status`)
+        if (projRes.ok) {
+          const updated = await projRes.json()
+          if (updated) onProjectUpdate(updated)
+        }
+      }
+    } finally {
+      setGeneratingPrompt(false)
+    }
+  }
+
+  async function handleSendInfoRequest() {
+    if (!project.info_request_message) return
+    setSendingInfo(true)
+    try {
+      const res = await fetch('/api/conversations/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          place_id: placeId,
+          message: project.info_request_message,
+          channel: 'whatsapp',
+        }),
+      })
+      if (res.ok) setInfoSent(true)
+    } finally {
+      setSendingInfo(false)
+    }
+  }
+
+  if (!project.claude_code_prompt) {
+    return (
+      <button
+        onClick={handleGeneratePrompt}
+        disabled={generatingPrompt}
+        className="w-full py-2 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+      >
+        {generatingPrompt ? 'Gerando prompt…' : 'Gerar prompt Claude Code'}
+      </button>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* 1. Prompt for Claude Code */}
+      <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <span className="text-xs text-accent font-medium">
+            Prompt para Claude Code
+          </span>
+          <div className="flex items-center gap-2">
+            {project.prompt_updated_at && (
+              <span className="text-[9px] text-muted">
+                {new Date(project.prompt_updated_at).toLocaleDateString('pt-BR')}
+              </span>
+            )}
+            <CopyButton text={project.claude_code_prompt} />
+          </div>
+        </div>
+        {promptVisible ? (
+          <div className="relative">
+            <pre className="p-3 text-xs text-text/80 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
+              {project.claude_code_prompt}
+            </pre>
+            <button
+              onClick={() => setPromptVisible(false)}
+              className="absolute top-2 right-2 text-[10px] text-muted hover:text-text"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <div className="p-3">
+            <p className="text-xs text-text/60 line-clamp-3">
+              {project.claude_code_prompt.slice(0, 200)}…
+            </p>
+            <button
+              onClick={() => setPromptVisible(true)}
+              className="text-[10px] text-accent hover:underline mt-1"
+            >
+              Ver prompt completo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Pending info / placeholders */}
+      {placeholders.length > 0 && (
+        <div className="bg-sidebar border border-warning/20 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-warning/20">
+            <span className="text-xs text-warning font-medium">
+              Informações pendentes
+            </span>
+            <span className="text-[9px] text-warning/60">
+              {placeholders.length} {placeholders.length === 1 ? 'item' : 'itens'}
+            </span>
+          </div>
+          {infoVisible ? (
+            <ul className="p-3 space-y-1.5">
+              {placeholders.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-text/80">
+                  <span className="text-warning/60 mt-0.5 shrink-0">{i + 1}.</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="p-3">
+              <p className="text-xs text-text/60">
+                {placeholders.slice(0, 3).join(', ')}
+                {placeholders.length > 3 ? `… +${placeholders.length - 3}` : ''}
+              </p>
+              <button
+                onClick={() => setInfoVisible(true)}
+                className="text-[10px] text-warning hover:underline mt-1"
+              >
+                Ver todos
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Info request message for client */}
+      {project.info_request_message && (
+        <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+            <span className="text-xs text-emerald-400 font-medium">
+              Mensagem para o cliente
+            </span>
+            <CopyButton text={project.info_request_message} />
+          </div>
+          {msgVisible ? (
+            <div className="p-3 text-xs text-text/80 whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {project.info_request_message}
+            </div>
+          ) : (
+            <div className="p-3">
+              <p className="text-xs text-text/60 line-clamp-2">
+                {project.info_request_message.slice(0, 150)}…
+              </p>
+              <button
+                onClick={() => setMsgVisible(true)}
+                className="text-[10px] text-emerald-400 hover:underline mt-1"
+              >
+                Ver mensagem
+              </button>
+            </div>
+          )}
+          {!infoSent ? (
+            <div className="px-3 pb-3">
+              <button
+                onClick={handleSendInfoRequest}
+                disabled={sendingInfo}
+                className="w-full py-1.5 text-xs font-medium rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                {sendingInfo ? 'Enviando…' : 'Enviar pedido de informações via WhatsApp'}
+              </button>
+            </div>
+          ) : (
+            <div className="px-3 pb-3">
+              <span className="text-[10px] text-success">Mensagem enviada</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Regenerate prompt */}
+      <button
+        onClick={handleGeneratePrompt}
+        disabled={generatingPrompt}
+        className="text-[10px] text-muted hover:text-text"
+      >
+        {generatingPrompt ? 'Regenerando…' : 'Regenerar prompt'}
+      </button>
+    </div>
+  )
+}
+
 export default function ProjectStatusSection({ project: initial, placeId }: Props) {
   const [project, setProject] = useState(initial)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
-  const [pixKey, setPixKey] = useState('')
-  const [promptVisible, setPromptVisible] = useState(false)
-  const [generatingPrompt, setGeneratingPrompt] = useState(false)
 
   const status = project.status as ProjectStatus
   const currentIdx = FLOW.indexOf(status)
+
+  // Show prompt section at 'approved' and later stages
+  const showPromptSection = currentIdx >= FLOW.indexOf('approved') && status !== 'paid' && status !== 'cancelled'
 
   async function advanceStatus(newStatus: ProjectStatus) {
     const label = PROJECT_STATUS_LABELS[newStatus]
@@ -71,7 +295,6 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
     if (!previewUrl.trim()) return
     setLoading(true)
     try {
-      // Send preview URL via conversation
       await fetch('/api/conversations/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,38 +311,20 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
   }
 
   async function handlePixSend() {
-    if (!pixKey.trim()) return
     setLoading(true)
     try {
       const res = await fetch(
         `/api/projects/${encodeURIComponent(placeId)}/pix`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pix_key: pixKey }),
-        },
-      )
-      if (res.ok) {
-        await advanceStatus('paid')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleGeneratePrompt() {
-    setGeneratingPrompt(true)
-    try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(placeId)}/generate-prompt`,
         { method: 'POST' },
       )
       if (res.ok) {
-        const data = await res.json()
-        setProject(prev => ({ ...prev, claude_code_prompt: data.prompt }))
+        await advanceStatus('paid')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Erro ao enviar cobrança PIX')
       }
     } finally {
-      setGeneratingPrompt(false)
+      setLoading(false)
     }
   }
 
@@ -170,6 +375,15 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
         </button>
       )}
 
+      {/* Prompt section — visible from 'approved' onwards */}
+      {showPromptSection && (
+        <PromptSection
+          project={project}
+          placeId={placeId}
+          onProjectUpdate={setProject}
+        />
+      )}
+
       {status === 'approved' && (
         <button
           onClick={() => advanceStatus('in_progress')}
@@ -182,48 +396,6 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
 
       {status === 'in_progress' && (
         <div className="space-y-3">
-          {/* Claude Code prompt */}
-          {project.claude_code_prompt ? (
-            <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                <span className="text-xs text-accent font-medium">
-                  Prompt para Claude Code
-                </span>
-                <button
-                  onClick={() => navigator.clipboard.writeText(project.claude_code_prompt!)}
-                  className="text-[10px] text-muted hover:text-text px-1.5 py-0.5 rounded border border-border"
-                >
-                  Copiar
-                </button>
-              </div>
-              {promptVisible ? (
-                <pre className="p-3 text-xs text-text/80 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
-                  {project.claude_code_prompt}
-                </pre>
-              ) : (
-                <div className="p-3">
-                  <p className="text-xs text-text/60 line-clamp-3">
-                    {project.claude_code_prompt.slice(0, 200)}…
-                  </p>
-                  <button
-                    onClick={() => setPromptVisible(true)}
-                    className="text-[10px] text-accent hover:underline mt-1"
-                  >
-                    Ver prompt completo
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={handleGeneratePrompt}
-              disabled={generatingPrompt}
-              className="w-full py-2 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
-            >
-              {generatingPrompt ? 'Gerando prompt…' : 'Gerar prompt Claude Code'}
-            </button>
-          )}
-
           {/* Preview URL */}
           <input
             type="url"
@@ -253,22 +425,13 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
       )}
 
       {status === 'client_approved' && (
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={pixKey}
-            onChange={e => setPixKey(e.target.value)}
-            placeholder="Chave PIX (CPF, email, telefone)"
-            className="w-full h-8 px-3 text-xs rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          <button
-            onClick={handlePixSend}
-            disabled={loading || !pixKey.trim()}
-            className="w-full py-2 text-xs font-medium rounded-lg bg-success hover:bg-success/80 text-white disabled:opacity-50"
-          >
-            {loading ? 'Enviando…' : 'Gerar cobrança PIX'}
-          </button>
-        </div>
+        <button
+          onClick={handlePixSend}
+          disabled={loading}
+          className="w-full py-2 text-xs font-medium rounded-lg bg-success hover:bg-success/80 text-white disabled:opacity-50"
+        >
+          {loading ? 'Enviando…' : 'Gerar cobrança PIX'}
+        </button>
       )}
 
       {status === 'paid' && (

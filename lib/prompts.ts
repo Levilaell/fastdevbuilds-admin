@@ -142,18 +142,61 @@ ${historyText}`
 
 // ─── 4. Generate Claude Code Prompt ───
 
-export const CLAUDE_CODE_SYSTEM_PROMPT = `Generate a complete, detailed prompt for Claude Code to execute a web development project.
-The prompt must contain ALL context needed to execute without asking questions.
-Write in English. Be specific and actionable.
+export const CLAUDE_CODE_SYSTEM_PROMPT = `You generate implementation prompts for Claude Code based STRICTLY on what was discussed in the conversation with the client.
 
-Include:
-1. Client context and project overview
-2. Recommended tech stack for delivery
-3. Step-by-step what needs to be done
-4. What to preserve from current site (if redesign)
-5. Specific technical requirements
-6. How to deliver (preview URL first, domain migration after approval)
-7. Performance targets if applicable`
+CRITICAL RULES:
+- ONLY include features/pages/functionality that were EXPLICITLY discussed or agreed upon in the conversation
+- DO NOT invent requirements, features, or pages that were not mentioned
+- DO NOT assume a tech stack beyond Next.js 15 + Tailwind unless the client specifically requested something
+- If information is missing (colors, images, texts, specific content), list it as a PLACEHOLDER — do NOT invent it
+- Write in Portuguese (pt-BR)
+
+You must respond with VALID JSON only (no markdown, no explanation) with this structure:
+{
+  "prompt": "the full Claude Code prompt in the exact format specified below",
+  "placeholders": ["item 1 faltando", "item 2 faltando"],
+  "info_request_message": "WhatsApp message asking the client for the missing info"
+}
+
+The "prompt" field must follow this exact structure:
+## Contexto do cliente
+[3-5 lines about who they are, what they do, what was agreed]
+
+## O que fazer
+[objective, short list based on REAL scope only]
+
+## O que NÃO fazer
+[explicit list of what is OUT of scope — anything not discussed]
+
+## Stack
+- Next.js 15 App Router + TypeScript
+- Tailwind CSS
+- [other dependencies ONLY if required by the actual scope]
+
+## Integrações externas
+[links and systems the client already uses and must be preserved, or "Nenhuma identificada"]
+
+## Placeholders (pedir ao cliente)
+[list of missing info: photos, texts, colors, etc.]
+
+## Como entregar
+- Deploy na Vercel como preview primeiro
+- URL de preview para o cliente aprovar
+- Só migrar domínio após aprovação e pagamento
+
+## Meta de performance
+- PageSpeed mobile > 90
+
+The "info_request_message" must be a WhatsApp message in this format:
+[Nome], para começar o seu projeto preciso de algumas informações:
+
+[numbered list of placeholders]
+
+Pode me mandar isso? Assim que receber já começo.
+
+Levi
+
+If there are NO placeholders (all info is available), set placeholders to [] and info_request_message to null.`
 
 export function buildClaudeCodeUserPrompt(
   lead: Lead,
@@ -162,15 +205,18 @@ export function buildClaudeCodeUserPrompt(
   scopeText: string,
   relevantMessages: string,
 ): string {
-  return `Client: ${lead.business_name ?? 'Unknown'}
-Current site: ${lead.website ?? 'N/A'}
-Detected tech stack: ${lead.tech_stack ?? 'unknown'}
-Problems found: ${reasonsText}
-Project scope:
+  return `Cliente: ${lead.business_name ?? 'Desconhecido'}
+Site atual: ${lead.website ?? 'N/A'}
+Tech stack detectada: ${lead.tech_stack ?? 'desconhecido'}
+Problemas encontrados: ${reasonsText}
+Escopo combinado:
 - ${scopeText}
-Price: R$ ${project.price ?? 0}
-Relevant conversation excerpts:
-${relevantMessages || 'No conversation data'}`
+Valor combinado: R$ ${project.price ?? 0}
+
+CONVERSA COMPLETA (use APENAS isso como base para o prompt — não invente nada além):
+${relevantMessages || 'Nenhum dado de conversa disponível'}
+
+IMPORTANTE: Gere o prompt baseado ESTRITAMENTE no que foi combinado acima. Se algo não foi discutido, NÃO inclua. Se faltam informações para executar, liste como placeholder.`
 }
 
 // ─── 5. PIX Message ───

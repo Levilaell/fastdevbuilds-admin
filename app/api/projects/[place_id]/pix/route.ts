@@ -6,7 +6,7 @@ import { sendWhatsApp } from '@/lib/whatsapp'
 import type { Lead, Project } from '@/lib/types'
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()

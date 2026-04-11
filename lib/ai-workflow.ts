@@ -235,23 +235,10 @@ export async function generateClaudeCodePrompt(
 ): Promise<string> {
   const anthropic = new Anthropic()
 
+  // Include ALL conversation messages (not just filtered) so Claude has full context
   const relevantMessages = conversations
-    .filter(c => {
-      const lower = c.message.toLowerCase()
-      return (
-        lower.includes('site') ||
-        lower.includes('página') ||
-        lower.includes('page') ||
-        lower.includes('design') ||
-        lower.includes('funcionalidade') ||
-        lower.includes('feature') ||
-        lower.includes('quero') ||
-        lower.includes('preciso') ||
-        c.direction === 'in'
-      )
-    })
-    .slice(-10)
-    .map(c => `${c.direction === 'out' ? 'Levi' : 'Client'}: ${c.message}`)
+    .slice(-20)
+    .map(c => `${c.direction === 'out' ? 'Levi' : 'Cliente'}: ${c.message}`)
     .join('\n')
 
   let scopeText = 'N/A'
@@ -268,7 +255,7 @@ export async function generateClaudeCodePrompt(
 
   const response = await anthropic.messages.create({
     model: MODEL_SMART,
-    max_tokens: 2000,
+    max_tokens: 3000,
     system: CLAUDE_CODE_SYSTEM_PROMPT,
     messages: [
       {
@@ -278,12 +265,34 @@ export async function generateClaudeCodePrompt(
     ],
   })
 
-  const prompt = response.content[0].type === 'text' ? response.content[0].text : ''
+  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+
+  let prompt: string
+  let pendingInfo: string | null = null
+  let infoRequestMessage: string | null = null
+
+  try {
+    const parsed = JSON.parse(cleanJson(text))
+    prompt = parsed.prompt ?? text
+    const placeholders = parsed.placeholders as string[] | undefined
+    if (placeholders && placeholders.length > 0) {
+      pendingInfo = JSON.stringify(placeholders)
+    }
+    infoRequestMessage = parsed.info_request_message ?? null
+  } catch {
+    // Fallback: if Claude didn't return valid JSON, use raw text as prompt
+    prompt = text
+  }
 
   const supabase = serviceClient()
   await supabase
     .from('projects')
-    .update({ claude_code_prompt: prompt })
+    .update({
+      claude_code_prompt: prompt,
+      pending_info: pendingInfo,
+      info_request_message: infoRequestMessage,
+      prompt_updated_at: new Date().toISOString(),
+    })
     .eq('place_id', lead.place_id)
 
   return prompt

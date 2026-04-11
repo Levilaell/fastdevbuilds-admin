@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { sendWhatsApp } from '@/lib/whatsapp'
+import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
+import { getRecentConversations } from '@/lib/supabase/queries'
+import type { Lead, Project, Conversation } from '@/lib/types'
 
 export async function POST(
   request: NextRequest,
@@ -76,6 +79,20 @@ export async function POST(
 
   if (updateError) {
     return Response.json({ error: updateError.message }, { status: 500 })
+  }
+
+  // Fire-and-forget: generate Claude Code prompt (step 8 — client authorized)
+  const [fullLead, convs] = await Promise.all([
+    supabase.from('leads').select('*').eq('place_id', place_id).single(),
+    getRecentConversations(supabase, place_id, 20),
+  ])
+  if (fullLead.data) {
+    const updatedProject = { ...project, ...updates } as Project
+    generateClaudeCodePrompt(
+      fullLead.data as Lead,
+      updatedProject,
+      convs as Conversation[],
+    ).catch(console.error)
   }
 
   return Response.json({ ok: true })

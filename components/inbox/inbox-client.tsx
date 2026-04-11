@@ -9,6 +9,7 @@ import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type A
 import AiSuggestionCard from '@/components/ai-suggestion-card'
 import ProposalCard from '@/components/proposal-card'
 import SharedReplyBox from '@/components/shared/reply-box'
+import WorkflowBar from '@/components/inbox/workflow-bar'
 
 // ─── Conversation list item ───
 
@@ -705,6 +706,12 @@ export default function InboxClient() {
                 </Link>
               </div>
             </div>
+
+            {/* Workflow progress bar */}
+            <WorkflowBar
+              leadStatus={activeItem?.status ?? 'prospected'}
+              projectStatus={project?.status ?? null}
+            />
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto space-y-3 p-4">
