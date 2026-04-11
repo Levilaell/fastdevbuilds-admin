@@ -18,8 +18,6 @@ export const PIPELINE_STATUSES: LeadStatus[] = [
   'negotiating',
   'scoped',
   'closed',
-  'finalizado',
-  'pago',
 ]
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number]
@@ -32,7 +30,7 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   scoped: 'Escopo',
   finalizado: 'Finalizado',
   pago: 'Pago',
-  closed: 'Fechado',
+  closed: 'Em progresso',
   lost: 'Perdido',
 }
 
