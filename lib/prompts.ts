@@ -60,7 +60,8 @@ Regras:
 - NÃO mencione formas de pagamento específicas (Stripe, MercadoPago etc.)
 - Se for falar de preço, reforce que o modelo é "só paga se gostar" — o cliente vê o resultado antes de pagar qualquer coisa, via PIX
 - Se o site foi testado, mencione que foi analisado e diga o resultado qualitativo (ex: "testei seu site e o desempenho tá bem ruim no celular")
-- Foque em valor concreto que você pode entregar baseado nos problemas detectados`
+- Se NÃO há dados técnicos (sem site, sem problemas detectados), NÃO invente análise. Em vez disso, pergunte o que o lead precisa, qual é o negócio dele, e como você pode ajudar. Seja curioso e útil.
+- Foque em valor concreto que você pode entregar baseado nos problemas detectados (quando existirem)`
 }
 
 export const SUGGESTION_USER_WITH_HISTORY = (history: string): string =>
@@ -81,6 +82,7 @@ Rules for the suggested reply:
 - NEVER mention specific payment methods (Stripe, MercadoPago, etc.)
 - If price comes up, reinforce: "só paga se gostar" — the client sees the finished result before paying anything, via PIX
 - If the site was tested, mention that it was analyzed and describe the result qualitatively (e.g., "testei seu site e o desempenho tá bem ruim no celular"), NOT with specific numbers
+- If NO technical data is available (no site, no detected problems), do NOT pretend you analyzed anything. Instead, ask what the lead needs: what kind of site/service they're looking for, what problems they're facing, etc. Be curious and helpful, not salesy.
 - Sign as Levi
 
 Respond ONLY with valid JSON, no markdown, no explanation:
@@ -97,10 +99,11 @@ export function buildClassifyUserPrompt(
   newMessage: string,
 ): string {
   const perf = perfLabel(lead.mobile_score, lead.lcp)
+  const hasData = lead.website || reasonsText || perf
 
   return `Business: ${lead.business_name ?? 'Desconhecido'}
 Site: ${lead.website ?? 'N/A'}
-Detected problems: ${reasonsText}
+${hasData ? `Detected problems: ${reasonsText || 'Nenhum'}` : 'NOTA: Este é um lead inbound — NÃO temos dados técnicos sobre o negócio. Não invente análises. Pergunte o que o lead precisa.'}
 ${perf ? `Site tested — result: ${perf}\n` : ''}Original outreach message: ${lead.message ?? 'N/A'}
 Conversation history:
 ${historyText}

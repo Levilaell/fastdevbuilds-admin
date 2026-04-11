@@ -34,6 +34,13 @@ const AUTO_REPLY_PATTERNS: RegExp[] = [
   // Common WhatsApp Business auto-reply markers
   /estamos\s+(fechados?|indispon[íi]veis)/i,
   /no\s+momento\s+n[ãa]o\s+(estamos|podemos)/i,
+
+  // WhatsApp Business greeting/menu patterns (company name + "agradece" or offer)
+  /agradece\s+seu\s+contato/i,
+  /enquanto\s+aguarda\s+(meu|nosso)\s+retorno/i,
+  /em\s+atendimento\s*[-–—]\s*(deixe|envie)/i,
+  /deixe\s+sua\s+mensagem.{0,30}(contato|retorno|poss[íi]vel)/i,
+  /quer\s+(saber|agendar).{0,20}(hor[áa]rio|link|funciona)/i,
 ]
 
 export function isAutoReply(message: string): boolean {
