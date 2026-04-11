@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
 import { isAutoReply, isInstantReply } from '@/lib/auto-reply'
+import { logWebhook } from './debug/route'
 import type { Lead } from '@/lib/types'
 
 /** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
@@ -98,16 +99,27 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    // Process both received and sent message events
-    // Evolution API sends 'messages.upsert' for most messages,
-    // but may also send 'send.message' for outbound from WhatsApp Business
+    // Log every webhook event for debugging (accessible via /api/webhook/whatsapp/debug)
+    logWebhook(body)
+    console.log('[webhook] event:', body.event, 'fromMe:', body.data?.key?.fromMe,
+      'remoteJid:', body.data?.key?.remoteJid,
+      'hasMessage:', !!body.data?.message,
+      'keys:', body.data?.message ? Object.keys(body.data.message).join(',') : 'none')
+
+    // Accept all message-related events from Evolution API
     const event = body.event as string
-    if (event !== 'messages.upsert' && event !== 'send.message') {
+    const MESSAGE_EVENTS = [
+      'messages.upsert',  // standard incoming/outgoing
+      'send.message',     // sent via API
+      'messages.update',  // message status updates (may carry sent messages)
+    ]
+    if (!MESSAGE_EVENTS.includes(event)) {
       return Response.json({ ok: true })
     }
 
     const data = body.data
     if (!data?.key) {
+      console.log('[webhook] no key in data, skipping')
       return Response.json({ ok: true })
     }
 
@@ -138,13 +150,23 @@ export async function POST(request: Request) {
       phone = jidValue
     }
 
-    // Extract message text from various WhatsApp message formats
+    // Extract message text from all possible WhatsApp message formats
+    const msg = data.message ?? {}
     const text: string =
-      data.message?.conversation ??
-      data.message?.extendedTextMessage?.text ??
+      msg.conversation ??
+      msg.extendedTextMessage?.text ??
+      msg.imageMessage?.caption ??
+      msg.videoMessage?.caption ??
+      msg.documentMessage?.caption ??
+      msg.buttonsResponseMessage?.selectedDisplayText ??
+      msg.listResponseMessage?.title ??
+      msg.templateButtonReplyMessage?.selectedDisplayText ??
       ''
 
     if (!text) {
+      if (isFromMe) {
+        console.log('[webhook] outbound message with no text, message keys:', Object.keys(msg).join(','))
+      }
       return Response.json({ ok: true })
     }
 
