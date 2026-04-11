@@ -179,7 +179,50 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
       )}
 
       {status === 'in_progress' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          {/* Claude Code prompt */}
+          {project.claude_code_prompt ? (
+            <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                <span className="text-xs text-accent font-medium">
+                  Prompt para Claude Code
+                </span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(project.claude_code_prompt!)}
+                  className="text-[10px] text-muted hover:text-text px-1.5 py-0.5 rounded border border-border"
+                >
+                  Copiar
+                </button>
+              </div>
+              {promptVisible ? (
+                <pre className="p-3 text-xs text-text/80 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
+                  {project.claude_code_prompt}
+                </pre>
+              ) : (
+                <div className="p-3">
+                  <p className="text-xs text-text/60 line-clamp-3">
+                    {project.claude_code_prompt.slice(0, 200)}…
+                  </p>
+                  <button
+                    onClick={() => setPromptVisible(true)}
+                    className="text-[10px] text-accent hover:underline mt-1"
+                  >
+                    Ver prompt completo
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={handleGeneratePrompt}
+              disabled={generatingPrompt}
+              className="w-full py-2 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              {generatingPrompt ? 'Gerando prompt…' : 'Gerar prompt Claude Code'}
+            </button>
+          )}
+
+          {/* Preview URL */}
           <input
             type="url"
             value={previewUrl}
@@ -227,54 +270,11 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
       )}
 
       {status === 'paid' && (
-        <div className="space-y-2">
-          {project.claude_code_prompt ? (
-            <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                <span className="text-xs text-accent font-medium">
-                  Prompt para Claude Code
-                </span>
-                <button
-                  onClick={() => navigator.clipboard.writeText(project.claude_code_prompt!)}
-                  className="text-[10px] text-muted hover:text-text px-1.5 py-0.5 rounded border border-border"
-                >
-                  Copiar
-                </button>
-              </div>
-              {promptVisible ? (
-                <pre className="p-3 text-xs text-text/80 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
-                  {project.claude_code_prompt}
-                </pre>
-              ) : (
-                <div className="p-3">
-                  <p className="text-xs text-text/60 line-clamp-3">
-                    {project.claude_code_prompt.slice(0, 200)}…
-                  </p>
-                  <button
-                    onClick={() => setPromptVisible(true)}
-                    className="text-[10px] text-accent hover:underline mt-1"
-                  >
-                    Ver prompt completo
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={handleGeneratePrompt}
-              disabled={generatingPrompt}
-              className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-            >
-              {generatingPrompt ? 'Gerando prompt…' : 'Gerar prompt Claude Code'}
-            </button>
-          )}
-
-          <div className="flex items-center gap-2 text-xs text-success">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            Projeto pago — {fmtCurrency.format(project.price ?? 0)}
-          </div>
+        <div className="flex items-center gap-2 text-xs text-success">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Projeto pago — {fmtCurrency.format(project.price ?? 0)}
         </div>
       )}
 
