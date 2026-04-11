@@ -53,9 +53,10 @@ export default function MetricsDashboard({ initialData }: Props) {
     }
   }, [])
 
-  // Auto-refresh metrics every 60 seconds
+  // Auto-refresh metrics every 60 seconds, pausing when tab is hidden
   useEffect(() => {
     const interval = setInterval(async () => {
+      if (document.visibilityState === 'hidden') return
       const res = await fetch(`/api/metrics?period=${period}`)
       if (res.ok) {
         const json: MetricsData = await res.json()

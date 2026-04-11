@@ -55,6 +55,7 @@ export default function SidebarNav() {
 
   useEffect(() => {
     const supabase = createClient()
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
     async function fetchUnread() {
       const { count } = await supabase
@@ -65,6 +66,11 @@ export default function SidebarNav() {
       setUnreadCount(count ?? 0)
     }
 
+    function debouncedFetch() {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(fetchUnread, 500)
+    }
+
     fetchUnread()
 
     const channel = supabase
@@ -72,11 +78,12 @@ export default function SidebarNav() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'conversations' },
-        () => fetchUnread()
+        () => debouncedFetch()
       )
       .subscribe()
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
     }
   }, [])

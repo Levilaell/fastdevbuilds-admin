@@ -22,6 +22,60 @@ function cleanJson(text: string): string {
     .trim()
 }
 
+/** Validate classify response has required fields with correct types */
+function validateClassifyResponse(obj: unknown): {
+  intent: string
+  confidence: number
+  suggested_reply: string
+} {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('Claude returned invalid JSON structure')
+  }
+  const o = obj as Record<string, unknown>
+  if (typeof o.intent !== 'string' || !o.intent) {
+    throw new Error('Missing or invalid "intent" in Claude response')
+  }
+  if (typeof o.confidence !== 'number' || o.confidence < 0 || o.confidence > 1) {
+    // Clamp or default if out of range
+    o.confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0.5))
+  }
+  if (typeof o.suggested_reply !== 'string' || !o.suggested_reply) {
+    throw new Error('Missing or invalid "suggested_reply" in Claude response')
+  }
+  return { intent: o.intent as string, confidence: o.confidence as number, suggested_reply: o.suggested_reply as string }
+}
+
+/** Validate proposal response has required fields with correct types */
+function validateProposalResponse(obj: unknown): {
+  scope: string[]
+  timeline_days: number
+  price_brl: number
+  whatsapp_message: string
+} {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('Claude returned invalid JSON structure for proposal')
+  }
+  const o = obj as Record<string, unknown>
+  if (!Array.isArray(o.scope) || o.scope.length === 0) {
+    throw new Error('Missing or invalid "scope" in Claude proposal response')
+  }
+  if (typeof o.timeline_days !== 'number') {
+    o.timeline_days = Number(o.timeline_days) || 7
+  }
+  if (typeof o.price_brl !== 'number') {
+    o.price_brl = Number(o.price_brl) || 0
+  }
+  if (typeof o.whatsapp_message !== 'string' || !o.whatsapp_message) {
+    throw new Error('Missing or invalid "whatsapp_message" in Claude proposal response')
+  }
+  return {
+    scope: o.scope as string[],
+    timeline_days: o.timeline_days as number,
+    price_brl: o.price_brl as number,
+    whatsapp_message: o.whatsapp_message as string,
+  }
+}
+
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,11 +129,7 @@ export async function classifyAndSuggest(
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
     console.log('[classify] response:', text.slice(0, 100))
-    const parsed = JSON.parse(cleanJson(text)) as {
-      intent: string
-      confidence: number
-      suggested_reply: string
-    }
+    const parsed = validateClassifyResponse(JSON.parse(cleanJson(text)))
 
     console.log('[classify] saving suggestion, intent:', parsed.intent)
     const supabase = serviceClient()
@@ -138,12 +188,7 @@ export async function generateProposal(
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
     console.log('[proposal] response:', text.slice(0, 150))
-    const parsed = JSON.parse(cleanJson(text)) as {
-      scope: string[]
-      timeline_days: number
-      price_brl: number
-      whatsapp_message: string
-    }
+    const parsed = validateProposalResponse(JSON.parse(cleanJson(text)))
 
     if (existing) {
       console.log('[proposal] updating existing project', existing.id)

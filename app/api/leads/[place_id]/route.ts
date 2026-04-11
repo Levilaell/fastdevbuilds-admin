@@ -7,17 +7,21 @@ export async function GET(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('leads')
     .select('*')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
 
   if (error) {
-    const status = error.code === 'PGRST116' ? 404 : 500
-    return Response.json({ error: error.message }, { status })
+    return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!data) {
+    return Response.json({ error: 'Lead not found' }, { status: 404 })
   }
 
   return Response.json(data)
@@ -29,6 +33,7 @@ export async function PATCH(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const body = await request.json()
   const supabase = createServiceClient()
 

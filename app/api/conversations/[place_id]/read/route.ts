@@ -5,6 +5,7 @@ export async function PATCH(
   { params }: { params: Promise<{ place_id: string }> }
 ) {
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const supabase = await createClient()
 
   const { data, error } = await supabase

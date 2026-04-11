@@ -11,19 +11,23 @@ export async function POST(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
-  const body = await request.json()
-  const pixKey: string = body.pix_key ?? process.env.PIX_KEY ?? ''
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
+  const pixKey = process.env.PIX_KEY ?? ''
 
   if (!pixKey) {
-    return Response.json({ error: 'PIX key required' }, { status: 400 })
+    return Response.json({ error: 'PIX key not configured on server' }, { status: 500 })
   }
 
   const supabase = createServiceClient()
 
   const [leadRes, projectRes] = await Promise.all([
-    supabase.from('leads').select('*').eq('place_id', place_id).single(),
-    supabase.from('projects').select('*').eq('place_id', place_id).single(),
+    supabase.from('leads').select('*').eq('place_id', place_id).maybeSingle(),
+    supabase.from('projects').select('*').eq('place_id', place_id).maybeSingle(),
   ])
+
+  if (leadRes.error || projectRes.error) {
+    return Response.json({ error: (leadRes.error ?? projectRes.error)!.message }, { status: 500 })
+  }
 
   if (!leadRes.data || !projectRes.data) {
     return Response.json({ error: 'Lead or project not found' }, { status: 404 })

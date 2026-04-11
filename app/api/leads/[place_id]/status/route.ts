@@ -24,6 +24,7 @@ export async function PATCH(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const body = await request.json()
   const newStatus = body.status as string
 
@@ -34,11 +35,19 @@ export async function PATCH(
   const supabase = createServiceClient()
 
   // Validate transition
-  const { data: current } = await supabase
+  const { data: current, error: currentError } = await supabase
     .from('leads')
     .select('status')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
+
+  if (currentError) {
+    return Response.json({ error: currentError.message }, { status: 500 })
+  }
+
+  if (!current) {
+    return Response.json({ error: 'Lead not found' }, { status: 404 })
+  }
 
   if (current) {
     const currentStatus = current.status as LeadStatus

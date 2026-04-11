@@ -18,6 +18,7 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
   const [sendError, setSendError] = useState('')
   const [phoneInput, setPhoneInput] = useState('')
   const [needsPhone, setNeedsPhone] = useState(false)
+  const [sent, setSent] = useState(false)
   const channel = 'whatsapp' as const
 
   async function handleSuggest() {
@@ -71,6 +72,8 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
         onNewMessage(conv)
         setMessage('')
         setNeedsPhone(false)
+        setSent(true)
+        setTimeout(() => setSent(false), 2000)
       } else {
         const data = await res.json().catch(() => ({ error: 'Erro ao enviar' }))
         if (enablePhonePrompt && data.error?.includes('telefone')) {
@@ -121,7 +124,7 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
               disabled={sending}
               className="px-3 py-1 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
             >
-              {sending ? 'Enviando...' : 'Confirmar'}
+              {sending ? 'Enviando…' : 'Confirmar'}
             </button>
           </div>
         </div>
@@ -148,6 +151,11 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
         </div>
       )}
 
+      {/* Success indicator */}
+      {sent && (
+        <p className="text-xs text-success">Mensagem enviada</p>
+      )}
+
       {/* Error display */}
       {sendError && !needsPhone && (
         <p className="text-xs text-danger">{sendError}</p>
@@ -163,7 +171,7 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
             disabled={suggesting || confirming}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
           >
-            {suggesting ? 'Gerando...' : 'Sugerir com IA'}
+            {suggesting ? 'Gerando…' : 'Sugerir com IA'}
           </button>
         </div>
 

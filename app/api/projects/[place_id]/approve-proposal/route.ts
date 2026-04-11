@@ -9,6 +9,7 @@ export async function POST(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const body = await request.json()
   const editedMessage: string | undefined = body.message
   const editedPrice: number | undefined = body.price
@@ -20,9 +21,13 @@ export async function POST(
     .from('projects')
     .select('*')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
 
-  if (error || !project) {
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!project) {
     return Response.json({ error: 'Project not found' }, { status: 404 })
   }
 
@@ -36,7 +41,7 @@ export async function POST(
     .from('leads')
     .select('phone')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
 
   if (!lead?.phone) {
     return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })

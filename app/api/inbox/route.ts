@@ -20,6 +20,8 @@ interface LeadInfo {
 
 export async function GET(request: NextRequest) {
   const showArchived = request.nextUrl.searchParams.get('archived') === 'true'
+  const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 50, 200)
+  const offset = Math.max(Number(request.nextUrl.searchParams.get('offset')) || 0, 0)
 
   const supabase = await createClient()
 
@@ -101,12 +103,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const items = Array.from(map.values())
+  const allItems = Array.from(map.values())
     .sort((a, b) => {
       const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
       return tb - ta
     })
 
-  return Response.json(items)
+  const items = allItems.slice(offset, offset + limit)
+
+  return Response.json(items, {
+    headers: {
+      'X-Total-Count': String(allItems.length),
+    },
+  })
 }

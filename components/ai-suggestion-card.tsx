@@ -69,6 +69,7 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
   }
 
   async function handleReject() {
+    if (!confirm('Rejeitar esta sugestão? Ela não poderá ser recuperada.')) return
     setLoading(true)
     try {
       await fetch(`/api/ai-suggestions/${suggestion.id}/reject`, {

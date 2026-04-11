@@ -8,6 +8,7 @@ export async function POST(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const supabase = createServiceClient()
 
   const { error } = await supabase
@@ -28,6 +29,7 @@ export async function DELETE(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
+  if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const supabase = createServiceClient()
 
   const { error } = await supabase

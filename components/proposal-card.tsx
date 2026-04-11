@@ -54,6 +54,7 @@ export default function ProposalCard({ project, placeId, onApproved, onDismissed
   }
 
   async function handleDismiss() {
+    if (!confirm('Descartar esta proposta? Ela não poderá ser recuperada.')) return
     setLoading(true)
     setError('')
     try {

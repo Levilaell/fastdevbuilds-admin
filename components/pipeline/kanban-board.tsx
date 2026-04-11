@@ -119,6 +119,10 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
 
     const newStatus = destination.droppableId as LeadStatus
+    const oldStatus = source.droppableId
+
+    // Confirm status change
+    if (!confirm(`Mover lead de "${STATUS_LABELS[oldStatus as LeadStatus]}" para "${STATUS_LABELS[newStatus]}"?`)) return
 
     // Optimistic update
     setLeads((prev) =>
@@ -164,6 +168,11 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     if (!unarchive && !confirm('Arquivar este lead? Ele sera movido para "Perdido".')) return
     const now = new Date().toISOString()
 
+    // Capture original value for rollback
+    const originalLead = leads.find((l) => l.place_id === placeId)
+    const originalArchivedAt = originalLead?.inbox_archived_at ?? null
+    const originalStatus = originalLead?.status
+
     // Optimistic update: archive + mark as lost
     setLeads((prev) =>
       prev.map((l) => {
@@ -180,14 +189,16 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       })
 
       if (!archiveRes.ok) {
-        // Rollback
+        // Rollback to original values
         setLeads((prev) =>
           prev.map((l) =>
             l.place_id === placeId
-              ? { ...l, inbox_archived_at: unarchive ? now : null }
+              ? { ...l, inbox_archived_at: originalArchivedAt, status: originalStatus ?? l.status }
               : l
           )
         )
+        setToast('Erro ao arquivar lead')
+        setTimeout(() => setToast(''), 4000)
         return
       }
 
@@ -200,15 +211,16 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         })
       }
     } catch {
+      // Rollback to original values
       setLeads((prev) =>
         prev.map((l) =>
           l.place_id === placeId
-            ? { ...l, inbox_archived_at: unarchive ? now : null }
+            ? { ...l, inbox_archived_at: originalArchivedAt, status: originalStatus ?? l.status }
             : l
         )
       )
     }
-  }, [])
+  }, [leads])
 
   return (
     <>

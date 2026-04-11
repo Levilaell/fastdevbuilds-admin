@@ -128,10 +128,14 @@ export default function BotClient() {
     fetchRuns()
   }, [fetchTerritories, fetchRuns])
 
-  // Auto-scroll terminal
+  // Auto-scroll terminal using requestAnimationFrame
   useEffect(() => {
     if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+      requestAnimationFrame(() => {
+        if (terminalRef.current) {
+          terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+        }
+      })
     }
   }, [lines.length])
 

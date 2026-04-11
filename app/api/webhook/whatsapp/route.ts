@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     // Validate webhook authenticity via Evolution API key
     const webhookKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
     const expectedKey = process.env.EVOLUTION_API_KEY
-    if (expectedKey && webhookKey !== expectedKey) {
+    if (!expectedKey || webhookKey !== expectedKey) {
       console.warn('[webhook] rejected — invalid or missing API key')
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }

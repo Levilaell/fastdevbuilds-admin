@@ -51,5 +51,9 @@ export async function GET() {
     })
   }
 
-  return Response.json(territories)
+  return Response.json(territories, {
+    headers: {
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
+    },
+  })
 }

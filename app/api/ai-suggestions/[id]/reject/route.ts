@@ -8,6 +8,7 @@ export async function POST(
 ) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const { id } = await params
+  if (!id) return Response.json({ error: 'id is required' }, { status: 400 })
   const supabase = createServiceClient()
 
   const { error } = await supabase

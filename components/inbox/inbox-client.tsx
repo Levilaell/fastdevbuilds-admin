@@ -275,8 +275,14 @@ export default function InboxClient() {
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   // Fetch inbox list
   const fetchInbox = useCallback(async () => {
@@ -332,12 +338,16 @@ export default function InboxClient() {
     )
   }, [])
 
-  // Select a conversation
+  // Select a conversation — mark as read only after confirming the correct conversation loaded
   const selectConversation = useCallback(
     async (placeId: string) => {
       setActivePlaceId(placeId)
       router.replace(`/inbox?lead=${encodeURIComponent(placeId)}`, { scroll: false })
-      await Promise.all([fetchConversation(placeId), markAsRead(placeId)])
+      await fetchConversation(placeId)
+      // Only mark as read after conversation loaded, preventing race with fast switching
+      if (activePlaceIdRef.current === placeId) {
+        await markAsRead(placeId)
+      }
     },
     [router, fetchConversation, markAsRead]
   )
@@ -363,10 +373,15 @@ export default function InboxClient() {
   // Refs for realtime callbacks — avoids recreating the channel on every state change
   const activePlaceIdRef = useRef(activePlaceId)
   activePlaceIdRef.current = activePlaceId
+  const fetchInboxRef = useRef(fetchInbox)
+  fetchInboxRef.current = fetchInbox
+  const markAsReadRef = useRef(markAsRead)
+  markAsReadRef.current = markAsRead
 
   // Realtime subscription — stable, no dependencies that cause recreation
   useEffect(() => {
     const supabase = createClient()
+    let fetchDebounce: ReturnType<typeof setTimeout> | null = null
 
     const channel = supabase
       .channel('inbox-realtime')
@@ -406,11 +421,11 @@ export default function InboxClient() {
                 return tb - ta
               })
             }
+            // New lead not in list — debounced fetch
+            if (fetchDebounce) clearTimeout(fetchDebounce)
+            fetchDebounce = setTimeout(() => fetchInboxRef.current(), 1000)
             return prev
           })
-
-          // Refetch inbox if it's a new lead we don't have yet
-          fetchInbox()
 
           // If active conversation, add message
           if (currentActive === newConv.place_id) {
@@ -419,7 +434,7 @@ export default function InboxClient() {
               if (prev.some(c => c.id === newConv.id)) return prev
               return [...prev, newConv]
             })
-            if (isInbound) markAsRead(newConv.place_id)
+            if (isInbound) markAsReadRef.current(newConv.place_id)
           }
 
           // Notification sound only for inbound
@@ -450,17 +465,23 @@ export default function InboxClient() {
       .subscribe()
 
     return () => {
+      if (fetchDebounce) clearTimeout(fetchDebounce)
       supabase.removeChannel(channel)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Realtime handles live updates — no polling needed
 
   // Archive / unarchive a conversation
   async function handleArchive(placeId: string, unarchive = false) {
+    if (!unarchive && !confirm('Arquivar esta conversa?')) return
     const url = `/api/inbox/${encodeURIComponent(placeId)}/archive`
-    await fetch(url, { method: unarchive ? 'DELETE' : 'POST' })
+    const res = await fetch(url, { method: unarchive ? 'DELETE' : 'POST' })
+    if (!res.ok) {
+      showToast('Erro ao arquivar conversa', 'error')
+      return
+    }
+    showToast(unarchive ? 'Conversa desarquivada' : 'Conversa arquivada')
     // Remove from current list
     setItems((prev) => prev.filter((i) => i.place_id !== placeId))
     if (activePlaceId === placeId) {
@@ -755,6 +776,15 @@ export default function InboxClient() {
           </>
         )}
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-white text-sm shadow-lg ${
+          toast.type === 'error' ? 'bg-danger/90' : 'bg-success/90'
+        }`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   )
 }

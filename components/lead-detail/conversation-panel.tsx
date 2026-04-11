@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { Conversation, AiSuggestion } from '@/lib/types'
 import ConversationHistory from './conversation-history'
-import ReplyBox from './reply-box'
+import ReplyBox from '@/components/shared/reply-box'
 import AiSuggestionCard from '@/components/ai-suggestion-card'
 
 interface ConversationPanelProps {

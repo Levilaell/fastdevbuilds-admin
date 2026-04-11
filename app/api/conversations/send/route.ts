@@ -26,10 +26,13 @@ export async function POST(request: NextRequest) {
     .from('leads')
     .select('phone, email')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
 
-  if (leadError || !lead) {
-    console.error('[send] lead not found:', place_id, leadError?.message)
+  if (leadError) {
+    return Response.json({ error: leadError.message }, { status: 500 })
+  }
+
+  if (!lead) {
     return Response.json({ error: 'Lead não encontrado' }, { status: 404 })
   }
 
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
     .from('leads')
     .select('status')
     .eq('place_id', place_id)
-    .single()
+    .maybeSingle()
 
   if (leadCheck?.status === 'replied') {
     await supabase
