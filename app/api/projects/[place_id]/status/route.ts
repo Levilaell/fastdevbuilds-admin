@@ -43,7 +43,6 @@ export async function PATCH(
   // Update project status
   const projectUpdates: Record<string, unknown> = {
     status: newStatus,
-    updated_at: new Date().toISOString(),
   }
   if (newStatus === 'client_approved') {
     projectUpdates.client_approved_at = new Date().toISOString()

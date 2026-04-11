@@ -54,7 +54,7 @@ export async function POST(
   // Save PIX key on project
   await supabase
     .from('projects')
-    .update({ pix_key: pixKey, updated_at: new Date().toISOString() })
+    .update({ pix_key: pixKey })
     .eq('place_id', place_id)
 
   return Response.json({ ok: true, message })

@@ -191,7 +191,6 @@ export interface Project {
   currency: string | null
   status: ProjectStatus
   created_at: string
-  updated_at: string | null
   proposal_message: string | null
   claude_code_prompt: string | null
   pix_key: string | null

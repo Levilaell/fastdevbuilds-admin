@@ -2,6 +2,23 @@ import type { Lead, Project } from '@/lib/types'
 
 // ─── Helpers used by prompt builders ───
 
+/** Classify PageSpeed performance into qualitative levels. */
+function perfLabel(mobileScore: number | null, lcp: number | null): string | null {
+  if (mobileScore != null) {
+    if (mobileScore < 30) return 'desempenho muito ruim'
+    if (mobileScore < 50) return 'desempenho ruim'
+    if (mobileScore < 70) return 'desempenho mediano'
+    return 'desempenho bom'
+  }
+  if (lcp != null) {
+    if (lcp > 6000) return 'carregamento muito lento'
+    if (lcp > 4000) return 'carregamento lento'
+    if (lcp > 2500) return 'carregamento mediano'
+    return 'carregamento rápido'
+  }
+  return null
+}
+
 export function buildLeadContext(lead: Lead, reasonsText: string): string {
   const lines = [
     `- Negócio: ${lead.business_name ?? 'Desconhecido'}`,
@@ -12,12 +29,9 @@ export function buildLeadContext(lead: Lead, reasonsText: string): string {
     `- Problemas detectados: ${reasonsText || 'Nenhum'}`,
   ]
 
-  // Include real PageSpeed metrics when available for more specific/credible messages
-  if (lead.mobile_score != null) lines.push(`- Score mobile PageSpeed: ${Math.round(lead.mobile_score)}/100`)
-  if (lead.perf_score != null) lines.push(`- Score performance: ${Math.round(lead.perf_score)}/100`)
-  if (lead.fcp != null) lines.push(`- First Contentful Paint: ${(lead.fcp / 1000).toFixed(1)}s`)
-  if (lead.lcp != null) lines.push(`- Largest Contentful Paint (tempo de carregamento): ${(lead.lcp / 1000).toFixed(1)}s`)
-  if (lead.cls != null) lines.push(`- CLS (instabilidade visual): ${lead.cls.toFixed(3)}`)
+  // Qualitative PageSpeed assessment — tested, not just guessed
+  const perf = perfLabel(lead.mobile_score, lead.lcp)
+  if (perf) lines.push(`- PageSpeed (testado pelo Google): ${perf}`)
   if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
   if (lead.is_mobile_friendly === false) lines.push('- Mobile: NÃO é otimizado para celular')
   if (lead.scrape_failed) lines.push('- Análise do site: FALHOU (site pode estar offline ou bloqueando)')
@@ -45,7 +59,7 @@ Regras:
 - NÃO sugira calls, ligações, reuniões ou videochamadas
 - NÃO mencione formas de pagamento específicas (Stripe, MercadoPago etc.)
 - Se for falar de preço, reforce que o modelo é "só paga se gostar" — o cliente vê o resultado antes de pagar qualquer coisa, via PIX
-- Quando métricas do PageSpeed estiverem disponíveis, use NÚMEROS ESPECÍFICOS (ex: "seu site carrega em 8.3 segundos no celular" em vez de "site lento")
+- Se o site foi testado, mencione que foi analisado e diga o resultado qualitativo (ex: "testei seu site e o desempenho tá bem ruim no celular")
 - Foque em valor concreto que você pode entregar baseado nos problemas detectados`
 }
 
@@ -66,7 +80,7 @@ Rules for the suggested reply:
 - NEVER suggest calls, meetings, or video calls
 - NEVER mention specific payment methods (Stripe, MercadoPago, etc.)
 - If price comes up, reinforce: "só paga se gostar" — the client sees the finished result before paying anything, via PIX
-- When PageSpeed metrics are available, use SPECIFIC numbers (e.g., "seu site carrega em 8.3 segundos" instead of "site lento")
+- If the site was tested, mention that it was analyzed and describe the result qualitatively (e.g., "testei seu site e o desempenho tá bem ruim no celular"), NOT with specific numbers
 - Sign as Levi
 
 Respond ONLY with valid JSON, no markdown, no explanation:
@@ -82,15 +96,12 @@ export function buildClassifyUserPrompt(
   historyText: string,
   newMessage: string,
 ): string {
-  const metrics: string[] = []
-  if (lead.lcp != null) metrics.push(`load time: ${(lead.lcp / 1000).toFixed(1)}s`)
-  if (lead.mobile_score != null) metrics.push(`mobile score: ${Math.round(lead.mobile_score)}/100`)
-  if (lead.perf_score != null) metrics.push(`perf score: ${Math.round(lead.perf_score)}/100`)
+  const perf = perfLabel(lead.mobile_score, lead.lcp)
 
   return `Business: ${lead.business_name ?? 'Desconhecido'}
 Site: ${lead.website ?? 'N/A'}
 Detected problems: ${reasonsText}
-${metrics.length > 0 ? `PageSpeed metrics: ${metrics.join(', ')}\n` : ''}Original outreach message: ${lead.message ?? 'N/A'}
+${perf ? `Site tested — result: ${perf}\n` : ''}Original outreach message: ${lead.message ?? 'N/A'}
 Conversation history:
 ${historyText}
 New message received: ${newMessage}

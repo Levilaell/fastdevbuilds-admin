@@ -60,7 +60,6 @@ export async function POST(
   const updates: Record<string, unknown> = {
     status: 'approved',
     proposal_message: message,
-    updated_at: new Date().toISOString(),
   }
   if (editedPrice !== undefined) updates.price = editedPrice
   const { error: updateError } = await supabase

@@ -98,8 +98,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    // Only process message events
-    if (body.event !== 'messages.upsert') {
+    // Process both received and sent message events
+    // Evolution API sends 'messages.upsert' for most messages,
+    // but may also send 'send.message' for outbound from WhatsApp Business
+    const event = body.event as string
+    if (event !== 'messages.upsert' && event !== 'send.message') {
       return Response.json({ ok: true })
     }
 
@@ -108,7 +111,8 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    const isFromMe = !!data.key.fromMe
+    // send.message events are always outbound
+    const isFromMe = event === 'send.message' || !!data.key.fromMe
 
     // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''

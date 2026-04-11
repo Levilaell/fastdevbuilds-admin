@@ -154,7 +154,6 @@ export async function generateProposal(
           currency: 'BRL',
           status: 'scoped',
           proposal_message: parsed.whatsapp_message,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id)
       if (error) console.error('[proposal] update error:', error.message)
@@ -238,7 +237,7 @@ export async function generateClaudeCodePrompt(
   const supabase = serviceClient()
   await supabase
     .from('projects')
-    .update({ claude_code_prompt: prompt, updated_at: new Date().toISOString() })
+    .update({ claude_code_prompt: prompt })
     .eq('place_id', lead.place_id)
 
   return prompt

@@ -10,10 +10,7 @@ export async function POST(
 
   const { error } = await supabase
     .from('projects')
-    .update({
-      proposal_message: null,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ proposal_message: null })
     .eq('place_id', place_id)
 
   if (error) {
