@@ -212,9 +212,23 @@ export async function POST(request: Request) {
         console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
       }
     } else if (isFromMe) {
-      // Outbound message to unknown number — skip, no lead to attach to
-      console.log('[webhook] outbound message to unknown number, skipping')
-      return Response.json({ ok: true })
+      // No lead matched by phone — try matching by LID-based place_id
+      // (inbound messages from LIDs create leads as unknown_${jidValue})
+      const lidPlaceId = `unknown_${jidValue}`
+      const { data: lidLead } = await supabase
+        .from('leads')
+        .select('place_id, status')
+        .eq('place_id', lidPlaceId)
+        .maybeSingle()
+
+      if (lidLead) {
+        placeId = lidLead.place_id
+        leadStatus = lidLead.status
+        console.log('[webhook] matched outbound to LID-based lead:', placeId)
+      } else {
+        console.log('[webhook] outbound message to unknown number, skipping')
+        return Response.json({ ok: true })
+      }
     } else {
       // Create minimal lead for unknown inbound contact
       const pushName: string = data.pushName ?? ''
