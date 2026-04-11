@@ -43,7 +43,7 @@ export async function POST(
   }
 
   // Save outbound conversation
-  const { data: conv } = await supabase
+  const { data: conv, error: convError } = await supabase
     .from('conversations')
     .insert({
       place_id: suggestion.place_id,
@@ -55,6 +55,11 @@ export async function POST(
     })
     .select()
     .single()
+
+  if (convError) {
+    console.error('[ai-approve] failed to save conversation:', convError.message)
+    return Response.json({ error: 'Mensagem enviada mas falha ao salvar conversa' }, { status: 500 })
+  }
 
   // Mark suggestion as sent
   await supabase

@@ -25,7 +25,7 @@ export default function ReplyBox({ placeId, onNewMessage }: ReplyBoxProps) {
       })
       if (res.ok) {
         const data = await res.json()
-        setMessage(data.suggestion)
+        if (data.suggestion) setMessage(data.suggestion)
       }
     } finally {
       setSuggesting(false)
@@ -45,6 +45,9 @@ export default function ReplyBox({ placeId, onNewMessage }: ReplyBoxProps) {
         const conv = await res.json()
         onNewMessage(conv)
         setMessage('')
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Erro ao enviar' }))
+        console.error('[reply-box] send failed:', data.error)
       }
     } finally {
       setSending(false)

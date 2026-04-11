@@ -20,18 +20,24 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
 
   // Fetch lead for phone/email check
-  const { data: lead } = await supabase
+  const { data: lead, error: leadError } = await supabase
     .from('leads')
     .select('phone, email')
     .eq('place_id', place_id)
     .single()
 
+  if (leadError || !lead) {
+    console.error('[send] lead not found:', place_id, leadError?.message)
+    return Response.json({ error: 'Lead não encontrado' }, { status: 404 })
+  }
+
   // Send via WhatsApp
   if (channel === 'whatsapp') {
-    if (!lead?.phone) {
+    const phone = lead.phone?.trim()
+    if (!phone) {
       return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
     }
-    const sent = await sendWhatsApp(lead.phone, message)
+    const sent = await sendWhatsApp(phone, message)
     if (!sent) {
       return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
     }
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   // Email not implemented — block if attempted
   if (channel === 'email') {
-    if (!lead?.email) {
+    if (!lead.email?.trim()) {
       return Response.json({ error: 'Lead não tem email cadastrado' }, { status: 400 })
     }
     return Response.json({ error: 'Envio de email ainda não implementado' }, { status: 501 })

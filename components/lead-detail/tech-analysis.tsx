@@ -103,15 +103,25 @@ export default function TechAnalysis({ lead }: { lead: Lead }) {
       {/* PageSpeed scores */}
       <div>
         <h3 className="text-[11px] text-muted mb-3 uppercase tracking-wide">PageSpeed</h3>
-        <div className="flex items-center justify-around mb-3">
-          <ScoreCircle value={lead.mobile_score} label="Mobile" />
-          <ScoreCircle value={lead.perf_score} label="Perf" />
-        </div>
-        <div className="flex items-center justify-around">
-          <MetricPill label="FCP" value={lead.fcp} unit="ms" />
-          <MetricPill label="LCP" value={lead.lcp} unit="ms" />
-          <MetricPill label="CLS" value={lead.cls} unit="" />
-        </div>
+        {lead.scrape_failed && lead.mobile_score == null && lead.perf_score == null ? (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/20">
+            <span className="text-warning text-xs">Análise falhou — site pode estar offline, bloqueando requests, ou com domínio inválido</span>
+          </div>
+        ) : lead.mobile_score == null && lead.perf_score == null && lead.fcp == null ? (
+          <p className="text-xs text-muted">Dados de PageSpeed não disponíveis</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-around mb-3">
+              <ScoreCircle value={lead.mobile_score} label="Mobile" />
+              <ScoreCircle value={lead.perf_score} label="Perf" />
+            </div>
+            <div className="flex items-center justify-around">
+              <MetricPill label="FCP" value={lead.fcp} unit="ms" />
+              <MetricPill label="LCP" value={lead.lcp} unit="ms" />
+              <MetricPill label="CLS" value={lead.cls} unit="" />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

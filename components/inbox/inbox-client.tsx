@@ -21,6 +21,12 @@ function ConversationListItem({
   onClick: () => void
 }) {
   const hasUnread = item.unread_count > 0
+  const isWaiting = item.last_direction === 'out' && !hasUnread
+  const waitingHours = item.waiting_since
+    ? (Date.now() - new Date(item.waiting_since).getTime()) / 3_600_000
+    : 0
+  const needsFollowUp = isWaiting && waitingHours > 24
+
   const preview = item.last_message
     ? item.last_message.length > 40
       ? item.last_message.slice(0, 40) + '…'
@@ -35,12 +41,18 @@ function ConversationListItem({
           ? 'bg-card-hover border-l-2 border-accent'
           : hasUnread
             ? 'bg-card/50 hover:bg-card-hover'
-            : 'hover:bg-card-hover'
+            : needsFollowUp
+              ? 'bg-warning/5 hover:bg-card-hover'
+              : 'hover:bg-card-hover'
       }`}
     >
-      {/* Unread dot */}
+      {/* Status dot */}
       <div className="w-2 pt-1.5 shrink-0">
-        {hasUnread && <div className="w-2 h-2 rounded-full bg-accent" />}
+        {hasUnread ? (
+          <div className="w-2 h-2 rounded-full bg-accent" />
+        ) : needsFollowUp ? (
+          <div className="w-2 h-2 rounded-full bg-warning" />
+        ) : null}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -53,7 +65,10 @@ function ConversationListItem({
           </span>
         </div>
 
-        <p className="text-xs text-muted truncate mt-0.5">{preview}</p>
+        <p className="text-xs text-muted truncate mt-0.5">
+          {item.last_direction === 'out' && <span className="text-accent/60">Você: </span>}
+          {preview}
+        </p>
 
         <div className="flex items-center gap-1.5 mt-1.5">
           {item.outreach_channel && item.outreach_channel !== 'pending' && (
@@ -70,6 +85,11 @@ function ConversationListItem({
           <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[item.status]}`}>
             {STATUS_LABELS[item.status]}
           </span>
+          {needsFollowUp && (
+            <span className="text-[9px] px-1 py-0.5 rounded text-warning bg-warning/10 border border-warning/20">
+              Follow-up
+            </span>
+          )}
           {hasUnread && (
             <span className="text-[9px] font-semibold text-accent ml-auto">
               {item.unread_count}
@@ -95,6 +115,7 @@ function formatTime(dateStr: string): string {
 
 function MessageBubble({ conv }: { conv: Conversation }) {
   const isOut = conv.direction === 'out'
+  const isAutoReply = conv.approved_by === 'auto-reply'
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div className="max-w-[80%] space-y-1">
@@ -102,7 +123,9 @@ function MessageBubble({ conv }: { conv: Conversation }) {
           className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
             isOut
               ? 'bg-accent/15 border border-accent/25 text-text'
-              : 'bg-card border border-border text-text'
+              : isAutoReply
+                ? 'bg-card border border-border text-text/50'
+                : 'bg-card border border-border text-text'
           }`}
         >
           {conv.message}
@@ -112,6 +135,11 @@ function MessageBubble({ conv }: { conv: Conversation }) {
           {conv.suggested_by_ai && (
             <span className="text-[10px] text-accent/70 px-1.5 py-0.5 rounded bg-accent/10 border border-accent/15">
               IA
+            </span>
+          )}
+          {isAutoReply && (
+            <span className="text-[10px] text-warning/70 px-1.5 py-0.5 rounded bg-warning/10 border border-warning/15">
+              Auto-reply
             </span>
           )}
         </div>
@@ -157,10 +185,16 @@ function InboxReplyBox({
 
   async function handleSavePhone() {
     if (!phoneInput.trim()) return
+    // Normalize: keep only digits
+    const digits = phoneInput.trim().replace(/\D/g, '')
+    if (digits.length < 10) {
+      setSendError('Telefone inválido — mínimo 10 dígitos')
+      return
+    }
     const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phoneInput.trim() }),
+      body: JSON.stringify({ phone: digits }),
     })
     if (res.ok) {
       setNeedsPhone(false)

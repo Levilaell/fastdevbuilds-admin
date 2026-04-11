@@ -3,12 +3,26 @@ import type { Lead, Project } from '@/lib/types'
 // ─── Helpers used by prompt builders ───
 
 export function buildLeadContext(lead: Lead, reasonsText: string): string {
-  return `- Negócio: ${lead.business_name ?? 'Desconhecido'}
-- Cidade: ${lead.city ?? '—'}
-- Tech stack: ${lead.tech_stack ?? '—'}
-- Score de dor: ${lead.pain_score ?? '—'}/10
-- Problemas detectados: ${reasonsText || 'Nenhum'}
-- Score mobile: ${lead.mobile_score ?? '—'}`
+  const lines = [
+    `- Negócio: ${lead.business_name ?? 'Desconhecido'}`,
+    `- Cidade: ${lead.city ?? '—'}`,
+    `- Site: ${lead.website ?? 'sem site'}`,
+    `- Tech stack: ${lead.tech_stack ?? '—'}`,
+    `- Score de dor: ${lead.pain_score ?? '—'}/10`,
+    `- Problemas detectados: ${reasonsText || 'Nenhum'}`,
+  ]
+
+  // Include real PageSpeed metrics when available for more specific/credible messages
+  if (lead.mobile_score != null) lines.push(`- Score mobile PageSpeed: ${Math.round(lead.mobile_score)}/100`)
+  if (lead.perf_score != null) lines.push(`- Score performance: ${Math.round(lead.perf_score)}/100`)
+  if (lead.fcp != null) lines.push(`- First Contentful Paint: ${(lead.fcp / 1000).toFixed(1)}s`)
+  if (lead.lcp != null) lines.push(`- Largest Contentful Paint (tempo de carregamento): ${(lead.lcp / 1000).toFixed(1)}s`)
+  if (lead.cls != null) lines.push(`- CLS (instabilidade visual): ${lead.cls.toFixed(3)}`)
+  if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
+  if (lead.is_mobile_friendly === false) lines.push('- Mobile: NÃO é otimizado para celular')
+  if (lead.scrape_failed) lines.push('- Análise do site: FALHOU (site pode estar offline ou bloqueando)')
+
+  return lines.join('\n')
 }
 
 // ─── 1. Suggestion prompt (reply-box "Sugerir com IA") ───
@@ -31,6 +45,7 @@ Regras:
 - NÃO sugira calls, ligações, reuniões ou videochamadas
 - NÃO mencione formas de pagamento específicas (Stripe, MercadoPago etc.)
 - Se for falar de preço, reforce que o modelo é "só paga se gostar" — o cliente vê o resultado antes de pagar qualquer coisa, via PIX
+- Quando métricas do PageSpeed estiverem disponíveis, use NÚMEROS ESPECÍFICOS (ex: "seu site carrega em 8.3 segundos no celular" em vez de "site lento")
 - Foque em valor concreto que você pode entregar baseado nos problemas detectados`
 }
 
@@ -51,6 +66,7 @@ Rules for the suggested reply:
 - NEVER suggest calls, meetings, or video calls
 - NEVER mention specific payment methods (Stripe, MercadoPago, etc.)
 - If price comes up, reinforce: "só paga se gostar" — the client sees the finished result before paying anything, via PIX
+- When PageSpeed metrics are available, use SPECIFIC numbers (e.g., "seu site carrega em 8.3 segundos" instead of "site lento")
 - Sign as Levi
 
 Respond ONLY with valid JSON, no markdown, no explanation:
@@ -66,9 +82,15 @@ export function buildClassifyUserPrompt(
   historyText: string,
   newMessage: string,
 ): string {
+  const metrics: string[] = []
+  if (lead.lcp != null) metrics.push(`load time: ${(lead.lcp / 1000).toFixed(1)}s`)
+  if (lead.mobile_score != null) metrics.push(`mobile score: ${Math.round(lead.mobile_score)}/100`)
+  if (lead.perf_score != null) metrics.push(`perf score: ${Math.round(lead.perf_score)}/100`)
+
   return `Business: ${lead.business_name ?? 'Desconhecido'}
+Site: ${lead.website ?? 'N/A'}
 Detected problems: ${reasonsText}
-Original outreach message: ${lead.message ?? 'N/A'}
+${metrics.length > 0 ? `PageSpeed metrics: ${metrics.join(', ')}\n` : ''}Original outreach message: ${lead.message ?? 'N/A'}
 Conversation history:
 ${historyText}
 New message received: ${newMessage}

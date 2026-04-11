@@ -41,8 +41,10 @@ export async function GET(request: NextRequest) {
     status: LeadStatus
     last_message: string | null
     last_message_at: string | null
+    last_direction: string | null
     unread_count: number
     archived: boolean
+    waiting_since: string | null
   }>()
 
   for (const row of rows) {
@@ -58,8 +60,11 @@ export async function GET(request: NextRequest) {
         status: row.leads?.status ?? 'prospected',
         last_message: row.message,
         last_message_at: row.sent_at,
+        last_direction: row.direction,
         unread_count: isUnread ? 1 : 0,
         archived: isArchived,
+        // If the latest message is outbound, track when we sent it (waiting for reply)
+        waiting_since: row.direction === 'out' ? row.sent_at : null,
       })
     } else {
       if (isUnread) existing.unread_count++

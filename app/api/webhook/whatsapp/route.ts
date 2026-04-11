@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
+import { isAutoReply, isInstantReply } from '@/lib/auto-reply'
 import type { Lead } from '@/lib/types'
 
 /** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
@@ -97,15 +98,17 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    // Only process inbound messages
+    // Only process message events
     if (body.event !== 'messages.upsert') {
       return Response.json({ ok: true })
     }
 
     const data = body.data
-    if (!data?.key || data.key.fromMe) {
+    if (!data?.key) {
       return Response.json({ ok: true })
     }
+
+    const isFromMe = !!data.key.fromMe
 
     // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''
@@ -124,7 +127,6 @@ export async function POST(request: Request) {
       if (resolved) {
         phone = resolved
       } else {
-        // LID couldn't be resolved — use pushName as identifier, not the LID number
         console.log('[webhook] could not resolve LID, phone will be empty')
         phone = ''
       }
@@ -144,7 +146,7 @@ export async function POST(request: Request) {
 
     const normalizedPhone = phone ? normalize(phone) : ''
     const preview = text.length > 60 ? text.slice(0, 60) + '…' : text
-    console.log('[webhook] phone:', normalizedPhone || '(unresolved LID)', preview)
+    console.log(`[webhook] ${isFromMe ? 'OUT' : 'IN'} phone:`, normalizedPhone || '(unresolved LID)', preview)
 
     // Use service key to bypass RLS
     const supabase = createClient(
@@ -183,10 +185,13 @@ export async function POST(request: Request) {
           .eq('place_id', placeId)
         console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
       }
+    } else if (isFromMe) {
+      // Outbound message to unknown number — skip, no lead to attach to
+      console.log('[webhook] outbound message to unknown number, skipping')
+      return Response.json({ ok: true })
     } else {
       // Create minimal lead for unknown inbound contact
       const pushName: string = data.pushName ?? ''
-      // Use phone if resolved, otherwise use the raw JID value for a stable ID
       placeId = normalizedPhone && isValidPhone(normalizedPhone)
         ? `unknown_${normalizedPhone}`
         : `unknown_${jidValue}`
@@ -208,6 +213,61 @@ export async function POST(request: Request) {
       }
     }
 
+    // For outbound messages sent from the phone, check for duplicates
+    // (the dashboard send flow already saves its own conversation record)
+    if (isFromMe) {
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('place_id', placeId)
+        .eq('direction', 'out')
+        .eq('message', text)
+        .gte('sent_at', new Date(Date.now() - 60_000).toISOString())
+        .limit(1)
+
+      if (existing && existing.length > 0) {
+        console.log('[webhook] outbound message already saved by send flow, skipping duplicate')
+        return Response.json({ ok: true })
+      }
+
+      // Save outbound message from phone
+      const { error: convError } = await supabase
+        .from('conversations')
+        .insert({
+          place_id: placeId,
+          direction: 'out',
+          channel: 'whatsapp',
+          message: text,
+          sent_at: sentAt,
+          suggested_by_ai: false,
+        })
+
+      if (convError) {
+        console.error('[webhook] failed to save outbound conversation:', convError.message)
+      }
+
+      console.log('[webhook] saved outbound message for lead', placeId)
+      return Response.json({ ok: true })
+    }
+
+    // ─── Inbound message handling below ───
+
+    // Dedup: Evolution API may send the same webhook multiple times
+    const { data: inboundDup } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('place_id', placeId)
+      .eq('direction', 'in')
+      .eq('message', text)
+      .gte('sent_at', new Date(new Date(sentAt).getTime() - 5_000).toISOString())
+      .lte('sent_at', new Date(new Date(sentAt).getTime() + 5_000).toISOString())
+      .limit(1)
+
+    if (inboundDup && inboundDup.length > 0) {
+      console.log('[webhook] duplicate inbound message detected, skipping')
+      return Response.json({ ok: true })
+    }
+
     // Save conversation
     const { data: conv, error: convError } = await supabase
       .from('conversations')
@@ -226,7 +286,42 @@ export async function POST(request: Request) {
       console.error('[webhook] failed to save conversation:', convError.message)
     }
 
-    // Auto-advance: sent → replied
+    // Detect bot/auto-reply messages
+    // Check content patterns and response speed
+    const { data: lastOutbound } = await supabase
+      .from('conversations')
+      .select('sent_at')
+      .eq('place_id', placeId)
+      .eq('direction', 'out')
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const autoReplyByContent = isAutoReply(text)
+    const autoReplyBySpeed = isInstantReply(
+      timestamp ? Number(timestamp) : sentAt,
+      lastOutbound?.sent_at ?? null,
+    )
+    const isAutoReplyMessage = autoReplyByContent || autoReplyBySpeed
+
+    if (isAutoReplyMessage) {
+      console.log('[webhook] auto-reply detected for', placeId,
+        autoReplyByContent ? '(content match)' : '(instant reply)')
+
+      // Don't advance status for auto-replies — they're not real engagement
+      // Save a flag in the conversation for visibility
+      if (conv?.id) {
+        await supabase
+          .from('conversations')
+          .update({ approved_by: 'auto-reply' })
+          .eq('id', conv.id)
+      }
+
+      console.log('[webhook] saved auto-reply message for lead', placeId, '(skipping AI)')
+      return Response.json({ ok: true })
+    }
+
+    // Auto-advance: sent → replied (only for genuine replies)
     if (leadStatus === 'sent') {
       await supabase
         .from('leads')
@@ -237,7 +332,7 @@ export async function POST(request: Request) {
         .eq('place_id', placeId)
     }
 
-    // Fire and forget — AI classify + suggest (for both existing and new leads)
+    // Fire and forget — AI classify + suggest (only for genuine replies)
     const fullLead = await supabase
       .from('leads')
       .select('*')
@@ -257,7 +352,7 @@ export async function POST(request: Request) {
       })
     }
 
-    console.log('[webhook] saved message for lead', placeId)
+    console.log('[webhook] saved inbound message for lead', placeId)
     return Response.json({ ok: true })
   } catch (err) {
     console.error('[webhook] error:', err)

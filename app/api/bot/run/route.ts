@@ -102,12 +102,61 @@ export async function POST(request: NextRequest) {
     let collected = 0
     let qualified = 0
     let sent = 0
+    let lastSyncedSent = 0
     const logLines: string[] = []
+
+    // Sync conversations for recently sent leads — called periodically during stream
+    async function syncNewlySentLeads() {
+      try {
+        const runStart = new Date(runStartedAt).toISOString()
+        const { data: sentLeads } = await supabase
+          .from('leads')
+          .select('place_id, message, outreach_sent_at, outreach_channel')
+          .eq('outreach_sent', true)
+          .gte('outreach_sent_at', runStart)
+          .not('message', 'is', null)
+
+        if (!sentLeads || sentLeads.length === 0) return
+
+        const placeIds = sentLeads.map(l => l.place_id)
+        const { data: existingConvs } = await supabase
+          .from('conversations')
+          .select('place_id, message')
+          .in('place_id', placeIds)
+          .eq('direction', 'out')
+
+        const existingKeys = new Set(
+          (existingConvs ?? []).map(c => `${c.place_id}::${c.message}`)
+        )
+        const missing = sentLeads.filter(
+          l => !existingKeys.has(`${l.place_id}::${l.message}`)
+        )
+
+        if (missing.length > 0) {
+          console.log('[bot/run] syncing', missing.length, 'outreach conversations')
+          await supabase.from('conversations').insert(
+            missing.map(l => ({
+              place_id: l.place_id,
+              direction: 'out' as const,
+              channel: (l.outreach_channel ?? 'whatsapp') as string,
+              message: l.message,
+              sent_at: l.outreach_sent_at ?? new Date().toISOString(),
+              suggested_by_ai: false,
+            })),
+          )
+        }
+      } catch (err) {
+        console.error('[bot/run] conversation sync failed:', err)
+      }
+    }
 
     const stream = new ReadableStream({
       async pull(controller) {
         const { done, value } = await reader.read()
         if (done) {
+          // Final sync for any remaining unsaved conversations
+          await syncNewlySentLeads()
+
           // Finalize run
           if (runId) {
             const durationSeconds = Math.round((Date.now() - runStartedAt) / 1000)
@@ -123,48 +172,6 @@ export async function POST(request: NextRequest) {
                 log: logLines.join('\n'),
               })
               .eq('id', runId)
-          }
-
-          // Sync outreach messages to conversations table so they appear in inbox.
-          // The bot saves leads with outreach_sent=true and message, but doesn't
-          // create conversation records. Find leads sent during this run window
-          // that have no outbound conversation yet and create one for each.
-          try {
-            const runStart = new Date(runStartedAt).toISOString()
-            const { data: sentLeads } = await supabase
-              .from('leads')
-              .select('place_id, message, outreach_sent_at, outreach_channel')
-              .eq('outreach_sent', true)
-              .gte('outreach_sent_at', runStart)
-              .not('message', 'is', null)
-
-            if (sentLeads && sentLeads.length > 0) {
-              // Get place_ids that already have outbound conversations
-              const placeIds = sentLeads.map(l => l.place_id)
-              const { data: existingConvs } = await supabase
-                .from('conversations')
-                .select('place_id')
-                .in('place_id', placeIds)
-                .eq('direction', 'out')
-
-              const hasConv = new Set((existingConvs ?? []).map(c => c.place_id))
-              const missing = sentLeads.filter(l => !hasConv.has(l.place_id))
-
-              if (missing.length > 0) {
-                await supabase.from('conversations').insert(
-                  missing.map(l => ({
-                    place_id: l.place_id,
-                    direction: 'out' as const,
-                    channel: (l.outreach_channel ?? 'whatsapp') as string,
-                    message: l.message,
-                    sent_at: l.outreach_sent_at ?? new Date().toISOString(),
-                    suggested_by_ai: false,
-                  })),
-                )
-              }
-            }
-          } catch (err) {
-            console.error('[bot/run] conversation sync failed:', err)
           }
 
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -197,6 +204,13 @@ export async function POST(request: NextRequest) {
               // Not valid JSON, pass through
             }
           }
+        }
+
+        // Progressive sync: when sent count increases, sync conversations immediately
+        // so they appear in inbox without waiting for the run to finish
+        if (sent > lastSyncedSent) {
+          lastSyncedSent = sent
+          syncNewlySentLeads().catch(() => {})
         }
 
         controller.enqueue(value)
