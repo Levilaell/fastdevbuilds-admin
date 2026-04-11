@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
     .from('leads')
     .select('place_id, business_name, outreach_channel, status, inbox_archived_at')
 
+  leadsQuery.not('status', 'in', '("disqualified","lost")')
+
   if (showArchived) {
     leadsQuery.not('inbox_archived_at', 'is', null)
   } else {
