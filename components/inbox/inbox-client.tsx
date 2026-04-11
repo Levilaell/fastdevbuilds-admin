@@ -545,11 +545,11 @@ export default function InboxClient() {
           event: 'INSERT',
           schema: 'public',
           table: 'conversations',
-          filter: 'direction=eq.in',
         },
         (payload) => {
           const newConv = payload.new as Conversation
           const currentActive = activePlaceIdRef.current
+          const isInbound = newConv.direction === 'in'
 
           // Update inbox list
           setItems((prev) => {
@@ -561,7 +561,11 @@ export default function InboxClient() {
                       ...i,
                       last_message: newConv.message,
                       last_message_at: newConv.sent_at,
-                      unread_count: currentActive === newConv.place_id ? 0 : i.unread_count + 1,
+                      last_direction: newConv.direction,
+                      unread_count: isInbound && currentActive !== newConv.place_id
+                        ? i.unread_count + 1
+                        : i.unread_count,
+                      waiting_since: newConv.direction === 'out' ? newConv.sent_at : null,
                     }
                   : i
               )
@@ -579,16 +583,22 @@ export default function InboxClient() {
 
           // If active conversation, add message
           if (currentActive === newConv.place_id) {
-            setConversations((prev) => [...prev, newConv])
-            markAsRead(newConv.place_id)
+            setConversations((prev) => {
+              // Avoid duplicates
+              if (prev.some(c => c.id === newConv.id)) return prev
+              return [...prev, newConv]
+            })
+            if (isInbound) markAsRead(newConv.place_id)
           }
 
-          // Notification sound
-          try {
-            const audio = new Audio('/sounds/notification.mp3')
-            audio.play().catch(() => {})
-          } catch {
-            // Ignore
+          // Notification sound only for inbound
+          if (isInbound) {
+            try {
+              const audio = new Audio('/sounds/notification.mp3')
+              audio.play().catch(() => {})
+            } catch {
+              // Ignore
+            }
           }
         }
       )
