@@ -48,7 +48,7 @@ function SkeletonCard() {
 
 export function KanbanSkeleton() {
   return (
-    <div className="grid grid-cols-8 gap-2 pb-4 px-6 pt-4">
+    <div className="grid grid-cols-6 gap-2 pb-4 px-6 pt-4">
       {PIPELINE_STATUSES.map((status) => (
         <div key={status} className="min-w-0">
           <div className="flex items-center gap-2 mb-3 px-3 pt-3">
@@ -224,7 +224,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-8 gap-2 pb-4 px-6">
+        <div className="grid grid-cols-6 gap-2 pb-4 px-6">
           {PIPELINE_STATUSES.map((status) => {
             const cards = grouped[status] ?? []
             return (
