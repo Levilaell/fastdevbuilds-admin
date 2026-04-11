@@ -236,7 +236,6 @@ export type LeadCard = Pick<
   | 'status'
   | 'status_updated_at'
   | 'niche'
-  | 'inbox_archived_at'
 > & {
   project_status?: ProjectStatus | null
   has_unread?: boolean

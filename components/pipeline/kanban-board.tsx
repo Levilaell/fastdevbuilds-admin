@@ -8,7 +8,6 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd'
 import {
-  LEAD_STATUSES,
   PIPELINE_STATUSES,
   STATUS_LABELS,
   type LeadCard,
@@ -75,7 +74,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   const [channel, setChannel] = useState('')
   const [minScore, setMinScore] = useState(0)
   const [niche, setNiche] = useState('')
-  const [showArchived, setShowArchived] = useState(false)
   const [toast, setToast] = useState('')
 
   const niches = useMemo(() => {
@@ -86,23 +84,15 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     return Array.from(set).sort()
   }, [initialLeads])
 
-  const archivedCount = useMemo(
-    () => leads.filter((l) => !!l.inbox_archived_at).length,
-    [leads],
-  )
-
   const filtered = useMemo(() => {
     return leads.filter((l) => {
-      // Archive filter: show only matching archive state
-      const isArchived = !!l.inbox_archived_at
-      if (showArchived ? !isArchived : isArchived) return false
       if (search && !(l.business_name ?? '').toLowerCase().includes(search.toLowerCase())) return false
       if (channel && l.outreach_channel !== channel) return false
       if (minScore > 0 && (l.pain_score ?? 0) < minScore) return false
       if (niche && l.niche !== niche) return false
       return true
     })
-  }, [leads, search, channel, minScore, niche, showArchived])
+  }, [leads, search, channel, minScore, niche])
 
   const grouped = useMemo(() => {
     const map: Partial<Record<LeadStatus, LeadCard[]>> = {}
@@ -121,10 +111,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     const newStatus = destination.droppableId as LeadStatus
     const oldStatus = source.droppableId
 
-    // Confirm status change
     if (!confirm(`Mover lead de "${STATUS_LABELS[oldStatus as LeadStatus]}" para "${STATUS_LABELS[newStatus]}"?`)) return
 
-    // Optimistic update
     setLeads((prev) =>
       prev.map((l) =>
         l.place_id === draggableId
@@ -165,7 +153,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   }, [])
 
   const handleDisqualify = useCallback(async (placeId: string) => {
-    // Optimistic: remove from pipeline
+    const original = leads.find((l) => l.place_id === placeId)?.status
+
     setLeads((prev) =>
       prev.map((l) =>
         l.place_id === placeId
@@ -181,11 +170,10 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         body: JSON.stringify({ status: 'disqualified' }),
       })
       if (!res.ok) {
-        // Rollback
         setLeads((prev) =>
           prev.map((l) =>
             l.place_id === placeId
-              ? { ...l, status: 'prospected' as LeadStatus }
+              ? { ...l, status: (original ?? 'prospected') as LeadStatus }
               : l
           )
         )
@@ -196,65 +184,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       setLeads((prev) =>
         prev.map((l) =>
           l.place_id === placeId
-            ? { ...l, status: 'prospected' as LeadStatus }
-            : l
-        )
-      )
-    }
-  }, [])
-
-  const handleArchive = useCallback(async (placeId: string, unarchive: boolean) => {
-    if (!unarchive && !confirm('Arquivar este lead? Ele sera movido para "Perdido".')) return
-    const now = new Date().toISOString()
-
-    // Capture original value for rollback
-    const originalLead = leads.find((l) => l.place_id === placeId)
-    const originalArchivedAt = originalLead?.inbox_archived_at ?? null
-    const originalStatus = originalLead?.status
-
-    // Optimistic update: archive + mark as lost
-    setLeads((prev) =>
-      prev.map((l) => {
-        if (l.place_id !== placeId) return l
-        if (unarchive) return { ...l, inbox_archived_at: null }
-        return { ...l, inbox_archived_at: now, status: 'lost' as LeadStatus }
-      })
-    )
-
-    try {
-      // Archive/unarchive
-      const archiveRes = await fetch(`/api/inbox/${encodeURIComponent(placeId)}/archive`, {
-        method: unarchive ? 'DELETE' : 'POST',
-      })
-
-      if (!archiveRes.ok) {
-        // Rollback to original values
-        setLeads((prev) =>
-          prev.map((l) =>
-            l.place_id === placeId
-              ? { ...l, inbox_archived_at: originalArchivedAt, status: originalStatus ?? l.status }
-              : l
-          )
-        )
-        setToast('Erro ao arquivar lead')
-        setTimeout(() => setToast(''), 4000)
-        return
-      }
-
-      // When archiving, also set status to 'lost'
-      if (!unarchive) {
-        await fetch(`/api/leads/${encodeURIComponent(placeId)}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'lost' }),
-        })
-      }
-    } catch {
-      // Rollback to original values
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.place_id === placeId
-            ? { ...l, inbox_archived_at: originalArchivedAt, status: originalStatus ?? l.status }
+            ? { ...l, status: (original ?? 'prospected') as LeadStatus }
             : l
         )
       )
@@ -274,9 +204,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
           niche={niche}
           onNicheChange={setNiche}
           niches={niches}
-          showArchived={showArchived}
-          onShowArchivedChange={setShowArchived}
-          archivedCount={archivedCount}
         />
       </div>
 
@@ -286,7 +213,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             const cards = grouped[status] ?? []
             return (
               <div key={status} className="min-w-0 bg-sidebar border border-border rounded-xl">
-                {/* Column header */}
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
                     {STATUS_LABELS[status]}
@@ -296,7 +222,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                   </span>
                 </div>
 
-                {/* Droppable column */}
                 <Droppable droppableId={status}>
                   {(provided, snapshot) => (
                     <div
@@ -317,7 +242,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                               {...provided.dragHandleProps}
                               className={snapshot.isDragging ? 'opacity-90 rotate-1' : ''}
                             >
-                              <LeadCardComponent lead={lead} onArchive={handleArchive} onDisqualify={handleDisqualify} />
+                              <LeadCardComponent lead={lead} onDisqualify={handleDisqualify} />
                             </div>
                           )}
                         </Draggable>
@@ -332,7 +257,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         </div>
       </DragDropContext>
 
-      {/* Error toast */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg bg-danger/90 text-white text-sm shadow-lg">
           {toast}

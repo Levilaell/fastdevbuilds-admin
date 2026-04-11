@@ -275,7 +275,6 @@ export default function InboxClient() {
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
-  const [showArchived, setShowArchived] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -287,14 +286,13 @@ export default function InboxClient() {
 
   // Fetch inbox list
   const fetchInbox = useCallback(async () => {
-    const url = showArchived ? '/api/inbox?archived=true' : '/api/inbox'
-    const res = await fetch(url)
+    const res = await fetch('/api/inbox')
     if (res.ok) {
       const data = await res.json()
       setItems(data)
     }
     setLoading(false)
-  }, [showArchived])
+  }, [])
 
   // Fetch conversation + suggestion + project for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
@@ -473,32 +471,6 @@ export default function InboxClient() {
 
   // Realtime handles live updates — no polling needed
 
-  // Archive / unarchive a conversation
-  async function handleArchive(placeId: string, unarchive = false) {
-    if (!unarchive && !confirm('Arquivar esta conversa?')) return
-    const url = `/api/inbox/${encodeURIComponent(placeId)}/archive`
-    const res = await fetch(url, { method: unarchive ? 'DELETE' : 'POST' })
-    if (!res.ok) {
-      showToast('Erro ao arquivar conversa', 'error')
-      return
-    }
-    showToast(unarchive ? 'Conversa desarquivada' : 'Conversa arquivada')
-    // Remove from current list
-    setItems((prev) => prev.filter((i) => i.place_id !== placeId))
-    if (activePlaceId === placeId) {
-      setActivePlaceId(null)
-      setConversations([])
-    }
-  }
-
-  // Refetch when switching tabs
-  useEffect(() => {
-    setLoading(true)
-    setActivePlaceId(null)
-    setConversations([])
-    fetchInbox()
-  }, [showArchived, fetchInbox])
-
   // Handle new outbound message
   function handleNewMessage(conv: Conversation) {
     setConversations((prev) => [...prev, conv])
@@ -537,16 +509,6 @@ export default function InboxClient() {
                 </span>
               )}
             </div>
-            <button
-              onClick={() => setShowArchived(!showArchived)}
-              className={`text-[10px] px-2 py-1 rounded-lg border ${
-                showArchived
-                  ? 'border-accent/30 text-accent bg-accent/10'
-                  : 'border-border text-muted hover:text-text'
-              }`}
-            >
-              {showArchived ? 'Ativas' : 'Arquivadas'}
-            </button>
           </div>
           <div className="relative">
             <svg
@@ -692,12 +654,6 @@ export default function InboxClient() {
                     }
                   }}
                 />
-                <button
-                  onClick={() => handleArchive(activePlaceId, showArchived)}
-                  className="px-2 py-1 text-[10px] rounded-lg border border-border text-muted hover:text-text"
-                >
-                  {showArchived ? 'Desarquivar' : 'Arquivar'}
-                </button>
                 <Link
                   href={`/leads/${encodeURIComponent(activePlaceId)}`}
                   className="text-xs text-accent hover:underline"

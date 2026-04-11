@@ -65,13 +65,10 @@ function PendingIndicator({ lead }: { lead: LeadCard }) {
 
 interface LeadCardProps {
   lead: LeadCard
-  onArchive?: (placeId: string, unarchive: boolean) => void
   onDisqualify?: (placeId: string) => void
 }
 
-function LeadCardComponent({ lead, onArchive, onDisqualify }: LeadCardProps) {
-  const isArchived = !!lead.inbox_archived_at
-
+function LeadCardComponent({ lead, onDisqualify }: LeadCardProps) {
   return (
     <div className="relative group">
       <Link
@@ -109,52 +106,26 @@ function LeadCardComponent({ lead, onArchive, onDisqualify }: LeadCardProps) {
         <PendingIndicator lead={lead} />
       </Link>
 
-      {/* Action buttons — visible on hover */}
-      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {onDisqualify && (
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              if (confirm('Desqualificar este lead? Ele será removido do pipeline.')) {
-                onDisqualify(lead.place_id)
-              }
-            }}
-            title="Desqualificar"
-            className="p-1 rounded bg-card border border-border text-muted hover:text-danger hover:border-danger/50"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="15" y1="9" x2="9" y2="15" />
-              <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-          </button>
-        )}
-        {onArchive && (
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              onArchive(lead.place_id, isArchived)
-            }}
-            title={isArchived ? 'Desarquivar' : 'Arquivar'}
-            className="p-1 rounded bg-card border border-border text-muted hover:text-text hover:border-accent/50"
-          >
-          {isArchived ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="1 4 1 10 7 10" />
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="21 8 21 21 3 21 3 8" />
-              <rect x="1" y="3" width="22" height="5" />
-              <line x1="10" y1="12" x2="14" y2="12" />
-            </svg>
-          )}
+      {/* Disqualify button — visible on hover */}
+      {onDisqualify && (
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (confirm('Desqualificar este lead? Ele será removido do pipeline.')) {
+              onDisqualify(lead.place_id)
+            }
+          }}
+          title="Desqualificar"
+          className="absolute top-2 right-2 p-1 rounded bg-card border border-border text-muted hover:text-danger hover:border-danger/50 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="15" y1="9" x2="9" y2="15" />
+            <line x1="9" y1="9" x2="15" y2="15" />
+          </svg>
         </button>
       )}
-      </div>
     </div>
   )
 }
