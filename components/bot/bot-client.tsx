@@ -31,6 +31,29 @@ interface Territory {
   last_run_at: string | null
 }
 
+interface AutoQueueItem {
+  niche: string
+  searchCity: string
+  country: string
+  lang: string
+}
+
+interface AutoQueueData {
+  stats: {
+    total: number
+    prospected: number
+    remaining: number
+    whatsappSentToday: number
+    whatsappSlotsLeft: number
+  }
+  queue: AutoQueueItem[]
+  summary: {
+    br: number
+    us: number
+    estimatedLeads: number
+  }
+}
+
 // ─── Helpers ───
 
 function classifyLine(text: string): TermLine['type'] {
@@ -60,6 +83,17 @@ function queueId(): string {
 // ─── Main component ───
 
 export default function BotClient() {
+  // Mode toggle
+  const [mode, setMode] = useState<'manual' | 'auto'>('manual')
+
+  // Auto mode state
+  const [autoQueue, setAutoQueue] = useState<AutoQueueData | null>(null)
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [autoLimit, setAutoLimit] = useState(20)
+  const [autoMinScore, setAutoMinScore] = useState(4)
+  const [autoSend, setAutoSend] = useState(false)
+  const [autoDryRun, setAutoDryRun] = useState(false)
+
   // Form state
   const [niche, setNiche] = useState('')
   const [city, setCity] = useState('')
@@ -123,10 +157,24 @@ export default function BotClient() {
     } catch { /* ignore */ }
   }, [])
 
+  const fetchAutoQueue = useCallback(async () => {
+    setAutoLoading(true)
+    try {
+      const res = await fetch('/api/bot/queue')
+      if (res.ok) setAutoQueue(await res.json())
+    } catch { /* ignore */ }
+    finally { setAutoLoading(false) }
+  }, [])
+
   useEffect(() => {
     fetchTerritories()
     fetchRuns()
   }, [fetchTerritories, fetchRuns])
+
+  // Fetch auto queue when switching to auto mode
+  useEffect(() => {
+    if (mode === 'auto' && !autoQueue) fetchAutoQueue()
+  }, [mode, autoQueue, fetchAutoQueue])
 
   // Auto-scroll terminal using requestAnimationFrame
   useEffect(() => {
@@ -311,6 +359,84 @@ export default function BotClient() {
     setRunningIndex(null)
   }
 
+  // ─── Run auto mode ───
+
+  async function handleRunAuto(dry: boolean) {
+    if (running) return
+    setStatus('running')
+    cancelledRef.current = false
+    setLines([
+      { text: '━━━ Modo Autônomo ━━━', type: 'accent' },
+      { text: `$ prospect-bot --auto --limit ${autoLimit} --min-score ${autoMinScore}${dry ? ' --dry' : ''}${autoSend && !dry ? ' --send' : ''}`, type: 'info' },
+    ])
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      const res = await fetch('/api/bot/run-auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          limit: autoLimit,
+          min_score: autoMinScore,
+          dry_run: dry,
+          send: autoSend && !dry,
+        }),
+        signal: controller.signal,
+      })
+
+      if (!res.body) {
+        setLines(prev => [...prev, { text: '❌ Sem resposta do servidor', type: 'error' }])
+        setStatus('error')
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue
+          const payload = part.slice(6)
+
+          if (payload === '[DONE]') {
+            setStatus('done')
+            fetchRuns()
+            fetchAutoQueue()
+            return
+          }
+
+          try {
+            const parsed = JSON.parse(payload)
+            const lineText: string = parsed.line ?? payload
+            const lineType: TermLine['type'] = parsed.type ?? classifyLine(lineText)
+            setLines(prev => [...prev, { text: lineText, type: lineType }])
+          } catch {
+            setLines(prev => [...prev, { text: payload, type: classifyLine(payload) }])
+          }
+        }
+      }
+
+      setStatus(cancelledRef.current ? 'error' : 'done')
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        setLines(prev => [...prev, { text: `❌ ${msg}`, type: 'error' }])
+      }
+      setStatus('error')
+    }
+    fetchRuns()
+  }
+
   // ─── Fill form from history ───
 
   function fillFromRun(run: BotRun) {
@@ -361,9 +487,209 @@ export default function BotClient() {
     <div className="flex h-[calc(100vh-56px)]">
       {/* ─── Left Panel ─── */}
       <div className="w-[380px] flex-none border-r border-border overflow-y-auto p-5 space-y-5">
-        <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
-          Configuração do Bot
-        </h2>
+        {/* Mode toggle */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
+            {mode === 'manual' ? 'Modo Manual' : 'Modo Automático'}
+          </h2>
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => setMode('manual')}
+              className={`px-3 py-1 text-[11px] font-medium ${
+                mode === 'manual' ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'
+              }`}
+            >
+              Manual
+            </button>
+            <button
+              onClick={() => setMode('auto')}
+              className={`px-3 py-1 text-[11px] font-medium border-l border-border ${
+                mode === 'auto' ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'
+              }`}
+            >
+              Auto
+            </button>
+          </div>
+        </div>
+
+        {mode === 'auto' ? (
+          /* ─── Auto Mode Panel ─── */
+          <div className="space-y-4">
+            {/* Stats */}
+            {autoLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+              </div>
+            ) : autoQueue ? (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">Total</p>
+                    <p className="text-lg font-semibold text-text tabular-nums">{autoQueue.stats.total}</p>
+                  </div>
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-success uppercase">Feitos</p>
+                    <p className="text-lg font-semibold text-success tabular-nums">{autoQueue.stats.prospected}</p>
+                  </div>
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-warning uppercase">Fila</p>
+                    <p className="text-lg font-semibold text-warning tabular-nums">{autoQueue.stats.remaining}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">WA hoje</p>
+                    <p className="text-sm font-medium text-text tabular-nums">{autoQueue.stats.whatsappSentToday}/50</p>
+                  </div>
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">Slots livres</p>
+                    <p className={`text-sm font-medium tabular-nums ${autoQueue.stats.whatsappSlotsLeft > 0 ? 'text-success' : 'text-danger'}`}>
+                      {autoQueue.stats.whatsappSlotsLeft}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">BR</p>
+                    <p className="text-sm font-medium text-text">{autoQueue.summary.br}</p>
+                  </div>
+                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">US</p>
+                    <p className="text-sm font-medium text-text">{autoQueue.summary.us}</p>
+                  </div>
+                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-muted uppercase">Est. leads</p>
+                    <p className="text-sm font-medium text-text">~{autoQueue.summary.estimatedLeads}</p>
+                  </div>
+                </div>
+
+                {/* Queue preview */}
+                {autoQueue.queue.length > 0 && (
+                  <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border">
+                      <span className="text-[10px] uppercase tracking-wider text-muted">
+                        Próximos na fila ({autoQueue.stats.remaining})
+                      </span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto divide-y divide-border">
+                      {autoQueue.queue.slice(0, 20).map((item, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                          <span className="text-text truncate">{item.niche}</span>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            <span className="text-muted">{item.searchCity}</span>
+                            <span className={`text-[9px] px-1 py-0.5 rounded ${
+                              item.country === 'BR'
+                                ? 'text-emerald-400 bg-emerald-500/10'
+                                : 'text-blue-400 bg-blue-500/10'
+                            }`}>
+                              {item.country}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted text-center py-4">
+                Erro ao carregar fila. Verifique BOT_SERVER_URL.
+              </p>
+            )}
+
+            {/* Auto params */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-muted mb-1.5">Limite/item</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={60}
+                  value={autoLimit}
+                  onChange={e => setAutoLimit(Number(e.target.value) || 20)}
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1.5">Score mín.</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={autoMinScore}
+                  onChange={e => setAutoMinScore(Number(e.target.value) || 4)}
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setAutoDryRun(!autoDryRun); if (!autoDryRun) setAutoSend(false) }}
+                className={`px-3 py-1.5 text-xs rounded-lg border ${
+                  autoDryRun
+                    ? 'border-warning text-warning bg-warning/10'
+                    : 'border-border text-muted hover:text-text'
+                }`}
+              >
+                Dry Run
+              </button>
+              <button
+                onClick={() => { if (!autoDryRun) setAutoSend(!autoSend) }}
+                disabled={autoDryRun}
+                className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
+                  autoSend && !autoDryRun
+                    ? 'border-success text-success bg-success/10'
+                    : 'border-border text-muted hover:text-text'
+                }`}
+              >
+                Enviar
+              </button>
+            </div>
+
+            {/* Run buttons */}
+            <div className="flex gap-2">
+              {running ? (
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-2 text-sm font-medium rounded-lg bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 flex items-center justify-center gap-2"
+                >
+                  Cancelar
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleRunAuto(true)}
+                    disabled={!autoQueue || autoQueue.stats.remaining === 0}
+                    className="flex-1 py-2 text-sm font-medium rounded-lg border border-warning/30 text-warning hover:bg-warning/10 disabled:opacity-40"
+                  >
+                    Dry Run
+                  </button>
+                  <button
+                    onClick={() => handleRunAuto(false)}
+                    disabled={!autoQueue || autoQueue.stats.remaining === 0}
+                    className="flex-1 py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
+                  >
+                    Rodar Auto
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Refresh button */}
+            <button
+              onClick={fetchAutoQueue}
+              disabled={autoLoading}
+              className="w-full text-center text-[10px] text-muted hover:text-text disabled:opacity-50"
+            >
+              {autoLoading ? 'Carregando...' : 'Atualizar fila'}
+            </button>
+          </div>
+        ) : (
+          /* ─── Manual Mode Panel ─── */
+          <div className="space-y-5">
 
         {/* Niche */}
         <div>
@@ -695,6 +1021,10 @@ export default function BotClient() {
               </div>
             )}
           </div>
+        )}
+
+        </div>
+        /* end manual mode */
         )}
       </div>
 
