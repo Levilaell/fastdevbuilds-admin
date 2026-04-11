@@ -1,11 +1,7 @@
-import { Geist } from 'next/font/google'
-import '../globals.css'
 import SidebarNav from '@/components/sidebar-nav'
 import LogoutButton from '@/components/logout-button'
 import PageHeader from '@/components/page-header'
 import UserAvatar from '@/components/user-avatar'
-
-const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 
 export default function DashboardLayout({
   children,
@@ -13,9 +9,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR" className={`${geist.variable} h-full`}>
-      <body className="h-full bg-bg text-text font-sans">
-        <div className="flex h-full">
+    <div className="flex h-full">
           {/* Sidebar — fixed 240px */}
           <aside className="w-60 flex-none flex flex-col bg-sidebar border-r border-border fixed inset-y-0 left-0 z-30">
             {/* Logo */}
@@ -56,8 +50,6 @@ export default function DashboardLayout({
               {children}
             </main>
           </div>
-        </div>
-      </body>
-    </html>
+    </div>
   )
 }

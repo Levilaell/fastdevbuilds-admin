@@ -1,4 +1,7 @@
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
+
 export async function POST() {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const botUrl = process.env.BOT_SERVER_URL
   if (!botUrl) {
     return Response.json({ error: 'BOT_SERVER_URL not configured' }, { status: 500 })

@@ -1,4 +1,5 @@
-function normalizePhone(phone: string): string {
+/** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
+export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '')
   if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) return digits
   const clean = digits.startsWith('0') ? digits.slice(1) : digits
@@ -6,11 +7,20 @@ function normalizePhone(phone: string): string {
   return digits
 }
 
+/** Check if two phone strings match after normalization. */
+export function phoneMatch(a: string, b: string): boolean {
+  const na = normalizePhone(a)
+  const nb = normalizePhone(b)
+  if (!na || !nb) return false
+  // Compare full normalized numbers to avoid false positives across country codes
+  return na === nb
+}
+
 export async function sendWhatsApp(phone: string, text: string): Promise<boolean> {
   const url = process.env.EVOLUTION_API_URL
   const instance = process.env.EVOLUTION_INSTANCE
-  if (!url) {
-    console.error('[whatsapp] EVOLUTION_API_URL not configured')
+  if (!url || !instance) {
+    console.error('[whatsapp] EVOLUTION_API_URL or EVOLUTION_INSTANCE not configured')
     return false
   }
   const cleanPhone = normalizePhone(phone)

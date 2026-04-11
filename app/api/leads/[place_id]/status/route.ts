@@ -1,13 +1,28 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { LEAD_STATUSES, type LeadStatus, type Lead, type Conversation } from '@/lib/types'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateProposal } from '@/lib/ai-workflow'
+
+/** Allowed forward transitions — any status can also move to 'lost'. */
+const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
+  prospected: ['sent', 'lost'],
+  sent: ['replied', 'lost'],
+  replied: ['negotiating', 'scoped', 'lost'],
+  negotiating: ['scoped', 'lost'],
+  scoped: ['closed', 'lost'],
+  closed: ['finalizado', 'lost'],
+  finalizado: ['pago', 'lost'],
+  pago: ['lost'],
+  lost: ['prospected', 'sent', 'replied', 'negotiating'],
+}
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> }
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const body = await request.json()
   const newStatus = body.status as string
@@ -17,6 +32,24 @@ export async function PATCH(
   }
 
   const supabase = createServiceClient()
+
+  // Validate transition
+  const { data: current } = await supabase
+    .from('leads')
+    .select('status')
+    .eq('place_id', place_id)
+    .single()
+
+  if (current) {
+    const currentStatus = current.status as LeadStatus
+    const allowed = ALLOWED_TRANSITIONS[currentStatus]
+    if (allowed && !allowed.includes(newStatus as LeadStatus)) {
+      return Response.json(
+        { error: `Transição inválida: ${currentStatus} → ${newStatus}` },
+        { status: 400 },
+      )
+    }
+  }
 
   const { data, error } = await supabase
     .from('leads')

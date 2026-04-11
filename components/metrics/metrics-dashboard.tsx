@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { MetricsData } from '@/lib/metrics'
 import { STATUS_LABELS, type LeadStatus } from '@/lib/types'
 
@@ -52,6 +52,18 @@ export default function MetricsDashboard({ initialData }: Props) {
       setLoading(false)
     }
   }, [])
+
+  // Auto-refresh metrics every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const res = await fetch(`/api/metrics?period=${period}`)
+      if (res.ok) {
+        const json: MetricsData = await res.json()
+        setData(json)
+      }
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [period])
 
   const { summary, funnel, revenue, topNiches, topCities } = data
   const maxFunnel = Math.max(...funnel.map(f => f.count), 1)

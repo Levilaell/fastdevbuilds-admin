@@ -11,7 +11,8 @@ import {
   buildPixMessage,
 } from '@/lib/prompts'
 
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL_FAST = 'claude-haiku-4-5-20251001'
+const MODEL_SMART = 'claude-sonnet-4-20250514'
 
 function cleanJson(text: string): string {
   return text
@@ -61,7 +62,7 @@ export async function classifyAndSuggest(
 
     console.log('[classify] calling Claude API...')
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model: MODEL_FAST,
       max_tokens: 500,
       system: CLASSIFY_SYSTEM_PROMPT,
       messages: [
@@ -124,7 +125,7 @@ export async function generateProposal(
 
     console.log('[proposal] calling Claude API...')
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model: MODEL_SMART,
       max_tokens: 1000,
       system: PROPOSAL_SYSTEM_PROMPT,
       messages: [
@@ -221,7 +222,7 @@ export async function generateClaudeCodePrompt(
   const reasonsText = translateReasons(lead)
 
   const response = await anthropic.messages.create({
-    model: MODEL,
+    model: MODEL_SMART,
     max_tokens: 2000,
     system: CLAUDE_CODE_SYSTEM_PROMPT,
     messages: [

@@ -1,9 +1,11 @@
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ place_id: string }> }
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const supabase = createServiceClient()
 
@@ -25,6 +27,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ place_id: string }> }
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const body = await request.json()
   const supabase = createServiceClient()

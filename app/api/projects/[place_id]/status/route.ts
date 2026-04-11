@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { PROJECT_STATUSES, type ProjectStatus, type Lead, type Conversation, type Project } from '@/lib/types'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
@@ -8,6 +9,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const supabase = createServiceClient()
 
@@ -30,6 +32,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const body = await request.json()
   const newStatus = body.status as string

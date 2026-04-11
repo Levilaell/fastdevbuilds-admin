@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { sendWhatsApp } from '@/lib/whatsapp'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },
 ) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const { place_id } = await params
   const body = await request.json()
   const editedMessage: string | undefined = body.message

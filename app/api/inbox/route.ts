@@ -8,12 +8,14 @@ interface RawRow {
   message: string
   sent_at: string
   read_at: string | null
-  leads: {
-    business_name: string | null
-    outreach_channel: string | null
-    status: LeadStatus
-    inbox_archived_at: string | null
-  } | null
+}
+
+interface LeadInfo {
+  place_id: string
+  business_name: string | null
+  outreach_channel: string | null
+  status: LeadStatus
+  inbox_archived_at: string | null
 }
 
 export async function GET(request: NextRequest) {
@@ -21,17 +23,44 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient()
 
-  // Get all conversations joined with leads, ordered by newest first
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('place_id, direction, message, sent_at, read_at, leads(business_name, outreach_channel, status, inbox_archived_at)')
-    .order('sent_at', { ascending: false })
+  // Step 1: Fetch leads that have conversations (filtered by archive state)
+  const leadsQuery = supabase
+    .from('leads')
+    .select('place_id, business_name, outreach_channel, status, inbox_archived_at')
 
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 })
+  if (showArchived) {
+    leadsQuery.not('inbox_archived_at', 'is', null)
+  } else {
+    leadsQuery.is('inbox_archived_at', null)
   }
 
-  const rows = (data ?? []) as unknown as RawRow[]
+  const { data: leadsData, error: leadsError } = await leadsQuery
+
+  if (leadsError) {
+    return Response.json({ error: leadsError.message }, { status: 500 })
+  }
+
+  const leads = (leadsData ?? []) as LeadInfo[]
+  if (leads.length === 0) {
+    return Response.json([])
+  }
+
+  const placeIds = leads.map(l => l.place_id)
+  const leadMap = new Map(leads.map(l => [l.place_id, l]))
+
+  // Step 2: Fetch only the latest conversation per lead + unread counts
+  // We fetch conversations only for the leads we care about
+  const { data: convData, error: convError } = await supabase
+    .from('conversations')
+    .select('place_id, direction, message, sent_at, read_at')
+    .in('place_id', placeIds)
+    .order('sent_at', { ascending: false })
+
+  if (convError) {
+    return Response.json({ error: convError.message }, { status: 500 })
+  }
+
+  const rows = (convData ?? []) as RawRow[]
 
   // Group by place_id, keep latest message and count unreads
   const map = new Map<string, {
@@ -48,22 +77,23 @@ export async function GET(request: NextRequest) {
   }>()
 
   for (const row of rows) {
-    const isArchived = !!row.leads?.inbox_archived_at
+    const lead = leadMap.get(row.place_id)
+    if (!lead) continue
+
     const existing = map.get(row.place_id)
     const isUnread = row.direction === 'in' && !row.read_at
 
     if (!existing) {
       map.set(row.place_id, {
         place_id: row.place_id,
-        business_name: row.leads?.business_name ?? null,
-        outreach_channel: row.leads?.outreach_channel ?? null,
-        status: row.leads?.status ?? 'prospected',
+        business_name: lead.business_name,
+        outreach_channel: lead.outreach_channel,
+        status: lead.status,
         last_message: row.message,
         last_message_at: row.sent_at,
         last_direction: row.direction,
         unread_count: isUnread ? 1 : 0,
-        archived: isArchived,
-        // If the latest message is outbound, track when we sent it (waiting for reply)
+        archived: !!lead.inbox_archived_at,
         waiting_since: row.direction === 'out' ? row.sent_at : null,
       })
     } else {
@@ -71,9 +101,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Filter by archived state
   const items = Array.from(map.values())
-    .filter((item) => showArchived ? item.archived : !item.archived)
     .sort((a, b) => {
       const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0

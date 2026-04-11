@@ -8,6 +8,7 @@ import { timeAgo } from '@/lib/time-ago'
 import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type AiSuggestion, type Project } from '@/lib/types'
 import AiSuggestionCard from '@/components/ai-suggestion-card'
 import ProposalCard from '@/components/proposal-card'
+import SharedReplyBox from '@/components/shared/reply-box'
 
 // ─── Conversation list item ───
 
@@ -143,176 +144,6 @@ function MessageBubble({ conv }: { conv: Conversation }) {
             </span>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Reply box ───
-
-function InboxReplyBox({
-  placeId,
-  onNewMessage,
-}: {
-  placeId: string
-  onNewMessage: (conv: Conversation) => void
-}) {
-  const [message, setMessage] = useState('')
-  const [sending, setSending] = useState(false)
-  const [suggesting, setSuggesting] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const [sendError, setSendError] = useState('')
-  const [phoneInput, setPhoneInput] = useState('')
-  const [needsPhone, setNeedsPhone] = useState(false)
-  const channel = 'whatsapp' as const
-
-  async function handleSuggest() {
-    setSuggesting(true)
-    try {
-      const res = await fetch('/api/conversations/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ place_id: placeId }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setMessage(data.suggestion)
-      }
-    } finally {
-      setSuggesting(false)
-    }
-  }
-
-  async function handleSavePhone() {
-    if (!phoneInput.trim()) return
-    // Normalize: keep only digits
-    const digits = phoneInput.trim().replace(/\D/g, '')
-    if (digits.length < 10) {
-      setSendError('Telefone inválido — mínimo 10 dígitos')
-      return
-    }
-    const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: digits }),
-    })
-    if (res.ok) {
-      setNeedsPhone(false)
-      setSendError('')
-      handleSend()
-    }
-  }
-
-  async function handleSend() {
-    if (!message.trim()) return
-    setSending(true)
-    setSendError('')
-    try {
-      const res = await fetch('/api/conversations/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ place_id: placeId, message: message.trim(), channel }),
-      })
-      if (res.ok) {
-        const conv = await res.json()
-        onNewMessage(conv)
-        setMessage('')
-        setNeedsPhone(false)
-      } else {
-        const data = await res.json()
-        if (data.error?.includes('telefone')) {
-          setNeedsPhone(true)
-        } else {
-          setSendError(data.error ?? 'Erro ao enviar')
-        }
-      }
-    } finally {
-      setSending(false)
-      setConfirming(false)
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      setConfirming(true)
-    }
-  }
-
-  return (
-    <div className="border-t border-border p-4 space-y-3">
-      <textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Escreva sua mensagem… (Ctrl+Enter para enviar)"
-        rows={3}
-        className="w-full px-3 py-2 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y min-h-[72px]"
-      />
-      {/* Confirmation bar */}
-      {confirming && (
-        <div className="flex items-center justify-between gap-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-          <span className="text-xs text-warning">Confirmar envio desta mensagem?</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setConfirming(false)}
-              disabled={sending}
-              className="px-3 py-1 text-xs rounded-lg border border-border text-muted hover:text-text disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="px-3 py-1 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-            >
-              {sending ? 'Enviando…' : 'Confirmar'}
-            </button>
-          </div>
-        </div>
-      )}
-      {needsPhone && (
-        <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-          <span className="text-xs text-warning shrink-0">Telefone necessário:</span>
-          <input
-            type="text"
-            value={phoneInput}
-            onChange={e => setPhoneInput(e.target.value)}
-            placeholder="5511999999999"
-            className="flex-1 h-7 px-2 text-xs rounded bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          <button
-            onClick={handleSavePhone}
-            disabled={!phoneInput.trim()}
-            className="px-2 py-1 text-xs rounded bg-accent text-white disabled:opacity-50"
-          >
-            Salvar e enviar
-          </button>
-        </div>
-      )}
-      {sendError && !needsPhone && (
-        <p className="text-xs text-danger">{sendError}</p>
-      )}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-            WhatsApp
-          </span>
-          <button
-            onClick={handleSuggest}
-            disabled={suggesting || confirming}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
-          >
-            {suggesting ? 'Gerando…' : 'Sugerir com IA'}
-          </button>
-        </div>
-        <button
-          onClick={() => setConfirming(true)}
-          disabled={sending || !message.trim() || confirming}
-          className="px-4 py-1.5 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-        >
-          Enviar
-        </button>
       </div>
     </div>
   )
@@ -624,28 +455,7 @@ export default function InboxClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Poll for new messages as fallback (Realtime may not be enabled on the table)
-  useEffect(() => {
-    if (!activePlaceId) return
-
-    const interval = setInterval(async () => {
-      const res = await fetch(`/api/conversations/${encodeURIComponent(activePlaceId)}`)
-      if (!res.ok) return
-      const fresh: Conversation[] = await res.json()
-      setConversations(prev => {
-        if (fresh.length !== prev.length) return fresh
-        return prev
-      })
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [activePlaceId])
-
-  // Poll inbox list for unread counts
-  useEffect(() => {
-    const interval = setInterval(() => fetchInbox(), 10000)
-    return () => clearInterval(interval)
-  }, [fetchInbox])
+  // Realtime handles live updates — no polling needed
 
   // Archive / unarchive a conversation
   async function handleArchive(placeId: string, unarchive = false) {
@@ -937,9 +747,10 @@ export default function InboxClient() {
             )}
 
             {/* Reply box */}
-            <InboxReplyBox
+            <SharedReplyBox
               placeId={activePlaceId}
               onNewMessage={handleNewMessage}
+              enablePhonePrompt
             />
           </>
         )}

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import Link from 'next/link'
 import type { LeadCard } from '@/lib/types'
 import { timeAgo } from '@/lib/time-ago'
@@ -37,7 +38,7 @@ interface LeadCardProps {
   onArchive?: (placeId: string, unarchive: boolean) => void
 }
 
-export default function LeadCardComponent({ lead, onArchive }: LeadCardProps) {
+function LeadCardComponent({ lead, onArchive }: LeadCardProps) {
   const isArchived = !!lead.inbox_archived_at
 
   return (
@@ -93,3 +94,5 @@ export default function LeadCardComponent({ lead, onArchive }: LeadCardProps) {
     </div>
   )
 }
+
+export default memo(LeadCardComponent)

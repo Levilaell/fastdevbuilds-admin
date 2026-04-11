@@ -62,14 +62,10 @@ body {
   background: var(--muted);
 }
 
-/* Global smooth transitions */
-*, *::before, *::after {
+/* Smooth transitions on interactive elements only */
+a, button, input, textarea, select,
+[role="button"], [draggable="true"] {
   transition-property: color, background-color, border-color, opacity;
   transition-timing-function: ease;
   transition-duration: 150ms;
-}
-
-/* Disable transitions on drag */
-.dragging *, .dragging *::before, .dragging *::after {
-  transition-duration: 0ms !important;
 }

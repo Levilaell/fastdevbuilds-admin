@@ -2,32 +2,13 @@ import { createClient } from '@supabase/supabase-js'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
 import { isAutoReply, isInstantReply } from '@/lib/auto-reply'
+import { normalizePhone, phoneMatch } from '@/lib/whatsapp'
 import { logWebhook } from './debug/route'
 import type { Lead } from '@/lib/types'
-
-/** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
-function normalize(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  // Already has country code and valid length
-  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) return digits
-  // Domestic format: 10-11 digits (DDD + number)
-  const clean = digits.startsWith('0') ? digits.slice(1) : digits
-  if (clean.length >= 10 && clean.length <= 11) return `55${clean}`
-  // Unknown format — return as-is (don't blindly prepend 55 to LID garbage)
-  return digits
-}
 
 /** Check if a normalized phone looks like a valid BR number. */
 function isValidPhone(phone: string): boolean {
   return phone.startsWith('55') && phone.length >= 12 && phone.length <= 13
-}
-
-function phoneMatch(a: string, b: string): boolean {
-  const na = normalize(a)
-  const nb = normalize(b)
-  if (!na || !nb) return false
-  const tail = Math.min(na.length, nb.length, 10)
-  return na.slice(-tail) === nb.slice(-tail)
 }
 
 /**
@@ -97,6 +78,14 @@ async function resolvePhoneFromLid(lid: string): Promise<string | null> {
 
 export async function POST(request: Request) {
   try {
+    // Validate webhook authenticity via Evolution API key
+    const webhookKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
+    const expectedKey = process.env.EVOLUTION_API_KEY
+    if (expectedKey && webhookKey !== expectedKey) {
+      console.warn('[webhook] rejected — invalid or missing API key')
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
 
     // Log every webhook event for debugging (accessible via /api/webhook/whatsapp/debug)
@@ -170,7 +159,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    const normalizedPhone = phone ? normalize(phone) : ''
+    const normalizedPhone = phone ? normalizePhone(phone) : ''
     const preview = text.length > 60 ? text.slice(0, 60) + '…' : text
     console.log(`[webhook] ${isFromMe ? 'OUT' : 'IN'} phone:`, normalizedPhone || '(unresolved LID)', preview)
 

@@ -40,6 +40,8 @@ export default function ProjectStatusSection({ project: initial, placeId }: Prop
   const currentIdx = FLOW.indexOf(status)
 
   async function advanceStatus(newStatus: ProjectStatus) {
+    const label = PROJECT_STATUS_LABELS[newStatus]
+    if (!confirm(`Avançar projeto para "${label}"?`)) return
     setLoading(true)
     setError('')
     try {

@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import type { AiSuggestion } from '@/lib/types'
 
 export async function GET(request: NextRequest) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const placeId = request.nextUrl.searchParams.get('place_id')
   if (!placeId) {
     return Response.json({ error: 'place_id is required' }, { status: 400 })

@@ -76,6 +76,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   const [minScore, setMinScore] = useState(0)
   const [niche, setNiche] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [toast, setToast] = useState('')
 
   const niches = useMemo(() => {
     const set = new Set<string>()
@@ -143,6 +144,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
               : l
           )
         )
+        setToast('Erro ao mover lead — status revertido')
+        setTimeout(() => setToast(''), 4000)
       }
     } catch {
       setLeads((prev) =>
@@ -152,10 +155,13 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             : l
         )
       )
+      setToast('Erro de conexão — status revertido')
+      setTimeout(() => setToast(''), 4000)
     }
   }, [])
 
   const handleArchive = useCallback(async (placeId: string, unarchive: boolean) => {
+    if (!unarchive && !confirm('Arquivar este lead? Ele sera movido para "Perdido".')) return
     const now = new Date().toISOString()
 
     // Optimistic update: archive + mark as lost
@@ -274,6 +280,13 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
           })}
         </div>
       </DragDropContext>
+
+      {/* Error toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg bg-danger/90 text-white text-sm shadow-lg">
+          {toast}
+        </div>
+      )}
     </>
   )
 }

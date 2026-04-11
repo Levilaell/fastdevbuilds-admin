@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 
 interface BotParams {
   niche: string
@@ -13,6 +14,7 @@ interface BotParams {
 }
 
 export async function POST(request: NextRequest) {
+  if (!await getAuthUser()) return unauthorizedResponse()
   const params: BotParams = await request.json()
 
   const botUrl = process.env.BOT_SERVER_URL
