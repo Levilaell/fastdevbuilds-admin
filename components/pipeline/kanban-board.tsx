@@ -164,6 +164,45 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     }
   }, [])
 
+  const handleDisqualify = useCallback(async (placeId: string) => {
+    // Optimistic: remove from pipeline
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.place_id === placeId
+          ? { ...l, status: 'disqualified' as LeadStatus }
+          : l
+      )
+    )
+
+    try {
+      const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'disqualified' }),
+      })
+      if (!res.ok) {
+        // Rollback
+        setLeads((prev) =>
+          prev.map((l) =>
+            l.place_id === placeId
+              ? { ...l, status: 'prospected' as LeadStatus }
+              : l
+          )
+        )
+        setToast('Erro ao desqualificar lead')
+        setTimeout(() => setToast(''), 4000)
+      }
+    } catch {
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.place_id === placeId
+            ? { ...l, status: 'prospected' as LeadStatus }
+            : l
+        )
+      )
+    }
+  }, [])
+
   const handleArchive = useCallback(async (placeId: string, unarchive: boolean) => {
     if (!unarchive && !confirm('Arquivar este lead? Ele sera movido para "Perdido".')) return
     const now = new Date().toISOString()
@@ -278,7 +317,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                               {...provided.dragHandleProps}
                               className={snapshot.isDragging ? 'opacity-90 rotate-1' : ''}
                             >
-                              <LeadCardComponent lead={lead} onArchive={handleArchive} />
+                              <LeadCardComponent lead={lead} onArchive={handleArchive} onDisqualify={handleDisqualify} />
                             </div>
                           )}
                         </Draggable>

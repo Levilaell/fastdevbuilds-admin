@@ -5,16 +5,16 @@ import { LEAD_STATUSES, type LeadStatus, type Lead, type Conversation } from '@/
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateProposal } from '@/lib/ai-workflow'
 
-/** Allowed forward transitions — any status can also move to 'lost'. */
+/** Allowed forward transitions — any status can also move to 'lost' or 'disqualified'. */
 const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
-  prospected: ['sent', 'lost'],
-  sent: ['replied', 'lost'],
-  replied: ['negotiating', 'scoped', 'lost'],
-  negotiating: ['scoped', 'lost'],
-  scoped: ['closed', 'lost'],
-  closed: ['finalizado', 'lost'],
-  finalizado: ['pago', 'lost'],
-  pago: ['lost'],
+  prospected: ['sent', 'lost', 'disqualified'],
+  sent: ['replied', 'lost', 'disqualified'],
+  replied: ['negotiating', 'scoped', 'lost', 'disqualified'],
+  negotiating: ['scoped', 'lost', 'disqualified'],
+  scoped: ['closed', 'lost', 'disqualified'],
+  closed: ['finalizado', 'lost', 'disqualified'],
+  finalizado: ['pago', 'lost', 'disqualified'],
+  pago: ['lost', 'disqualified'],
   lost: ['prospected', 'sent', 'replied', 'negotiating'],
   disqualified: [],
 }

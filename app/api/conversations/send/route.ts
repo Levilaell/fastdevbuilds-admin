@@ -81,14 +81,27 @@ export async function POST(request: NextRequest) {
     .eq('place_id', place_id)
     .eq('status', 'pending')
 
-  // Auto-advance status: replied → negotiating
+  // Auto-advance status based on current state
   const { data: leadCheck } = await supabase
     .from('leads')
     .select('status')
     .eq('place_id', place_id)
     .maybeSingle()
 
-  if (leadCheck?.status === 'replied') {
+  if (leadCheck?.status === 'prospected') {
+    // First manual message → mark as sent
+    await supabase
+      .from('leads')
+      .update({
+        status: 'sent',
+        outreach_sent: true,
+        outreach_sent_at: new Date().toISOString(),
+        outreach_channel: channel,
+        status_updated_at: new Date().toISOString(),
+      })
+      .eq('place_id', place_id)
+  } else if (leadCheck?.status === 'replied') {
+    // Reply to lead → negotiating
     await supabase
       .from('leads')
       .update({
