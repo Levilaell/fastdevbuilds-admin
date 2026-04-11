@@ -297,26 +297,8 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    // Save conversation
-    const { data: conv, error: convError } = await supabase
-      .from('conversations')
-      .insert({
-        place_id: placeId,
-        direction: 'in',
-        channel: 'whatsapp',
-        message: text,
-        sent_at: sentAt,
-        suggested_by_ai: false,
-      })
-      .select('id')
-      .single()
-
-    if (convError) {
-      console.error('[webhook] failed to save conversation:', convError.message)
-    }
-
-    // Detect bot/auto-reply messages
-    // Check content patterns and response speed
+    // Detect bot/auto-reply BEFORE saving — prevents DB triggers from
+    // firing classifyAndSuggest on auto-reply conversations.
     const { data: lastOutbound } = await supabase
       .from('conversations')
       .select('sent_at')
@@ -337,17 +319,66 @@ export async function POST(request: Request) {
       console.log('[webhook] auto-reply detected for', placeId,
         autoReplyByContent ? '(content match)' : '(instant reply)')
 
-      // Don't advance status for auto-replies — they're not real engagement
-      // Save a flag in the conversation for visibility
-      if (conv?.id) {
+      // Save conversation with auto-reply flag already set
+      await supabase
+        .from('conversations')
+        .insert({
+          place_id: placeId,
+          direction: 'in',
+          channel: 'whatsapp',
+          message: text,
+          sent_at: sentAt,
+          suggested_by_ai: false,
+          approved_by: 'auto-reply',
+        })
+
+      // Revert any DB-trigger status advancement — a Supabase trigger may have
+      // already moved sent→replied when the conversation was inserted.
+      // Roll it back since auto-replies are not genuine engagement.
+      if (leadStatus === 'sent') {
         await supabase
-          .from('conversations')
-          .update({ approved_by: 'auto-reply' })
-          .eq('id', conv.id)
+          .from('leads')
+          .update({ status: 'sent', status_updated_at: new Date().toISOString() })
+          .eq('place_id', placeId)
+        console.log('[webhook] reverted trigger-based status advance for auto-reply')
       }
+
+      // Dismiss any AI suggestions that a DB trigger may have created for this auto-reply.
+      // The trigger fires classifyAndSuggest asynchronously, so we dismiss now AND after a delay.
+      const dismissAutoReplySuggestions = async () => {
+        await supabase
+          .from('ai_suggestions')
+          .update({ status: 'rejected' })
+          .eq('place_id', placeId)
+          .eq('status', 'pending')
+      }
+      await dismissAutoReplySuggestions()
+      // Fire delayed cleanup to catch async trigger-created suggestions
+      setTimeout(() => { dismissAutoReplySuggestions().catch(console.error) }, 5_000)
+      setTimeout(() => { dismissAutoReplySuggestions().catch(console.error) }, 15_000)
 
       console.log('[webhook] saved auto-reply message for lead', placeId, '(skipping AI)')
       return Response.json({ ok: true })
+    }
+
+    // ─── Genuine inbound message ───
+
+    // Save conversation
+    const { data: conv, error: convError } = await supabase
+      .from('conversations')
+      .insert({
+        place_id: placeId,
+        direction: 'in',
+        channel: 'whatsapp',
+        message: text,
+        sent_at: sentAt,
+        suggested_by_ai: false,
+      })
+      .select('id')
+      .single()
+
+    if (convError) {
+      console.error('[webhook] failed to save conversation:', convError.message)
     }
 
     // Auto-advance: sent → replied (only for genuine replies)
