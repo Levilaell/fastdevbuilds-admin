@@ -8,6 +8,7 @@ export const LEAD_STATUSES = [
   'finalizado',
   'pago',
   'lost',
+  'disqualified',
 ] as const
 
 /** Statuses shown as pipeline columns (excludes 'lost' — archived leads go there automatically) */
@@ -32,6 +33,7 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   pago: 'Pago',
   closed: 'Em progresso',
   lost: 'Perdido',
+  disqualified: 'Desqualificado',
 }
 
 export const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -44,6 +46,7 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
   pago: 'bg-emerald-500/20 text-emerald-400',
   closed: 'bg-green-500/20 text-green-400',
   lost: 'bg-red-500/20 text-red-400',
+  disqualified: 'bg-zinc-500/20 text-zinc-500',
 }
 
 export interface Lead {

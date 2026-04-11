@@ -16,6 +16,7 @@ const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
   finalizado: ['pago', 'lost'],
   pago: ['lost'],
   lost: ['prospected', 'sent', 'replied', 'negotiating'],
+  disqualified: [],
 }
 
 export async function PATCH(
