@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { timeAgo } from '@/lib/time-ago'
-import { NICHES, CITIES_BR, CITIES_US } from '@/lib/bot-config'
+import { NICHES, NICHES_US, CITIES_BR, CITIES_US } from '@/lib/bot-config'
 import type { BotRun } from '@/lib/types'
 
 // ─── Types ───
@@ -93,6 +93,7 @@ export default function BotClient() {
   const [autoMinScore, setAutoMinScore] = useState(4)
   const [autoSend, setAutoSend] = useState(false)
   const [autoDryRun, setAutoDryRun] = useState(false)
+  const [autoMarket, setAutoMarket] = useState<'BR' | 'US' | 'all'>('all')
 
   // Form state
   const [niche, setNiche] = useState('')
@@ -160,21 +161,21 @@ export default function BotClient() {
   const fetchAutoQueue = useCallback(async () => {
     setAutoLoading(true)
     try {
-      const res = await fetch('/api/bot/queue')
+      const res = await fetch(`/api/bot/queue?market=${autoMarket}`)
       if (res.ok) setAutoQueue(await res.json())
     } catch { /* ignore */ }
     finally { setAutoLoading(false) }
-  }, [])
+  }, [autoMarket])
 
   useEffect(() => {
     fetchTerritories()
     fetchRuns()
   }, [fetchTerritories, fetchRuns])
 
-  // Fetch auto queue when switching to auto mode
+  // Fetch auto queue when switching to auto mode or changing market
   useEffect(() => {
-    if (mode === 'auto' && !autoQueue) fetchAutoQueue()
-  }, [mode, autoQueue, fetchAutoQueue])
+    if (mode === 'auto') fetchAutoQueue()
+  }, [mode, autoMarket, fetchAutoQueue])
 
   // Auto-scroll terminal using requestAnimationFrame
   useEffect(() => {
@@ -365,9 +366,10 @@ export default function BotClient() {
     if (running) return
     setStatus('running')
     cancelledRef.current = false
+    const marketLabel = autoMarket === 'all' ? 'BR + US' : autoMarket
     setLines([
-      { text: '━━━ Modo Autônomo ━━━', type: 'accent' },
-      { text: `$ prospect-bot --auto --limit ${autoLimit} --min-score ${autoMinScore}${dry ? ' --dry' : ''}${autoSend && !dry ? ' --send' : ''}`, type: 'info' },
+      { text: `━━━ Modo Autônomo — ${marketLabel} ━━━`, type: 'accent' },
+      { text: `$ prospect-bot --auto --market ${autoMarket} --limit ${autoLimit} --min-score ${autoMinScore}${dry ? ' --dry' : ''}${autoSend && !dry ? ' --send' : ''}`, type: 'info' },
     ])
 
     const controller = new AbortController()
@@ -382,6 +384,7 @@ export default function BotClient() {
           min_score: autoMinScore,
           dry_run: dry,
           send: autoSend && !dry,
+          market: autoMarket,
         }),
         signal: controller.signal,
       })
@@ -515,6 +518,27 @@ export default function BotClient() {
         {mode === 'auto' ? (
           /* ─── Auto Mode Panel ─── */
           <div className="space-y-4">
+            {/* Market toggle */}
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(['all', 'BR', 'US'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setAutoMarket(m)}
+                  className={`flex-1 px-3 py-1.5 text-[11px] font-medium ${
+                    m !== 'all' ? 'border-l border-border' : ''
+                  } ${
+                    autoMarket === m
+                      ? m === 'BR' ? 'bg-emerald-500/15 text-emerald-400'
+                      : m === 'US' ? 'bg-blue-500/15 text-blue-400'
+                      : 'bg-accent/15 text-accent'
+                      : 'text-muted bg-sidebar hover:text-text'
+                  }`}
+                >
+                  {m === 'all' ? 'Todos' : m}
+                </button>
+              ))}
+            </div>
+
             {/* Stats */}
             {autoLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -699,8 +723,8 @@ export default function BotClient() {
             onChange={e => setNiche(e.target.value)}
             className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">Selecione um nicho</option>
-            {NICHES.map(group => (
+            <option value="">{lang === 'pt' ? 'Selecione um nicho' : 'Select a niche'}</option>
+            {(lang === 'pt' ? NICHES : NICHES_US).map(group => (
               <optgroup key={group.category} label={group.category}>
                 {group.items.map(item => (
                   <option key={item} value={item}>

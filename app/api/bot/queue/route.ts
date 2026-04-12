@@ -1,6 +1,6 @@
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!await getAuthUser()) return unauthorizedResponse()
 
   const botUrl = process.env.BOT_SERVER_URL
@@ -11,8 +11,12 @@ export async function GET() {
     )
   }
 
+  // Forward market filter to bot server
+  const { searchParams } = new URL(request.url)
+  const market = searchParams.get('market') || 'all'
+
   try {
-    const res = await fetch(`${botUrl}/api/bot/queue`, {
+    const res = await fetch(`${botUrl}/api/bot/queue?market=${market}`, {
       headers: {
         Authorization: `Bearer ${process.env.BOT_SERVER_SECRET ?? ''}`,
       },
