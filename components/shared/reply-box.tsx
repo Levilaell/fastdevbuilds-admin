@@ -8,10 +8,13 @@ interface ReplyBoxProps {
   onNewMessage: (conv: Conversation) => void
   /** If true, show phone input prompt when lead has no phone */
   enablePhonePrompt?: boolean
+  /** Channel for sending — defaults to 'whatsapp' */
+  channel?: 'whatsapp' | 'email'
 }
 
-export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: ReplyBoxProps) {
+export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt, channel = 'whatsapp' }: ReplyBoxProps) {
   const [message, setMessage] = useState('')
+  const [subject, setSubject] = useState('')
   const [sending, setSending] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -19,7 +22,7 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
   const [phoneInput, setPhoneInput] = useState('')
   const [needsPhone, setNeedsPhone] = useState(false)
   const [sent, setSent] = useState(false)
-  const channel = 'whatsapp' as const
+  const isEmail = channel === 'email'
 
   async function handleSuggest() {
     setSuggesting(true)
@@ -65,7 +68,12 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
       const res = await fetch('/api/conversations/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ place_id: placeId, message: message.trim(), channel }),
+        body: JSON.stringify({
+          place_id: placeId,
+          message: message.trim(),
+          channel,
+          ...(isEmail && subject.trim() ? { subject: subject.trim() } : {}),
+        }),
       })
       if (res.ok) {
         const conv = await res.json()
@@ -98,11 +106,20 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
 
   return (
     <div className="border-t border-border p-4 space-y-3">
+      {isEmail && (
+        <input
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Subject line..."
+          className="w-full px-3 py-2 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      )}
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Escreva sua mensagem... (Ctrl+Enter para enviar)"
+        placeholder={isEmail ? 'Write your reply... (Ctrl+Enter to send)' : 'Escreva sua mensagem... (Ctrl+Enter para enviar)'}
         rows={3}
         className="w-full px-3 py-2 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent resize-y min-h-[72px]"
       />
@@ -163,8 +180,12 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt }: R
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-            WhatsApp
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+            isEmail
+              ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+              : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+          }`}>
+            {isEmail ? 'Email' : 'WhatsApp'}
           </span>
           <button
             onClick={handleSuggest}

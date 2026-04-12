@@ -86,6 +86,8 @@ export interface Lead {
   status: LeadStatus
   status_updated_at: string | null
   inbox_archived_at: string | null
+  email_subject: string | null
+  country: string | null
 }
 
 export interface Conversation {
@@ -94,6 +96,7 @@ export interface Conversation {
   direction: 'in' | 'out'
   channel: 'whatsapp' | 'email'
   message: string
+  subject: string | null
   sent_at: string
   read_at: string | null
   suggested_by_ai: boolean | null

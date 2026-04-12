@@ -220,6 +220,7 @@ async function LeadDetailContent({ id }: { id: string }) {
           placeId={lead.place_id}
           initialConversations={conversations}
           initialSuggestion={suggestion}
+          channel={lead.outreach_channel === 'email' ? 'email' : 'whatsapp'}
         />
       </div>
     </div>

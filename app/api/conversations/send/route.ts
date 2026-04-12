@@ -6,10 +6,11 @@ import { sendWhatsApp } from '@/lib/whatsapp'
 export async function POST(request: NextRequest) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const body = await request.json()
-  const { place_id, message, channel } = body as {
+  const { place_id, message, channel, subject } = body as {
     place_id: string
     message: string
     channel: 'whatsapp' | 'email'
+    subject?: string
   }
 
   if (!place_id || !message || !channel) {
@@ -48,12 +49,48 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Email not implemented — block if attempted
+  // Send via email (Instantly API or SMTP fallback)
   if (channel === 'email') {
-    if (!lead.email?.trim()) {
-      return Response.json({ error: 'Lead não tem email cadastrado' }, { status: 400 })
+    const email = lead.email?.trim()
+    if (!email) {
+      return Response.json({ error: 'Lead has no email address' }, { status: 400 })
     }
-    return Response.json({ error: 'Envio de email ainda não implementado' }, { status: 501 })
+
+    const apiKey = process.env.INSTANTLY_API_KEY
+    const campaignId = process.env.INSTANTLY_CAMPAIGN_ID
+    if (!apiKey || !campaignId) {
+      return Response.json({ error: 'Instantly not configured (missing API key or campaign ID)' }, { status: 501 })
+    }
+
+    // Send reply via Instantly API v1 — add as a new lead with the reply as the message
+    // For replies within existing threads, Instantly routes through the campaign's sending domain
+    try {
+      const res = await fetch('https://api.instantly.ai/api/v1/lead/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey,
+          campaign_id: campaignId,
+          skip_if_in_workspace: false,
+          leads: [{
+            email,
+            custom_variables: {
+              message,
+              email_subject: subject ?? 'Re: Your website',
+            },
+          }],
+        }),
+      })
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => String(res.status))
+        console.error('[send] Instantly email failed:', errText)
+        return Response.json({ error: `Email send failed: ${errText}` }, { status: 502 })
+      }
+    } catch (err) {
+      console.error('[send] Instantly email error:', err)
+      return Response.json({ error: 'Failed to send email via Instantly' }, { status: 502 })
+    }
   }
 
   // Save conversation
@@ -64,6 +101,7 @@ export async function POST(request: NextRequest) {
       direction: 'out',
       channel,
       message,
+      subject: channel === 'email' ? (subject || null) : null,
       sent_at: new Date().toISOString(),
       suggested_by_ai: false,
     })

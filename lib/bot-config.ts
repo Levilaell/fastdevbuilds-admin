@@ -68,3 +68,52 @@ export const CITIES_US = [
   'Nashville, TN', 'Charlotte, NC', 'Denver, CO', 'Seattle, WA',
   'Boston, MA', 'Atlanta, GA', 'Orlando, FL', 'Tampa, FL',
 ] as const
+
+export const NICHES_US = [
+  {
+    category: 'Healthcare',
+    items: [
+      'dental clinics', 'med spas', 'chiropractors',
+      'veterinary clinics', 'therapy practices',
+    ],
+  },
+  {
+    category: 'Home Services',
+    items: [
+      'HVAC companies', 'roofing contractors', 'electricians',
+      'plumbers', 'landscaping companies', 'cleaning services',
+    ],
+  },
+  {
+    category: 'Fitness & Wellness',
+    items: [
+      'gyms', 'yoga studios', 'pilates studios', 'personal trainers',
+    ],
+  },
+  {
+    category: 'Beauty',
+    items: [
+      'hair salons', 'barbershops', 'tattoo shops',
+    ],
+  },
+  {
+    category: 'Food & Hospitality',
+    items: [
+      'restaurants', 'pizza shops', 'bakeries', 'wedding venues',
+    ],
+  },
+  {
+    category: 'Professional Services',
+    items: [
+      'law firms', 'accounting firms', 'insurance agencies',
+      'real estate agencies',
+    ],
+  },
+  {
+    category: 'Other',
+    items: [
+      'auto repair shops', 'pet grooming', 'boutiques',
+      'florists', 'photography studios', 'daycares', 'driving schools',
+    ],
+  },
+] as const

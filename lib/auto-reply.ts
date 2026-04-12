@@ -41,6 +41,18 @@ const AUTO_REPLY_PATTERNS: RegExp[] = [
   /em\s+atendimento\s*[-–—]\s*(deixe|envie)/i,
   /deixe\s+sua\s+mensagem.{0,30}(contato|retorno|poss[íi]vel)/i,
   /quer\s+(saber|agendar).{0,20}(hor[áa]rio|link|funciona)/i,
+
+  // ── English email auto-replies ──
+  /I('m|\s+am)\s+(currently\s+)?(out|away|on\s+vacation|on\s+leave|unavailable)/i,
+  /I\s+will\s+be\s+out\s+of\s+the\s+office/i,
+  /this\s+is\s+an?\s+auto(mated|matic)/i,
+  /do\s+not\s+reply\s+to\s+this\s+email/i,
+  /undeliverable|undelivered|delivery\s+(failure|failed)|bounced?\s+back/i,
+  /this\s+mailbox\s+is\s+not\s+monitored/i,
+  /we('ve|\s+have)\s+received\s+your\s+(email|message|inquiry)/i,
+  /we\s+will\s+(get\s+back|respond|reply)\s+(to\s+you\s+)?(shortly|soon|within)/i,
+  /our\s+(business|office)\s+hours\s+are/i,
+  /currently\s+closed/i,
 ]
 
 export function isAutoReply(message: string): boolean {

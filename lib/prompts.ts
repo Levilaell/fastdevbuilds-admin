@@ -2,8 +2,28 @@ import type { Lead, Project } from '@/lib/types'
 
 // ─── Helpers used by prompt builders ───
 
+/** Detect if a lead is from the US market. */
+export function isUSLead(lead: Lead): boolean {
+  return lead.country === 'US' || lead.outreach_channel === 'email'
+}
+
 /** Classify PageSpeed performance into qualitative levels. */
-function perfLabel(mobileScore: number | null, lcp: number | null): string | null {
+function perfLabel(mobileScore: number | null, lcp: number | null, lang: 'pt' | 'en' = 'pt'): string | null {
+  if (lang === 'en') {
+    if (mobileScore != null) {
+      if (mobileScore < 30) return 'very poor performance'
+      if (mobileScore < 50) return 'poor performance'
+      if (mobileScore < 70) return 'average performance'
+      return 'good performance'
+    }
+    if (lcp != null) {
+      if (lcp > 6000) return 'very slow loading'
+      if (lcp > 4000) return 'slow loading'
+      if (lcp > 2500) return 'average loading'
+      return 'fast loading'
+    }
+    return null
+  }
   if (mobileScore != null) {
     if (mobileScore < 30) return 'desempenho muito ruim'
     if (mobileScore < 50) return 'desempenho ruim'
@@ -20,6 +40,25 @@ function perfLabel(mobileScore: number | null, lcp: number | null): string | nul
 }
 
 export function buildLeadContext(lead: Lead, reasonsText: string): string {
+  const lang = isUSLead(lead) ? 'en' : 'pt'
+
+  if (lang === 'en') {
+    const lines = [
+      `- Business: ${lead.business_name ?? 'Unknown'}`,
+      `- City: ${lead.city ?? '—'}`,
+      `- Website: ${lead.website ?? 'no website'}`,
+      `- Tech stack: ${lead.tech_stack ?? '—'}`,
+      `- Pain score: ${lead.pain_score ?? '—'}/10`,
+      `- Detected problems: ${reasonsText || 'None'}`,
+    ]
+    const perf = perfLabel(lead.mobile_score, lead.lcp, 'en')
+    if (perf) lines.push(`- PageSpeed (tested by Google): ${perf}`)
+    if (lead.has_ssl === false) lines.push('- SSL: NO certificate (insecure site)')
+    if (lead.is_mobile_friendly === false) lines.push('- Mobile: NOT optimized for mobile screens')
+    if (lead.scrape_failed) lines.push('- Site analysis: FAILED (site may be offline or blocking)')
+    return lines.join('\n')
+  }
+
   const lines = [
     `- Negócio: ${lead.business_name ?? 'Desconhecido'}`,
     `- Cidade: ${lead.city ?? '—'}`,
@@ -28,14 +67,11 @@ export function buildLeadContext(lead: Lead, reasonsText: string): string {
     `- Score de dor: ${lead.pain_score ?? '—'}/10`,
     `- Problemas detectados: ${reasonsText || 'Nenhum'}`,
   ]
-
-  // Qualitative PageSpeed assessment — tested, not just guessed
   const perf = perfLabel(lead.mobile_score, lead.lcp)
   if (perf) lines.push(`- PageSpeed (testado pelo Google): ${perf}`)
   if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
   if (lead.is_mobile_friendly === false) lines.push('- Mobile: NÃO é otimizado para celular')
   if (lead.scrape_failed) lines.push('- Análise do site: FALHOU (site pode estar offline ou bloqueando)')
-
   return lines.join('\n')
 }
 
@@ -46,6 +82,26 @@ export function buildSuggestionSystemPrompt(
   reasonsText: string,
   statusLabel: string,
 ): string {
+  if (isUSLead(lead)) {
+    return `You are Levi, a freelance developer at FastDevBuilds. You build websites, automations, and custom software for small businesses at accessible prices.
+
+Lead context:
+${buildLeadContext(lead, reasonsText)}
+- Pipeline stage: ${statusLabel}
+
+Rules:
+- Suggest the best next reply to advance this lead in the pipeline
+- Tone: professional but human, in English — like a skilled freelancer, not an agency
+- Maximum 4 short sentences
+- NEVER suggest calls, meetings, or video calls — email/text reply only
+- NEVER mention specific payment methods (Stripe, PayPal, etc.)
+- If discussing price, reinforce that pricing is accessible and the model is "you only pay if you like the result" — satisfaction guarantee
+- If the site was tested, mention it was analyzed and describe the result qualitatively (e.g., "I checked your site and the mobile performance is really poor")
+- If NO technical data is available (no site, no detected problems), do NOT pretend you analyzed anything. Instead, ask what the lead needs: what kind of site/service they're looking for, what problems they're facing, etc.
+- Focus on concrete value you can deliver based on detected problems (when they exist)
+- Services include: websites, automations, custom software, internal tools, API integrations`
+  }
+
   return `Você é Levi, desenvolvedor freelancer da FastDevBuilds. Você prospecta clientes que precisam de melhorias nos seus sites/apps.
 
 Contexto do lead:
@@ -64,15 +120,25 @@ Regras:
 - Foque em valor concreto que você pode entregar baseado nos problemas detectados (quando existirem)`
 }
 
-export const SUGGESTION_USER_WITH_HISTORY = (history: string): string =>
-  `Histórico da conversa:\n${history}\n\nSugira a próxima mensagem.`
+export const SUGGESTION_USER_WITH_HISTORY = (history: string, lead?: Lead): string => {
+  if (lead && isUSLead(lead)) {
+    return `Conversation history:\n${history}\n\nSuggest the next message.`
+  }
+  return `Histórico da conversa:\n${history}\n\nSugira a próxima mensagem.`
+}
+
+export const SUGGESTION_USER_NO_HISTORY_PT =
+  'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
+
+export const SUGGESTION_USER_NO_HISTORY_EN =
+  'No conversation yet. Suggest the first outreach message.'
 
 export const SUGGESTION_USER_NO_HISTORY =
   'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
 
 // ─── 2. Classify & Suggest (webhook auto-analysis) ───
 
-export const CLASSIFY_SYSTEM_PROMPT = `You are an assistant that analyzes lead responses for a freelance web developer named Levi (FastDevBuilds).
+export const CLASSIFY_SYSTEM_PROMPT_PT = `You are an assistant that analyzes lead responses for a freelance web developer named Levi (FastDevBuilds).
 Classify the intent of the message and suggest the best reply in Brazilian Portuguese.
 
 Rules for the suggested reply:
@@ -91,6 +157,35 @@ Respond ONLY with valid JSON, no markdown, no explanation:
   "confidence": 0.0 to 1.0,
   "suggested_reply": "suggested message"
 }`
+
+export const CLASSIFY_SYSTEM_PROMPT_EN = `You are an assistant that analyzes lead responses for a freelance developer named Levi (FastDevBuilds).
+Classify the intent of the message and suggest the best reply in English.
+
+Levi offers: websites, automations, custom software, internal tools, API integrations — all at accessible prices with a satisfaction guarantee.
+
+Rules for the suggested reply:
+- Professional but human tone in English
+- Max 4 short sentences
+- NEVER suggest calls, meetings, or video calls — text/email reply only
+- NEVER mention specific payment methods
+- If price comes up, reinforce affordable pricing and the satisfaction guarantee: "you only pay if you like the result"
+- If the site was tested, mention it was analyzed and describe the result qualitatively, NOT with specific numbers
+- If NO technical data is available, do NOT pretend you analyzed anything. Ask what the lead needs.
+- Sign as Levi
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  "intent": "interested|asked_price|asked_scope|objection|not_interested|scheduling|other",
+  "confidence": 0.0 to 1.0,
+  "suggested_reply": "suggested message"
+}`
+
+/** Backwards-compatible alias — defaults to PT. Use getClassifyPrompt(lead) for bilingual. */
+export const CLASSIFY_SYSTEM_PROMPT = CLASSIFY_SYSTEM_PROMPT_PT
+
+export function getClassifySystemPrompt(lead: Lead): string {
+  return isUSLead(lead) ? CLASSIFY_SYSTEM_PROMPT_EN : CLASSIFY_SYSTEM_PROMPT_PT
+}
 
 export function buildClassifyUserPrompt(
   lead: Lead,
@@ -113,7 +208,7 @@ Current pipeline stage: ${lead.status}`
 
 // ─── 3. Generate Proposal ───
 
-export const PROPOSAL_SYSTEM_PROMPT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
+export const PROPOSAL_SYSTEM_PROMPT_PT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
 
 Rules for the WhatsApp message:
 - Informal, direct tone in pt-BR
@@ -129,6 +224,33 @@ Respond ONLY with valid JSON:
   "price_brl": 900,
   "whatsapp_message": "full formatted WhatsApp message with scope, timeline, price and 'só paga se gostar' guarantee, signed as Levi"
 }`
+
+export const PROPOSAL_SYSTEM_PROMPT_EN = `You are Levi, a freelance developer (FastDevBuilds). Generate a project proposal in English.
+
+Services you can offer: websites, automations, custom software, dashboards, API integrations, internal tools — anything code-related.
+
+Rules for the email message:
+- Professional but warm tone in English
+- NEVER mention specific payment processors
+- NEVER suggest calls or meetings — email/text only
+- Clearly state the satisfaction guarantee: "you only pay if you like the result"
+- Pricing should be accessible and competitive
+- Max 15 lines
+
+Respond ONLY with valid JSON:
+{
+  "scope": ["item 1", "item 2", "item 3"],
+  "timeline_days": 5,
+  "price_usd": 500,
+  "email_message": "full formatted email with scope, timeline, price and satisfaction guarantee, signed as Levi Laell / FastDevBuilds"
+}`
+
+/** Backwards-compatible alias. */
+export const PROPOSAL_SYSTEM_PROMPT = PROPOSAL_SYSTEM_PROMPT_PT
+
+export function getProposalSystemPrompt(lead: Lead): string {
+  return isUSLead(lead) ? PROPOSAL_SYSTEM_PROMPT_EN : PROPOSAL_SYSTEM_PROMPT_PT
+}
 
 export function buildProposalUserPrompt(
   lead: Lead,

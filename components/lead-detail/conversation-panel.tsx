@@ -10,12 +10,14 @@ interface ConversationPanelProps {
   placeId: string
   initialConversations: Conversation[]
   initialSuggestion?: AiSuggestion | null
+  channel?: 'whatsapp' | 'email'
 }
 
 export default function ConversationPanel({
   placeId,
   initialConversations,
   initialSuggestion,
+  channel,
 }: ConversationPanelProps) {
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
   const [suggestion, setSuggestion] = useState<AiSuggestion | null>(initialSuggestion ?? null)
@@ -40,6 +42,7 @@ export default function ConversationPanel({
       <ReplyBox
         placeId={placeId}
         onNewMessage={handleNewMessage}
+        channel={channel}
       />
     </div>
   )

@@ -735,6 +735,7 @@ export default function InboxClient() {
               placeId={activePlaceId}
               onNewMessage={handleNewMessage}
               enablePhonePrompt
+              channel={activeItem?.outreach_channel === 'email' ? 'email' : 'whatsapp'}
             />
           </>
         )}

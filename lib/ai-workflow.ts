@@ -2,13 +2,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project } from '@/lib/types'
 import {
-  CLASSIFY_SYSTEM_PROMPT,
+  getClassifySystemPrompt,
   buildClassifyUserPrompt,
-  PROPOSAL_SYSTEM_PROMPT,
+  getProposalSystemPrompt,
   buildProposalUserPrompt,
   CLAUDE_CODE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
   buildPixMessage,
+  isUSLead,
 } from '@/lib/prompts'
 
 const MODEL_FAST = 'claude-haiku-4-5-20251001'
@@ -46,11 +47,12 @@ function validateClassifyResponse(obj: unknown): {
 }
 
 /** Validate proposal response has required fields with correct types */
-function validateProposalResponse(obj: unknown): {
+function validateProposalResponse(obj: unknown, isUS: boolean): {
   scope: string[]
   timeline_days: number
-  price_brl: number
-  whatsapp_message: string
+  price: number
+  currency: string
+  proposal_message: string
 } {
   if (!obj || typeof obj !== 'object') {
     throw new Error('Claude returned invalid JSON structure for proposal')
@@ -62,17 +64,26 @@ function validateProposalResponse(obj: unknown): {
   if (typeof o.timeline_days !== 'number') {
     o.timeline_days = Number(o.timeline_days) || 7
   }
-  if (typeof o.price_brl !== 'number') {
-    o.price_brl = Number(o.price_brl) || 0
+
+  // Handle both BRL and USD response formats
+  const price = isUS
+    ? Number(o.price_usd ?? o.price ?? 0)
+    : Number(o.price_brl ?? o.price ?? 0)
+  const currency = isUS ? 'USD' : 'BRL'
+  const proposal_message = (isUS
+    ? (o.email_message ?? o.whatsapp_message ?? '')
+    : (o.whatsapp_message ?? o.email_message ?? '')) as string
+
+  if (!proposal_message) {
+    throw new Error('Missing proposal message in Claude response')
   }
-  if (typeof o.whatsapp_message !== 'string' || !o.whatsapp_message) {
-    throw new Error('Missing or invalid "whatsapp_message" in Claude proposal response')
-  }
+
   return {
     scope: o.scope as string[],
     timeline_days: o.timeline_days as number,
-    price_brl: o.price_brl as number,
-    whatsapp_message: o.whatsapp_message as string,
+    price,
+    currency,
+    proposal_message,
   }
 }
 
@@ -118,7 +129,7 @@ export async function classifyAndSuggest(
     const response = await anthropic.messages.create({
       model: MODEL_FAST,
       max_tokens: 500,
-      system: CLASSIFY_SYSTEM_PROMPT,
+      system: getClassifySystemPrompt(lead),
       messages: [
         {
           role: 'user',
@@ -173,11 +184,12 @@ export async function generateProposal(
     const reasonsText = translateReasons(lead)
     const historyText = formatHistory(conversations, 10)
 
-    console.log('[proposal] calling Claude API...')
+    const isUS = isUSLead(lead)
+    console.log('[proposal] calling Claude API...', isUS ? '(US/USD)' : '(BR/BRL)')
     const response = await anthropic.messages.create({
       model: MODEL_SMART,
       max_tokens: 1000,
-      system: PROPOSAL_SYSTEM_PROMPT,
+      system: getProposalSystemPrompt(lead),
       messages: [
         {
           role: 'user',
@@ -188,7 +200,7 @@ export async function generateProposal(
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
     console.log('[proposal] response:', text.slice(0, 150))
-    const parsed = validateProposalResponse(JSON.parse(cleanJson(text)))
+    const parsed = validateProposalResponse(JSON.parse(cleanJson(text)), isUS)
 
     if (existing) {
       console.log('[proposal] updating existing project', existing.id)
@@ -196,10 +208,10 @@ export async function generateProposal(
         .from('projects')
         .update({
           scope: JSON.stringify(parsed.scope),
-          price: parsed.price_brl,
-          currency: 'BRL',
+          price: parsed.price,
+          currency: parsed.currency,
           status: 'scoped',
-          proposal_message: parsed.whatsapp_message,
+          proposal_message: parsed.proposal_message,
         })
         .eq('id', existing.id)
       if (error) console.error('[proposal] update error:', error.message)
@@ -208,10 +220,10 @@ export async function generateProposal(
       const { error } = await supabase.from('projects').insert({
         place_id: lead.place_id,
         scope: JSON.stringify(parsed.scope),
-        price: parsed.price_brl,
-        currency: 'BRL',
+        price: parsed.price,
+        currency: parsed.currency,
         status: 'scoped',
-        proposal_message: parsed.whatsapp_message,
+        proposal_message: parsed.proposal_message,
       })
       if (error) console.error('[proposal] insert error:', error.message)
     }
