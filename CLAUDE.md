@@ -64,7 +64,7 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 | `lang` | `'pt'` | `'en'` |
 | `channel` | `'whatsapp'` | `'email'` |
 | `niches` | Portuguese niche names with accents | English niche names |
-| `cities` | 215 interior/medium cities | 330 interior/medium cities |
+| `cities` | 135 cities (ordered by opportunity priority) | 330 interior/medium cities |
 
 To add a new country, add an entry to `COUNTRIES`. Language, channel, niches, and cities all derive from the country. There is no separate language or export target selector in the UI.
 

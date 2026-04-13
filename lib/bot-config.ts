@@ -25,158 +25,87 @@ export const COUNTRIES: readonly CountryConfig[] = [
     channel: 'whatsapp',
     niches: [
       {
-        category: 'Saúde',
+        category: 'Alta prioridade',
         items: [
           'clínicas odontológicas',
-          'clínicas médicas',
-          'academias',
+          'clínicas de estética',
           'clínicas veterinárias',
           'clínicas de psicologia',
-          'fisioterapeutas',
-        ],
-      },
-      {
-        category: 'Serviços profissionais',
-        items: [
-          'advogados',
-          'escritórios de contabilidade',
           'imobiliárias',
-          'arquitetos',
-          'engenheiros',
+          'escritórios de contabilidade',
         ],
       },
       {
-        category: 'Alimentação',
+        category: 'Média prioridade',
         items: [
-          'restaurantes',
-          'pizzarias',
-          'padarias e confeitarias',
-          'cafeterias',
-          'bares',
-        ],
-      },
-      {
-        category: 'Beleza',
-        items: [
+          'academias',
+          'estúdios de pilates',
           'salões de beleza',
           'barbearias',
-          'clínicas de estética',
-          'estúdios de tatuagem',
-        ],
-      },
-      {
-        category: 'Educação',
-        items: [
-          'escolas de idiomas',
-          'cursos profissionalizantes',
-          'escolas de música',
-          'autoescolas',
-        ],
-      },
-      {
-        category: 'Outros',
-        items: [
           'pet shops',
-          'oficinas mecânicas',
-          'estúdios de pilates',
+          'autoescolas',
+          'escolas de idiomas',
+          'clínicas médicas',
+          'fisioterapeutas',
+          'nutricionistas',
+        ],
+      },
+      {
+        category: 'Baixa prioridade',
+        items: [
+          'restaurantes',
+          'padarias e confeitarias',
           'lojas de roupas',
           'floriculturas',
         ],
       },
     ],
     cities: [
-      // ── SP Interior ──
-      'Ribeirão Preto, SP', 'Sorocaba, SP', 'São José dos Campos, SP',
-      'São José do Rio Preto, SP', 'Piracicaba, SP', 'Bauru, SP',
-      'Jundiaí, SP', 'Franca, SP', 'Marília, SP', 'Campinas, SP',
-      'Presidente Prudente, SP', 'Araraquara, SP', 'São Carlos, SP',
-      'Rio Claro, SP', 'Limeira, SP', 'Araçatuba, SP', 'Catanduva, SP',
-      'Assis, SP', 'Jaú, SP', 'Botucatu, SP', 'Ourinhos, SP',
-      'Taubaté, SP', 'Jacareí, SP', 'Bragança Paulista, SP',
-      'Itapetininga, SP', 'Itu, SP', 'Americana, SP', 'Indaiatuba, SP',
-      'Lins, SP', 'Tupã, SP', 'Birigui, SP', 'Votuporanga, SP',
-      'Fernandópolis, SP', 'Bebedouro, SP', 'Tatui, SP',
-      'Santa Bárbara d\'Oeste, SP', 'Sumaré, SP', 'Valinhos, SP',
-      'Mogi Guaçu, SP', 'Mogi Mirim, SP', 'Registro, SP',
-      'Itapeva, SP', 'Andradina, SP', 'Penápolis, SP',
-      // ── MG Interior ──
-      'Uberlândia, MG', 'Juiz de Fora, MG', 'Uberaba, MG',
-      'Montes Claros, MG', 'Poços de Caldas, MG', 'Governador Valadares, MG',
-      'Divinópolis, MG', 'Sete Lagoas, MG', 'Patos de Minas, MG',
-      'Pouso Alegre, MG', 'Teófilo Otoni, MG', 'Barbacena, MG',
-      'Muriaé, MG', 'Lavras, MG', 'Itajubá, MG', 'Conselheiro Lafaiete, MG',
-      'Varginha, MG', 'Passos, MG', 'Araguari, MG', 'Ituiutaba, MG',
-      'Ipatinga, MG', 'Coronel Fabriciano, MG', 'Manhuaçu, MG',
-      'São Lourenço, MG', 'Alfenas, MG', 'Araxá, MG', 'Formiga, MG',
-      'Três Corações, MG', 'Caratinga, MG', 'Viçosa, MG',
-      // ── PR Interior ──
-      'Londrina, PR', 'Maringá, PR', 'Cascavel, PR', 'Ponta Grossa, PR',
-      'Foz do Iguaçu, PR', 'Guarapuava, PR', 'Toledo, PR',
-      'Apucarana, PR', 'Campo Mourão, PR', 'Umuarama, PR',
-      'Francisco Beltrão, PR', 'Paranavaí, PR', 'Pato Branco, PR',
-      'Telêmaco Borba, PR', 'Irati, PR', 'Cianorte, PR',
-      'Cornélio Procópio, PR', 'Ivaiporã, PR',
-      // ── SC Interior ──
-      'Joinville, SC', 'Blumenau, SC', 'Chapecó, SC', 'Criciúma, SC',
-      'Jaraguá do Sul, SC', 'Lages, SC', 'Brusque, SC', 'Tubarão, SC',
-      'Caçador, SC', 'São Bento do Sul, SC', 'Concórdia, SC',
-      'Rio do Sul, SC', 'Xanxerê, SC', 'Araranguá, SC', 'Joaçaba, SC',
-      // ── RS Interior ──
-      'Caxias do Sul, RS', 'Pelotas, RS', 'Santa Maria, RS',
-      'Passo Fundo, RS', 'Lajeado, RS', 'Bento Gonçalves, RS',
-      'Erechim, RS', 'Santa Cruz do Sul, RS', 'Ijuí, RS',
-      'Uruguaiana, RS', 'Bagé, RS', 'Cruz Alta, RS',
-      'Vacaria, RS', 'Santiago, RS', 'Carazinho, RS',
-      'Frederico Westphalen, RS', 'Santo Ângelo, RS',
-      // ── GO Interior ──
-      'Anápolis, GO', 'Rio Verde, GO', 'Catalão, GO',
-      'Itumbiara, GO', 'Jataí, GO', 'Luziânia, GO',
-      'Caldas Novas, GO', 'Porangatu, GO', 'Mineiros, GO',
-      // ── MS Interior ──
-      'Dourados, MS', 'Três Lagoas, MS', 'Corumbá, MS',
-      'Ponta Porã, MS', 'Naviraí, MS', 'Nova Andradina, MS',
-      // ── MT Interior ──
-      'Rondonópolis, MT', 'Sinop, MT', 'Tangará da Serra, MT',
-      'Cáceres, MT', 'Sorriso, MT', 'Lucas do Rio Verde, MT',
-      'Primavera do Leste, MT', 'Barra do Garças, MT',
-      // ── BA Interior ──
-      'Feira de Santana, BA', 'Vitória da Conquista, BA',
-      'Ilhéus, BA', 'Itabuna, BA', 'Jequié, BA',
-      'Barreiras, BA', 'Teixeira de Freitas, BA', 'Paulo Afonso, BA',
-      'Alagoinhas, BA', 'Eunápolis, BA', 'Luís Eduardo Magalhães, BA',
-      // ── PE Interior ──
-      'Caruaru, PE', 'Petrolina, PE', 'Garanhuns, PE',
-      'Serra Talhada, PE', 'Arcoverde, PE', 'Goiana, PE',
-      // ── CE Interior ──
-      'Juazeiro do Norte, CE', 'Sobral, CE', 'Crato, CE',
-      'Iguatu, CE', 'Quixadá, CE', 'Itapipoca, CE',
-      // ── PA Interior ──
-      'Marabá, PA', 'Santarém, PA', 'Castanhal, PA',
-      'Paragominas, PA', 'Altamira, PA', 'Tucuruí, PA',
-      // ── MA Interior ──
-      'Imperatriz, MA', 'Caxias, MA', 'Timon, MA',
-      'Codó, MA', 'Bacabal, MA', 'Açailândia, MA',
-      // ── RN Interior ──
-      'Mossoró, RN', 'Parnamirim, RN', 'Caicó, RN', 'Açu, RN',
-      // ── PB Interior ──
-      'Campina Grande, PB', 'Patos, PB', 'Sousa, PB', 'Cajazeiras, PB',
-      // ── PI Interior ──
-      'Parnaíba, PI', 'Picos, PI', 'Floriano, PI',
-      // ── ES Interior ──
-      'Cachoeiro de Itapemirim, ES', 'Linhares, ES', 'Colatina, ES',
-      'São Mateus, ES', 'Aracruz, ES', 'Guarapari, ES',
-      // ── TO Interior ──
-      'Araguaína, TO', 'Gurupi, TO', 'Porto Nacional, TO',
-      // ── AL Interior ──
-      'Arapiraca, AL', 'Palmeira dos Índios, AL', 'Penedo, AL',
-      // ── SE Interior ──
-      'Itabaiana, SE', 'Lagarto, SE', 'Estância, SE',
-      // ── RO Interior ──
-      'Ji-Paraná, RO', 'Cacoal, RO', 'Vilhena, RO', 'Ariquemes, RO',
-      // ── AC Interior ──
-      'Cruzeiro do Sul, AC',
-      // ── AP / RR ──
-      'Santana, AP', 'Boa Vista, RR',
+      // ── Prioridade 1 — Interior SP ──
+      'Campinas, SP', 'Santo André, SP', 'Ribeirão Preto, SP',
+      'Osasco, SP', 'Sorocaba, SP', 'São Bernardo do Campo, SP',
+      'São José dos Campos, SP', 'Mogi das Cruzes, SP', 'Piracicaba, SP',
+      'Bauru, SP', 'São Vicente, SP', 'Santos, SP', 'Guarujá, SP',
+      'Limeira, SP', 'Taubaté, SP', 'Praia Grande, SP', 'Suzano, SP',
+      'Carapicuíba, SP', 'Franca, SP', 'São Carlos, SP', 'Araraquara, SP',
+      'Marília, SP', 'Presidente Prudente, SP', 'Americana, SP',
+      'Araçatuba, SP', 'Barretos, SP', 'Botucatu, SP', 'Catanduva, SP',
+      'Hortolândia, SP', 'Indaiatuba, SP', 'Itu, SP', 'Itapetininga, SP',
+      'Jacareí, SP', 'Jundiaí, SP', 'Ourinhos, SP', 'Paulínia, SP',
+      'Registro, SP', 'Rio Claro, SP', 'Santa Bárbara d\'Oeste, SP',
+      'Sertãozinho, SP', 'Sumaré, SP', 'Taboão da Serra, SP',
+      'Valinhos, SP', 'Vinhedo, SP', 'Votuporanga, SP',
+      // ── Prioridade 2 — Interior Sul (PR, SC, RS) ──
+      'Joinville, SC', 'Londrina, PR', 'Maringá, PR', 'Caxias do Sul, RS',
+      'Blumenau, SC', 'Pelotas, RS', 'Ponta Grossa, PR', 'Cascavel, PR',
+      'Santa Maria, RS', 'Foz do Iguaçu, PR', 'Novo Hamburgo, RS',
+      'São Leopoldo, RS', 'Canoas, RS', 'Chapecó, SC', 'Itajaí, SC',
+      'Passo Fundo, RS', 'Gravataí, RS', 'Viamão, RS', 'Umuarama, PR',
+      'Apucarana, PR', 'Guarapuava, PR', 'Toledo, PR', 'Paranaguá, PR',
+      'São José, SC', 'Criciúma, SC', 'Lages, SC', 'Balneário Camboriú, SC',
+      // ── Prioridade 3 — Interior MG, GO, MT, MS, ES ──
+      'Uberlândia, MG', 'Contagem, MG', 'Juiz de Fora, MG',
+      'Aparecida de Goiânia, GO', 'Ribeirão das Neves, MG', 'Betim, MG',
+      'Anápolis, GO', 'Montes Claros, MG', 'Cuiabá, MT',
+      'Várzea Grande, MT', 'Rondonópolis, MT', 'Dourados, MS',
+      'Três Lagoas, MS', 'Corumbá, MS', 'Serra, ES', 'Vila Velha, ES',
+      'Cariacica, ES', 'Sete Lagoas, MG', 'Divinópolis, MG',
+      'Ipatinga, MG', 'Uberaba, MG', 'Governador Valadares, MG',
+      'Patos de Minas, MG', 'Poços de Caldas, MG', 'Varginha, MG',
+      // ── Prioridade 4 — Interior NE/N ──
+      'Feira de Santana, BA', 'Caruaru, PE', 'Petrolina, PE',
+      'Juazeiro do Norte, CE', 'Imperatriz, MA', 'Mossoró, RN',
+      'Campina Grande, PB', 'Arapiraca, AL', 'Ilhéus, BA',
+      'Vitória da Conquista, BA', 'Santarém, PA', 'Marabá, PA',
+      'Parauapebas, PA', 'Palmas, TO', 'Porto Velho, RO', 'Macapá, AP',
+      'Rio Branco, AC', 'Boa Vista, RR', 'Aracaju, SE', 'Teresina, PI',
+      'Natal, RN', 'João Pessoa, PB', 'São Luís, MA', 'Maceió, AL',
+      // ── Prioridade 5 — Capitais médias ──
+      'Florianópolis, SC', 'Vitória, ES', 'Curitiba, PR',
+      'Porto Alegre, RS', 'Campo Grande, MS', 'Goiânia, GO',
+      'Belém, PA', 'Manaus, AM', 'Recife, PE', 'Fortaleza, CE',
+      // ── Prioridade 6 — Grandes capitais (por último) ──
+      'Salvador, BA', 'Brasília, DF', 'Rio de Janeiro, RJ', 'São Paulo, SP',
     ],
   },
   {
