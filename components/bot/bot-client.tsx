@@ -339,32 +339,118 @@ export default function BotClient() {
     fetchTerritories()
   }
 
+  // ─── Polling state (auto mode) ───
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const serverRunIdRef = useRef<string | null>(null)
+  const botRunIdRef = useRef<string | null>(null)
+  const lineOffsetRef = useRef(0)
+
+  function stopPolling() {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }
+
+  async function pollStatus() {
+    const serverRunId = serverRunIdRef.current
+    const botRunId = botRunIdRef.current
+    if (!serverRunId) return
+
+    try {
+      const res = await fetch(
+        `/api/bot/run-status?runId=${serverRunId}&offset=${lineOffsetRef.current}&botRunId=${botRunId ?? ''}`,
+      )
+      if (!res.ok) return
+
+      const data = await res.json()
+
+      if (data.logs && data.logs.length > 0) {
+        const newLines: TermLine[] = data.logs.map((text: string) => ({
+          text,
+          type: classifyLine(text),
+        }))
+        setLines(prev => [...prev, ...newLines])
+        lineOffsetRef.current = data.totalLines
+      }
+
+      if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        stopPolling()
+        setStatus(data.status === 'completed' ? 'done' : 'error')
+        serverRunIdRef.current = null
+        botRunIdRef.current = null
+        fetchRuns()
+        fetchAutoQueue()
+      }
+    } catch { /* ignore network hiccups during polling */ }
+  }
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => stopPolling()
+  }, [])
+
+  // Resume polling on mount if there's a running bot_run
+  useEffect(() => {
+    if (status !== 'idle' || pollingRef.current) return
+    async function checkRunning() {
+      try {
+        const res = await fetch('/api/bot/runs')
+        if (!res.ok) return
+        const allRuns: BotRun[] = await res.json()
+        const active = allRuns.find(r => r.status === 'running' && r.server_run_id)
+        if (active) {
+          serverRunIdRef.current = active.server_run_id ?? null
+          botRunIdRef.current = active.id
+          lineOffsetRef.current = 0
+          setStatus('running')
+          setLines([
+            { text: '━━━ Reconectando ao modo automático em andamento... ━━━', type: 'accent' },
+          ])
+          pollingRef.current = setInterval(pollStatus, 5000)
+          pollStatus()
+        }
+      } catch { /* ignore */ }
+    }
+    checkRunning()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ─── Cancel ───
 
   async function handleCancel() {
     cancelledRef.current = true
     abortRef.current?.abort()
+    stopPolling()
     try {
-      await fetch('/api/bot/cancel', { method: 'POST' })
+      await fetch('/api/bot/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          runId: serverRunIdRef.current,
+          botRunId: botRunIdRef.current,
+        }),
+      })
     } catch { /* ignore */ }
     setLines(prev => [...prev, { text: '⚠️ Execução cancelada pelo usuário', type: 'warning' }])
     setStatus('error')
     setRunningIndex(null)
+    serverRunIdRef.current = null
+    botRunIdRef.current = null
   }
 
-  // ─── Run auto mode ───
+  // ─── Run auto mode (fire-and-forget + polling) ───
 
   async function handleRunAuto() {
     if (running) return
     setStatus('running')
     cancelledRef.current = false
+    lineOffsetRef.current = 0
     setLines([
       { text: `━━━ Modo Automático — ${countryConfig.flag} ${country} ━━━`, type: 'accent' },
       { text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? ' --dry' : ''}${autoSend && !autoDryRun ? ' --send' : ''}`, type: 'info' },
     ])
-
-    const controller = new AbortController()
-    abortRef.current = controller
 
     try {
       const res = await fetch('/api/bot/run-auto', {
@@ -377,58 +463,30 @@ export default function BotClient() {
           send: autoSend && !autoDryRun,
           market: country,
         }),
-        signal: controller.signal,
       })
 
-      if (!res.body) {
-        setLines(prev => [...prev, { text: '❌ Sem resposta do servidor', type: 'error' }])
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setLines(prev => [...prev, { text: `❌ ${err.error}`, type: 'error' }])
         setStatus('error')
         return
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+      const data = await res.json()
+      serverRunIdRef.current = data.serverRunId
+      botRunIdRef.current = data.botRunId
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      setLines(prev => [...prev, { text: '🤖 Bot iniciado em background — atualizando a cada 5s...', type: 'info' }])
 
-        buffer += decoder.decode(value, { stream: true })
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop() ?? ''
-
-        for (const part of parts) {
-          if (!part.startsWith('data: ')) continue
-          const payload = part.slice(6)
-
-          if (payload === '[DONE]') {
-            setStatus('done')
-            fetchRuns()
-            fetchAutoQueue()
-            return
-          }
-
-          try {
-            const parsed = JSON.parse(payload)
-            const lineText: string = parsed.line ?? payload
-            const lineType: TermLine['type'] = parsed.type ?? classifyLine(lineText)
-            setLines(prev => [...prev, { text: lineText, type: lineType }])
-          } catch {
-            setLines(prev => [...prev, { text: payload, type: classifyLine(payload) }])
-          }
-        }
-      }
-
-      setStatus(cancelledRef.current ? 'error' : 'done')
+      // Start polling every 5 seconds
+      pollingRef.current = setInterval(pollStatus, 5000)
+      // First poll immediately
+      setTimeout(pollStatus, 1000)
     } catch (err) {
-      if (!controller.signal.aborted) {
-        const msg = err instanceof Error ? err.message : 'Unknown error'
-        setLines(prev => [...prev, { text: `❌ ${msg}`, type: 'error' }])
-      }
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setLines(prev => [...prev, { text: `❌ ${msg}`, type: 'error' }])
       setStatus('error')
     }
-    fetchRuns()
   }
 
   // ─── Fill form from history ───

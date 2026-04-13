@@ -145,6 +145,7 @@ export interface BotRun {
   started_at: string
   duration_seconds: number | null
   log: string | null
+  server_run_id: string | null
 }
 
 // ─── AI Suggestions ───
