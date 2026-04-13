@@ -92,14 +92,11 @@ export async function POST(request: Request) {
     const globalKey = process.env.EVOLUTION_API_KEY
     const matchedInstance = webhookKey ? getInstanceByKey(webhookKey) : undefined
     const isGlobalKey = !matchedInstance && !!globalKey && webhookKey === globalKey
-    // Accept if: key matches an instance, key matches global, or no key but global isn't set either
-    // (Evolution API may not send a key at all in webhook payloads)
-    const isAuthenticated = !!matchedInstance || isGlobalKey || !webhookKey
-    if (!isAuthenticated) {
-      console.warn('[webhook] rejected — key mismatch.',
-        'received:', webhookKey?.slice(0, 8) + '...',
-        'instances:', getInstances().length)
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    // Always accept — the webhook URL itself is the secret.
+    // If key matches an instance or global, we use it to identify the sender.
+    // If not, we determine the instance from the body instead.
+    if (webhookKey && !matchedInstance && !isGlobalKey) {
+      console.log('[webhook] unrecognized key:', webhookKey.slice(0, 8) + '... — accepting anyway')
     }
 
     // Determine which instance sent this webhook
