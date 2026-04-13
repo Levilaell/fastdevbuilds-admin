@@ -96,8 +96,13 @@ export async function POST(request: Request) {
     const body = await request.json()
 
     // Determine which instance sent this webhook
-    // Priority: matched instance key > body.instance > first configured instance
-    const bodyInstance = (body.instance as string) ?? (body.sender as string) ?? ''
+    // Evolution API may use: instance, instanceName, sender, or nested instance.instanceName
+    const bodyInstance: string =
+      (body.instance as string)
+      ?? body.instanceName
+      ?? body.sender
+      ?? body.data?.instance?.instanceName
+      ?? ''
     const instances = getInstances()
     const resolvedInstance = matchedInstance
       ?? instances.find(i => i.name === bodyInstance)
@@ -107,8 +112,10 @@ export async function POST(request: Request) {
 
     // Log every webhook event for debugging (accessible via /api/webhook/whatsapp/debug)
     logWebhook(body)
-    console.log('[webhook] event:', body.event, 'instance:', bodyInstance,
-      'resolvedTo:', webhookInstanceName, 'fromMe:', body.data?.key?.fromMe,
+    console.log('[webhook] event:', body.event,
+      'bodyInstance:', bodyInstance, 'resolvedTo:', webhookInstanceName,
+      'isGlobalKey:', isGlobalKey, 'topKeys:', Object.keys(body).join(','),
+      'fromMe:', body.data?.key?.fromMe,
       'remoteJid:', body.data?.key?.remoteJid,
       'hasMessage:', !!body.data?.message,
       'keys:', body.data?.message ? Object.keys(body.data.message).join(',') : 'none')
