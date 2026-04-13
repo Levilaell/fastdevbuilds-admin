@@ -1,4 +1,5 @@
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
+import { getCountry } from '@/lib/bot-config'
 
 export async function GET(request: Request) {
   if (!await getAuthUser()) return unauthorizedResponse()
@@ -11,15 +12,27 @@ export async function GET(request: Request) {
     )
   }
 
-  // Forward market filter to bot server
   const { searchParams } = new URL(request.url)
-  const market = searchParams.get('market') || 'all'
+  const market = searchParams.get('market') || 'BR'
+
+  // Look up country config to send niches + cities as source of truth
+  const countryConfig = getCountry(market)
 
   try {
-    const res = await fetch(`${botUrl}/api/bot/queue?market=${market}`, {
+    const res = await fetch(`${botUrl}/api/bot/queue`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${process.env.BOT_SERVER_SECRET ?? ''}`,
       },
+      body: JSON.stringify({
+        market,
+        niches: countryConfig
+          ? countryConfig.niches.flatMap(g => [...g.items])
+          : undefined,
+        cities: countryConfig ? [...countryConfig.cities] : undefined,
+        lang: countryConfig?.lang,
+      }),
     })
 
     if (!res.ok) {

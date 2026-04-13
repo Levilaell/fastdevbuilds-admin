@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
+import { getCountry } from '@/lib/bot-config'
 
 interface AutoParams {
   limit: number
@@ -59,7 +60,18 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${process.env.BOT_SERVER_SECRET ?? ''}`,
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        ...(() => {
+          const cc = getCountry(params.market)
+          if (!cc) return {}
+          return {
+            niches: cc.niches.flatMap(g => [...g.items]),
+            cities: [...cc.cities],
+            lang: cc.lang,
+          }
+        })(),
+      }),
     })
 
     if (!botResponse.ok || !botResponse.body) {
