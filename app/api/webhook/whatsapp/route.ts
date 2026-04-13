@@ -82,21 +82,33 @@ async function resolvePhoneFromLid(
 
 export async function POST(request: Request) {
   try {
-    // Validate webhook authenticity — accept any configured instance key
+    // Validate webhook authenticity — accept instance keys OR global Evolution API key
     const webhookKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
     const matchedInstance = webhookKey ? getInstanceByKey(webhookKey) : undefined
-    if (!matchedInstance) {
+    // Also accept a global API key (Evolution API may send a server-wide key in webhooks)
+    const globalKey = process.env.EVOLUTION_API_KEY
+    const isGlobalKey = !matchedInstance && !!globalKey && webhookKey === globalKey
+    if (!matchedInstance && !isGlobalKey) {
       console.warn('[webhook] rejected — invalid or missing API key')
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const webhookInstanceName = matchedInstance.name
-    const webhookInstanceKey = matchedInstance.apiKey
 
     const body = await request.json()
 
+    // Determine which instance sent this webhook
+    // Priority: matched instance key > body.instance > first configured instance
+    const bodyInstance = (body.instance as string) ?? (body.sender as string) ?? ''
+    const instances = getInstances()
+    const resolvedInstance = matchedInstance
+      ?? instances.find(i => i.name === bodyInstance)
+      ?? instances[0]
+    const webhookInstanceName = resolvedInstance?.name ?? ''
+    const webhookInstanceKey = resolvedInstance?.apiKey ?? ''
+
     // Log every webhook event for debugging (accessible via /api/webhook/whatsapp/debug)
     logWebhook(body)
-    console.log('[webhook] event:', body.event, 'fromMe:', body.data?.key?.fromMe,
+    console.log('[webhook] event:', body.event, 'instance:', bodyInstance,
+      'resolvedTo:', webhookInstanceName, 'fromMe:', body.data?.key?.fromMe,
       'remoteJid:', body.data?.key?.remoteJid,
       'hasMessage:', !!body.data?.message,
       'keys:', body.data?.message ? Object.keys(body.data.message).join(',') : 'none')
