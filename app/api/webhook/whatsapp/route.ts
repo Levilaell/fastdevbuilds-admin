@@ -102,7 +102,9 @@ export async function POST(request: Request) {
       'keys:', body.data?.message ? Object.keys(body.data.message).join(',') : 'none')
 
     // Accept all message-related events from Evolution API
-    const event = body.event as string
+    // Normalize: Evolution API may send lowercase (messages.upsert) or uppercase (MESSAGES_UPSERT)
+    const rawEvent = (body.event as string) ?? ''
+    const event = rawEvent.toLowerCase().replace(/_/g, '.')
     const MESSAGE_EVENTS = [
       'messages.upsert',  // standard incoming/outgoing
       'send.message',     // sent via API
