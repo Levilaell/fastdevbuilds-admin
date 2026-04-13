@@ -904,7 +904,7 @@ export default function BotClient() {
             </button>
           </div>
         ) : (
-          /* ─── Manual Mode Panel ─── */
+          /* ─── Manual Mode Pane ─── */
           <div className="space-y-5">
             {/* Niche */}
             <div>
