@@ -89,7 +89,10 @@ export async function POST(request: Request) {
     const globalKey = process.env.EVOLUTION_API_KEY
     const isGlobalKey = !matchedInstance && !!globalKey && webhookKey === globalKey
     if (!matchedInstance && !isGlobalKey) {
-      console.warn('[webhook] rejected — invalid or missing API key')
+      console.warn('[webhook] rejected — invalid or missing API key.',
+        'received:', webhookKey?.slice(0, 8) + '...',
+        'globalKey set:', !!globalKey,
+        'instances:', getInstances().length)
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
