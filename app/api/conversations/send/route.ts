@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
-import { sendWhatsApp } from '@/lib/whatsapp'
+import { sendWhatsApp, getOrAssignInstance } from '@/lib/whatsapp'
 
 export async function POST(request: NextRequest) {
   if (!await getAuthUser()) return unauthorizedResponse()
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
     if (!phone) {
       return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
     }
-    const sent = await sendWhatsApp(phone, message)
+    const instance = await getOrAssignInstance(supabase, place_id)
+    const sent = await sendWhatsApp(phone, message, instance?.name)
     if (!sent) {
       return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
     }

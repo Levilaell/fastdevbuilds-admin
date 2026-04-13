@@ -198,6 +198,7 @@ To add a new country, add an entry to `COUNTRIES`. Language, channel, niches, an
 | niche | text | Search niche used |
 | country | text | BR/US — derived from lang |
 | no_website | boolean | True if business has no website |
+| evolution_instance | text | Assigned Evolution API instance for WhatsApp rotation |
 | status | lead_status | Pipeline status enum |
 | status_updated_at | timestamptz | |
 | inbox_archived_at | timestamptz | Dashboard-only: when archived from inbox |
@@ -278,9 +279,13 @@ NEXT_PUBLIC_SUPABASE_URL=       # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon key (safe for client)
 SUPABASE_SERVICE_KEY=           # Service role key — server only
 ANTHROPIC_API_KEY=              # Claude API key
-EVOLUTION_API_URL=              # WhatsApp gateway URL
-EVOLUTION_API_KEY=              # WhatsApp gateway key
-EVOLUTION_INSTANCE=             # WhatsApp instance name
+EVOLUTION_API_URL=              # WhatsApp gateway URL (shared by all instances)
+EVOLUTION_INSTANCE_1=           # WhatsApp instance 1 name
+EVOLUTION_API_KEY_1=            # WhatsApp instance 1 key
+EVOLUTION_INSTANCE_2=           # WhatsApp instance 2 name (optional)
+EVOLUTION_API_KEY_2=            # WhatsApp instance 2 key (optional)
+EVOLUTION_INSTANCE_3=           # WhatsApp instance 3 name (optional)
+EVOLUTION_API_KEY_3=            # WhatsApp instance 3 key (optional)
 BOT_SERVER_URL=                 # Railway bot server URL
 BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
 ```
@@ -296,4 +301,4 @@ BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
 - **Tailwind only** — no inline `style` attributes, no CSS modules, no external UI libraries
 - **Dark theme always** — every new component must use the color palette above
 - **Niche names with accents** — BR niches must use proper Portuguese diacritics to match Supabase data
-- **WhatsApp daily limit is 15** — enforced by bot, displayed in dashboard
+- **WhatsApp daily limit is 15 per instance** — 3 instances = 45 total, round-robin rotation via `evolution_instance` column on leads

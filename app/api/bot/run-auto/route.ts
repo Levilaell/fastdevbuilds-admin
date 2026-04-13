@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { getCountry } from '@/lib/bot-config'
+import { getInstances } from '@/lib/whatsapp'
 
 interface AutoParams {
   limit: number
@@ -71,6 +72,11 @@ export async function POST(request: NextRequest) {
             lang: cc.lang,
           }
         })(),
+        evolutionInstances: getInstances().map(i => ({
+          name: i.name,
+          apiKey: i.apiKey,
+        })),
+        evolutionApiUrl: process.env.EVOLUTION_API_URL,
       }),
     })
 

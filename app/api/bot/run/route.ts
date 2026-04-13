@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { getCountry } from '@/lib/bot-config'
+import { getInstances } from '@/lib/whatsapp'
 
 interface BotParams {
   niche: string
@@ -78,6 +79,11 @@ export async function POST(request: NextRequest) {
         export_target: exportTarget,
         dry_run: params.dry_run,
         send: params.send,
+        evolutionInstances: getInstances().map(i => ({
+          name: i.name,
+          apiKey: i.apiKey,
+        })),
+        evolutionApiUrl: process.env.EVOLUTION_API_URL,
       }),
     })
 

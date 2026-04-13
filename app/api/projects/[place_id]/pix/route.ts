@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { buildPixMessage as generatePixMessage } from '@/lib/prompts'
-import { sendWhatsApp } from '@/lib/whatsapp'
+import { sendWhatsApp, getOrAssignInstance } from '@/lib/whatsapp'
 import type { Lead, Project } from '@/lib/types'
 
 export async function POST(
@@ -42,7 +42,8 @@ export async function POST(
 
   const message = generatePixMessage(lead, project, pixKey)
 
-  const sent = await sendWhatsApp(lead.phone, message)
+  const instance = await getOrAssignInstance(supabase, place_id)
+  const sent = await sendWhatsApp(lead.phone, message, instance?.name)
   if (!sent) {
     return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }

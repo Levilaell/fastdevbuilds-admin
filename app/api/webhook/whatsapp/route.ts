@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import { classifyAndSuggest } from '@/lib/ai-workflow'
 import { isAutoReply, isInstantReply } from '@/lib/auto-reply'
-import { normalizePhone, phoneMatch } from '@/lib/whatsapp'
+import { normalizePhone, phoneMatch, getInstances, getInstanceByKey } from '@/lib/whatsapp'
 import { logWebhook } from './debug/route'
 import type { Lead } from '@/lib/types'
 
@@ -19,10 +19,14 @@ function isValidPhone(phone: string): boolean {
  * Strategy: get the LID contact's profilePictureUrl, then find the
  * @s.whatsapp.net contact with the same picture — that has the real number.
  */
-async function resolvePhoneFromLid(lid: string): Promise<string | null> {
+async function resolvePhoneFromLid(
+  lid: string,
+  instanceName?: string,
+  instanceApiKey?: string,
+): Promise<string | null> {
   const evoUrl = process.env.EVOLUTION_API_URL
-  const instance = process.env.EVOLUTION_INSTANCE
-  const apiKey = process.env.EVOLUTION_API_KEY
+  const instance = instanceName ?? process.env.EVOLUTION_INSTANCE_1
+  const apiKey = instanceApiKey ?? process.env.EVOLUTION_API_KEY_1
 
   if (!evoUrl || !instance || !apiKey) return null
 
@@ -78,13 +82,15 @@ async function resolvePhoneFromLid(lid: string): Promise<string | null> {
 
 export async function POST(request: Request) {
   try {
-    // Validate webhook authenticity via Evolution API key
+    // Validate webhook authenticity — accept any configured instance key
     const webhookKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
-    const expectedKey = process.env.EVOLUTION_API_KEY
-    if (!expectedKey || webhookKey !== expectedKey) {
+    const matchedInstance = webhookKey ? getInstanceByKey(webhookKey) : undefined
+    if (!matchedInstance) {
       console.warn('[webhook] rejected — invalid or missing API key')
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const webhookInstanceName = matchedInstance.name
+    const webhookInstanceKey = matchedInstance.apiKey
 
     const body = await request.json()
 
@@ -127,8 +133,8 @@ export async function POST(request: Request) {
     // Resolve real phone number
     let phone: string
     if (isLid) {
-      console.log('[webhook] LID detected:', jidValue, '— resolving real phone...')
-      const resolved = await resolvePhoneFromLid(jidValue)
+      console.log('[webhook] LID detected:', jidValue, '— resolving via', webhookInstanceName)
+      const resolved = await resolvePhoneFromLid(jidValue, webhookInstanceName, webhookInstanceKey)
       if (resolved) {
         phone = resolved
       } else {
@@ -172,7 +178,7 @@ export async function POST(request: Request) {
     // Find lead by phone — fetch all leads with a phone number
     const { data: leads } = await supabase
       .from('leads')
-      .select('place_id, phone, status')
+      .select('place_id, phone, status, evolution_instance')
       .not('phone', 'is', null)
 
     const lead = (leads ?? []).find((l) =>
@@ -193,12 +199,18 @@ export async function POST(request: Request) {
       leadStatus = lead.status
 
       // Update phone if we resolved a better one (e.g. from LID)
+      // Also store which instance this lead is associated with if not yet set
+      const leadUpdates: Record<string, string> = {}
       if (isLid && isValidPhone(normalizedPhone) && normalizedPhone !== lead.phone) {
-        await supabase
-          .from('leads')
-          .update({ phone: normalizedPhone })
-          .eq('place_id', placeId)
-        console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
+        leadUpdates.phone = normalizedPhone
+      }
+      if (!lead.evolution_instance) {
+        leadUpdates.evolution_instance = webhookInstanceName
+      }
+      if (Object.keys(leadUpdates).length > 0) {
+        await supabase.from('leads').update(leadUpdates).eq('place_id', placeId)
+        if (leadUpdates.phone) console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
+        if (leadUpdates.evolution_instance) console.log('[webhook] assigned instance', webhookInstanceName, 'to', placeId)
       }
     } else if (isFromMe) {
       // No lead matched by phone — try matching by LID-based place_id
@@ -232,6 +244,7 @@ export async function POST(request: Request) {
         business_name: pushName || normalizedPhone || jidValue,
         phone: isValidPhone(normalizedPhone) ? normalizedPhone : null,
         outreach_channel: 'whatsapp',
+        evolution_instance: webhookInstanceName,
         status: 'replied',
         niche: 'inbound',
         status_updated_at: new Date().toISOString(),

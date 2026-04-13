@@ -561,10 +561,14 @@ export default function BotClient() {
 
                 {/* WhatsApp slots — only for WhatsApp channel countries */}
                 {countryConfig.channel === 'whatsapp' && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
                       <p className="text-[10px] text-muted uppercase">WA hoje</p>
-                      <p className="text-sm font-medium text-text tabular-nums">{autoQueue.stats.whatsappSentToday}/15</p>
+                      <p className="text-sm font-medium text-text tabular-nums">{autoQueue.stats.whatsappSentToday}</p>
+                    </div>
+                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                      <p className="text-[10px] text-muted uppercase">Limite (3 inst.)</p>
+                      <p className="text-sm font-medium text-text tabular-nums">45</p>
                     </div>
                     <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
                       <p className="text-[10px] text-muted uppercase">Slots livres</p>

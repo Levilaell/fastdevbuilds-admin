@@ -1,5 +1,6 @@
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { getCountry } from '@/lib/bot-config'
+import { getInstances } from '@/lib/whatsapp'
 
 export async function GET(request: Request) {
   if (!await getAuthUser()) return unauthorizedResponse()
@@ -32,6 +33,11 @@ export async function GET(request: Request) {
           : undefined,
         cities: countryConfig ? [...countryConfig.cities] : undefined,
         lang: countryConfig?.lang,
+        evolutionInstances: getInstances().map(i => ({
+          name: i.name,
+          apiKey: i.apiKey,
+        })),
+        evolutionApiUrl: process.env.EVOLUTION_API_URL,
       }),
     })
 

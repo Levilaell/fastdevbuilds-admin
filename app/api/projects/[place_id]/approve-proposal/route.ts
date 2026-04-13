@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
-import { sendWhatsApp } from '@/lib/whatsapp'
+import { sendWhatsApp, getOrAssignInstance } from '@/lib/whatsapp'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
 import { getRecentConversations } from '@/lib/supabase/queries'
 import type { Lead, Project, Conversation } from '@/lib/types'
@@ -50,8 +50,9 @@ export async function POST(
     return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
   }
 
-  // Send via WhatsApp
-  const sent = await sendWhatsApp(lead.phone, message)
+  // Send via WhatsApp — use lead's assigned instance
+  const instance = await getOrAssignInstance(supabase, place_id)
+  const sent = await sendWhatsApp(lead.phone, message, instance?.name)
   if (!sent) {
     return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }
