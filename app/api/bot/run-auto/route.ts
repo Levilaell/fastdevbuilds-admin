@@ -10,6 +10,7 @@ interface AutoParams {
   dry_run: boolean
   send: boolean
   market: string
+  max_send?: number
 }
 
 export async function POST(request: NextRequest) {

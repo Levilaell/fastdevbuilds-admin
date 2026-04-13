@@ -90,6 +90,7 @@ export default function BotClient() {
   const [autoMinScore, setAutoMinScore] = useState(4)
   const [autoSend, setAutoSend] = useState(false)
   const [autoDryRun, setAutoDryRun] = useState(false)
+  const [autoMaxSend, setAutoMaxSend] = useState<number | ''>('')
 
   // Manual form state
   const [niche, setNiche] = useState('')
@@ -449,7 +450,7 @@ export default function BotClient() {
     lineOffsetRef.current = 0
     setLines([
       { text: `━━━ Modo Automático — ${countryConfig.flag} ${country} ━━━`, type: 'accent' },
-      { text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? ' --dry' : ''}${autoSend && !autoDryRun ? ' --send' : ''}`, type: 'info' },
+      { text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? ' --dry' : ''}${autoSend && !autoDryRun ? ' --send' : ''}${autoMaxSend !== '' ? ` --max-send ${autoMaxSend}` : ''}`, type: 'info' },
     ])
 
     try {
@@ -462,6 +463,7 @@ export default function BotClient() {
           dry_run: autoDryRun,
           send: autoSend && !autoDryRun,
           market: country,
+          ...(autoMaxSend !== '' && { max_send: autoMaxSend }),
         }),
       })
 
@@ -663,7 +665,7 @@ export default function BotClient() {
             )}
 
             {/* Auto params */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-muted mb-1.5">Limite/item</label>
                 <input
@@ -684,6 +686,17 @@ export default function BotClient() {
                   value={autoMinScore}
                   onChange={e => setAutoMinScore(Number(e.target.value) || 4)}
                   className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1.5">Máx. envios</label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Sem limite"
+                  value={autoMaxSend}
+                  onChange={e => setAutoMaxSend(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
                 />
               </div>
             </div>
