@@ -7,7 +7,7 @@ interface AutoParams {
   min_score: number
   dry_run: boolean
   send: boolean
-  market: 'BR' | 'US' | 'all'
+  market: string
 }
 
 export async function POST(request: NextRequest) {

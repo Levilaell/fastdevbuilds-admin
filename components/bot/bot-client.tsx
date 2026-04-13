@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { timeAgo } from '@/lib/time-ago'
-import { NICHES, NICHES_US, CITIES_BR, CITIES_US } from '@/lib/bot-config'
+import { COUNTRIES, getCountry } from '@/lib/bot-config'
+import type { CountryConfig } from '@/lib/bot-config'
 import type { BotRun } from '@/lib/types'
 
 // ─── Types ───
@@ -18,8 +19,7 @@ interface QueueItem {
   city: string
   limit: number
   minScore: number
-  lang: 'pt' | 'en'
-  exportTarget: 'csv' | 'supabase' | 'both'
+  country: string
   dryRun: boolean
   send: boolean
 }
@@ -83,8 +83,12 @@ function queueId(): string {
 // ─── Main component ───
 
 export default function BotClient() {
-  // Mode toggle
-  const [mode, setMode] = useState<'manual' | 'auto'>('manual')
+  // Mode toggle — auto is default
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto')
+
+  // Country selection (shared between modes)
+  const [country, setCountry] = useState<string>('BR')
+  const countryConfig = getCountry(country) as CountryConfig
 
   // Auto mode state
   const [autoQueue, setAutoQueue] = useState<AutoQueueData | null>(null)
@@ -93,21 +97,18 @@ export default function BotClient() {
   const [autoMinScore, setAutoMinScore] = useState(4)
   const [autoSend, setAutoSend] = useState(false)
   const [autoDryRun, setAutoDryRun] = useState(false)
-  const [autoMarket, setAutoMarket] = useState<'BR' | 'US' | 'all'>('all')
 
-  // Form state
+  // Manual form state
   const [niche, setNiche] = useState('')
   const [city, setCity] = useState('')
   const [cityQuery, setCityQuery] = useState('')
   const [cityOpen, setCityOpen] = useState(false)
   const [limit, setLimit] = useState(20)
   const [minScore, setMinScore] = useState(4)
-  const [lang, setLang] = useState<'pt' | 'en'>('pt')
-  const [exportTarget, setExportTarget] = useState<'csv' | 'supabase' | 'both'>('both')
   const [dryRun, setDryRun] = useState(false)
   const [send, setSend] = useState(false)
 
-  // Queue
+  // Queue (manual)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [runningIndex, setRunningIndex] = useState<number | null>(null)
 
@@ -115,7 +116,7 @@ export default function BotClient() {
   const [territories, setTerritories] = useState<Territory[]>([])
   const [territoryWarning, setTerritoryWarning] = useState<Territory | null>(null)
 
-  // Terminal state
+  // Terminal
   const [lines, setLines] = useState<TermLine[]>([])
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -131,12 +132,12 @@ export default function BotClient() {
 
   // ─── Computed ───
 
-  const cityList = lang === 'pt' ? CITIES_BR : CITIES_US
   const filteredCities = useMemo(() => {
-    if (!cityQuery) return [...cityList]
+    const cities = countryConfig?.cities ?? []
+    if (!cityQuery) return [...cities]
     const q = cityQuery.toLowerCase()
-    return cityList.filter(c => c.toLowerCase().includes(q))
-  }, [cityList, cityQuery])
+    return cities.filter(c => c.toLowerCase().includes(q))
+  }, [countryConfig, cityQuery])
 
   const running = status === 'running'
 
@@ -161,23 +162,23 @@ export default function BotClient() {
   const fetchAutoQueue = useCallback(async () => {
     setAutoLoading(true)
     try {
-      const res = await fetch(`/api/bot/queue?market=${autoMarket}`)
+      const res = await fetch(`/api/bot/queue?market=${country}`)
       if (res.ok) setAutoQueue(await res.json())
     } catch { /* ignore */ }
     finally { setAutoLoading(false) }
-  }, [autoMarket])
+  }, [country])
 
   useEffect(() => {
     fetchTerritories()
     fetchRuns()
   }, [fetchTerritories, fetchRuns])
 
-  // Fetch auto queue when switching to auto mode or changing market
+  // Fetch auto queue when switching to auto mode or changing country
   useEffect(() => {
     if (mode === 'auto') fetchAutoQueue()
-  }, [mode, autoMarket, fetchAutoQueue])
+  }, [mode, country, fetchAutoQueue])
 
-  // Auto-scroll terminal using requestAnimationFrame
+  // Auto-scroll terminal
   useEffect(() => {
     if (terminalRef.current) {
       requestAnimationFrame(() => {
@@ -199,6 +200,13 @@ export default function BotClient() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Reset niche/city when country changes
+  useEffect(() => {
+    setNiche('')
+    setCity('')
+    setCityQuery('')
+  }, [country])
+
   // ─── Territory lookup ───
 
   function findTerritory(n: string, c: string): Territory | undefined {
@@ -208,7 +216,7 @@ export default function BotClient() {
     )
   }
 
-  // ─── Add to queue ───
+  // ─── Add to queue (manual) ───
 
   function handleAddToQueue() {
     if (!niche.trim() || !city.trim()) return
@@ -227,8 +235,7 @@ export default function BotClient() {
         city: city.trim(),
         limit,
         minScore,
-        lang,
-        exportTarget,
+        country,
         dryRun,
         send: send && !dryRun,
       },
@@ -240,7 +247,7 @@ export default function BotClient() {
     setQueue(prev => prev.filter(q => q.id !== id))
   }
 
-  // ─── SSE stream runner ───
+  // ─── SSE stream runner (manual) ───
 
   async function runItem(item: QueueItem): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
@@ -264,8 +271,7 @@ export default function BotClient() {
           city: item.city,
           limit: item.limit,
           min_score: item.minScore,
-          lang: item.lang,
-          export_target: item.exportTarget,
+          country: item.country,
           dry_run: item.dryRun,
           send: item.send,
         }),
@@ -324,7 +330,7 @@ export default function BotClient() {
     })
   }
 
-  // ─── Run queue ───
+  // ─── Run queue (manual) ───
 
   async function handleRunQueue() {
     if (running || queue.length === 0) return
@@ -362,14 +368,13 @@ export default function BotClient() {
 
   // ─── Run auto mode ───
 
-  async function handleRunAuto(dry: boolean) {
+  async function handleRunAuto() {
     if (running) return
     setStatus('running')
     cancelledRef.current = false
-    const marketLabel = autoMarket === 'all' ? 'BR + US' : autoMarket
     setLines([
-      { text: `━━━ Modo Autônomo — ${marketLabel} ━━━`, type: 'accent' },
-      { text: `$ prospect-bot --auto --market ${autoMarket} --limit ${autoLimit} --min-score ${autoMinScore}${dry ? ' --dry' : ''}${autoSend && !dry ? ' --send' : ''}`, type: 'info' },
+      { text: `━━━ Modo Automático — ${countryConfig.flag} ${country} ━━━`, type: 'accent' },
+      { text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? ' --dry' : ''}${autoSend && !autoDryRun ? ' --send' : ''}`, type: 'info' },
     ])
 
     const controller = new AbortController()
@@ -382,9 +387,9 @@ export default function BotClient() {
         body: JSON.stringify({
           limit: autoLimit,
           min_score: autoMinScore,
-          dry_run: dry,
-          send: autoSend && !dry,
-          market: autoMarket,
+          dry_run: autoDryRun,
+          send: autoSend && !autoDryRun,
+          market: country,
         }),
         signal: controller.signal,
       })
@@ -450,9 +455,6 @@ export default function BotClient() {
     }
     if (run.limit_count) setLimit(run.limit_count)
     if (run.min_score) setMinScore(run.min_score)
-    if (run.lang === 'pt' || run.lang === 'en') setLang(run.lang)
-    if (run.export_target === 'csv' || run.export_target === 'supabase' || run.export_target === 'both')
-      setExportTarget(run.export_target)
     if (run.dry_run !== null) setDryRun(run.dry_run)
     if (run.send !== null) setSend(run.send)
   }
@@ -493,52 +495,62 @@ export default function BotClient() {
         {/* Mode toggle */}
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
-            {mode === 'manual' ? 'Modo Manual' : 'Modo Automático'}
+            {mode === 'auto' ? 'Modo Automático' : 'Modo Manual'}
           </h2>
           <div className="flex rounded-lg border border-border overflow-hidden">
             <button
-              onClick={() => setMode('manual')}
-              className={`px-3 py-1 text-[11px] font-medium ${
-                mode === 'manual' ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'
-              }`}
-            >
-              Manual
-            </button>
-            <button
               onClick={() => setMode('auto')}
-              className={`px-3 py-1 text-[11px] font-medium border-l border-border ${
+              className={`px-3 py-1 text-[11px] font-medium ${
                 mode === 'auto' ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'
               }`}
             >
               Auto
             </button>
+            <button
+              onClick={() => setMode('manual')}
+              className={`px-3 py-1 text-[11px] font-medium border-l border-border ${
+                mode === 'manual' ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'
+              }`}
+            >
+              Manual
+            </button>
           </div>
+        </div>
+
+        {/* Country selector (shared) */}
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          {COUNTRIES.map((c) => (
+            <button
+              key={c.code}
+              onClick={() => setCountry(c.code)}
+              className={`flex-1 px-3 py-1.5 text-[11px] font-medium ${
+                c.code !== COUNTRIES[0].code ? 'border-l border-border' : ''
+              } ${
+                country === c.code
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-muted bg-sidebar hover:text-text'
+              }`}
+            >
+              {c.flag} {c.code}
+            </button>
+          ))}
+        </div>
+
+        {/* Channel indicator */}
+        <div className="flex items-center gap-2 text-[10px] text-muted">
+          <span className="uppercase tracking-wider">Canal:</span>
+          <span className={`px-1.5 py-0.5 rounded font-medium ${
+            countryConfig.channel === 'whatsapp'
+              ? 'text-emerald-400 bg-emerald-500/10'
+              : 'text-blue-400 bg-blue-500/10'
+          }`}>
+            {countryConfig.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
+          </span>
         </div>
 
         {mode === 'auto' ? (
           /* ─── Auto Mode Panel ─── */
           <div className="space-y-4">
-            {/* Market toggle */}
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              {(['all', 'BR', 'US'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setAutoMarket(m)}
-                  className={`flex-1 px-3 py-1.5 text-[11px] font-medium ${
-                    m !== 'all' ? 'border-l border-border' : ''
-                  } ${
-                    autoMarket === m
-                      ? m === 'BR' ? 'bg-emerald-500/15 text-emerald-400'
-                      : m === 'US' ? 'bg-blue-500/15 text-blue-400'
-                      : 'bg-accent/15 text-accent'
-                      : 'text-muted bg-sidebar hover:text-text'
-                  }`}
-                >
-                  {m === 'all' ? 'Todos' : m}
-                </button>
-              ))}
-            </div>
-
             {/* Stats */}
             {autoLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -561,33 +573,21 @@ export default function BotClient() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted uppercase">WA hoje</p>
-                    <p className="text-sm font-medium text-text tabular-nums">{autoQueue.stats.whatsappSentToday}/50</p>
+                {/* WhatsApp slots — only for WhatsApp channel countries */}
+                {countryConfig.channel === 'whatsapp' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                      <p className="text-[10px] text-muted uppercase">WA hoje</p>
+                      <p className="text-sm font-medium text-text tabular-nums">{autoQueue.stats.whatsappSentToday}/50</p>
+                    </div>
+                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
+                      <p className="text-[10px] text-muted uppercase">Slots livres</p>
+                      <p className={`text-sm font-medium tabular-nums ${autoQueue.stats.whatsappSlotsLeft > 0 ? 'text-success' : 'text-danger'}`}>
+                        {autoQueue.stats.whatsappSlotsLeft}
+                      </p>
+                    </div>
                   </div>
-                  <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted uppercase">Slots livres</p>
-                    <p className={`text-sm font-medium tabular-nums ${autoQueue.stats.whatsappSlotsLeft > 0 ? 'text-success' : 'text-danger'}`}>
-                      {autoQueue.stats.whatsappSlotsLeft}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted uppercase">BR</p>
-                    <p className="text-sm font-medium text-text">{autoQueue.summary.br}</p>
-                  </div>
-                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted uppercase">US</p>
-                    <p className="text-sm font-medium text-text">{autoQueue.summary.us}</p>
-                  </div>
-                  <div className="flex-1 bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted uppercase">Est. leads</p>
-                    <p className="text-sm font-medium text-text">~{autoQueue.summary.estimatedLeads}</p>
-                  </div>
-                </div>
+                )}
 
                 {/* Queue preview */}
                 {autoQueue.queue.length > 0 && (
@@ -601,16 +601,7 @@ export default function BotClient() {
                       {autoQueue.queue.slice(0, 20).map((item, i) => (
                         <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs">
                           <span className="text-text truncate">{item.niche}</span>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                            <span className="text-muted">{item.searchCity}</span>
-                            <span className={`text-[9px] px-1 py-0.5 rounded ${
-                              item.country === 'BR'
-                                ? 'text-emerald-400 bg-emerald-500/10'
-                                : 'text-blue-400 bg-blue-500/10'
-                            }`}>
-                              {item.country}
-                            </span>
-                          </div>
+                          <span className="text-muted shrink-0 ml-2">{item.searchCity}</span>
                         </div>
                       ))}
                     </div>
@@ -649,6 +640,7 @@ export default function BotClient() {
               </div>
             </div>
 
+            {/* Dry Run + Send toggles */}
             <div className="flex gap-3">
               <button
                 onClick={() => { setAutoDryRun(!autoDryRun); if (!autoDryRun) setAutoSend(false) }}
@@ -673,36 +665,32 @@ export default function BotClient() {
               </button>
             </div>
 
-            {/* Run buttons */}
-            <div className="flex gap-2">
-              {running ? (
-                <button
-                  onClick={handleCancel}
-                  className="flex-1 py-2 text-sm font-medium rounded-lg bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 flex items-center justify-center gap-2"
-                >
-                  Cancelar
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleRunAuto(true)}
-                    disabled={!autoQueue || autoQueue.stats.remaining === 0}
-                    className="flex-1 py-2 text-sm font-medium rounded-lg border border-warning/30 text-warning hover:bg-warning/10 disabled:opacity-40"
-                  >
-                    Dry Run
-                  </button>
-                  <button
-                    onClick={() => handleRunAuto(false)}
-                    disabled={!autoQueue || autoQueue.stats.remaining === 0}
-                    className="flex-1 py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
-                  >
-                    Rodar Auto
-                  </button>
-                </>
-              )}
-            </div>
+            {/* Run / Cancel */}
+            {running ? (
+              <button
+                onClick={handleCancel}
+                className="w-full py-2 text-sm font-medium rounded-lg bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                Cancelar
+              </button>
+            ) : (
+              <button
+                onClick={handleRunAuto}
+                disabled={!autoQueue || autoQueue.stats.remaining === 0}
+                className="w-full py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                Rodar
+              </button>
+            )}
 
-            {/* Refresh button */}
+            {/* Refresh */}
             <button
               onClick={fetchAutoQueue}
               disabled={autoLoading}
@@ -714,274 +702,234 @@ export default function BotClient() {
         ) : (
           /* ─── Manual Mode Panel ─── */
           <div className="space-y-5">
-
-        {/* Niche */}
-        <div>
-          <label className="block text-xs text-muted mb-1.5">Nicho</label>
-          <select
-            value={niche}
-            onChange={e => setNiche(e.target.value)}
-            className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent"
-          >
-            <option value="">{lang === 'pt' ? 'Selecione um nicho' : 'Select a niche'}</option>
-            {(lang === 'pt' ? NICHES : NICHES_US).map(group => (
-              <optgroup key={group.category} label={group.category}>
-                {group.items.map(item => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-
-        {/* City with autocomplete */}
-        <div ref={cityRef} className="relative">
-          <label className="block text-xs text-muted mb-1.5">Cidade</label>
-          <input
-            type="text"
-            value={cityQuery}
-            onChange={e => {
-              setCityQuery(e.target.value)
-              setCity(e.target.value)
-              setCityOpen(true)
-            }}
-            onFocus={() => setCityOpen(true)}
-            placeholder={lang === 'pt' ? 'São Paulo, SP' : 'Miami, FL'}
-            className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          {cityOpen && filteredCities.length > 0 && (
-            <div className="absolute z-40 top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-card border border-border rounded-lg shadow-lg">
-              {filteredCities.map(c => {
-                const badge = cityBadge(c)
-                return (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      setCity(c)
-                      setCityQuery(c)
-                      setCityOpen(false)
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs text-text hover:bg-card-hover text-left"
-                  >
-                    <span>{c}</span>
-                    {badge && (
-                      <span className="text-[10px] text-success flex items-center gap-1 shrink-0 ml-2">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        {badge.lead_count} leads · {timeAgo(badge.last_run_at)}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Limit + Score */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-muted mb-1.5">Limite</label>
-            <input
-              type="number"
-              min={5}
-              max={100}
-              value={limit}
-              onChange={e => setLimit(Number(e.target.value) || 20)}
-              className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1.5">Score mín.</label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={minScore}
-              onChange={e => setMinScore(Number(e.target.value) || 4)}
-              className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
-            />
-          </div>
-        </div>
-
-        {/* Lang */}
-        <div>
-          <label className="block text-xs text-muted mb-1.5">Idioma</label>
-          <div className="flex rounded-lg border border-border overflow-hidden w-fit">
-            {(['pt', 'en'] as const).map(l => (
-              <button
-                key={l}
-                onClick={() => {
-                  setLang(l)
-                  setCity('')
-                  setCityQuery('')
-                }}
-                className={`px-4 py-1.5 text-xs font-medium ${
-                  l !== 'pt' ? 'border-l border-border' : ''
-                } ${lang === l ? 'bg-accent/15 text-accent' : 'text-muted bg-sidebar'}`}
+            {/* Niche */}
+            <div>
+              <label className="block text-xs text-muted mb-1.5">Nicho</label>
+              <select
+                value={niche}
+                onChange={e => setNiche(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent"
               >
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
+                <option value="">Selecione um nicho</option>
+                {countryConfig.niches.map(group => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.items.map(item => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
 
-        {/* Export */}
-        <div>
-          <label className="block text-xs text-muted mb-1.5">Export</label>
-          <div className="flex gap-2">
-            {(['csv', 'supabase', 'both'] as const).map(opt => (
+            {/* City with autocomplete */}
+            <div ref={cityRef} className="relative">
+              <label className="block text-xs text-muted mb-1.5">Cidade</label>
+              <input
+                type="text"
+                value={cityQuery}
+                onChange={e => {
+                  setCityQuery(e.target.value)
+                  setCity(e.target.value)
+                  setCityOpen(true)
+                }}
+                onFocus={() => setCityOpen(true)}
+                placeholder={countryConfig.cities[0] ?? ''}
+                className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              {cityOpen && filteredCities.length > 0 && (
+                <div className="absolute z-40 top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-card border border-border rounded-lg shadow-lg">
+                  {filteredCities.map(c => {
+                    const badge = cityBadge(c)
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => {
+                          setCity(c)
+                          setCityQuery(c)
+                          setCityOpen(false)
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs text-text hover:bg-card-hover text-left"
+                      >
+                        <span>{c}</span>
+                        {badge && (
+                          <span className="text-[10px] text-success flex items-center gap-1 shrink-0 ml-2">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                            {badge.lead_count} leads · {timeAgo(badge.last_run_at)}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Limit + Score */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-muted mb-1.5">Limite</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={limit}
+                  onChange={e => setLimit(Number(e.target.value) || 20)}
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1.5">Score mín.</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={minScore}
+                  onChange={e => setMinScore(Number(e.target.value) || 4)}
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+            </div>
+
+            {/* Dry / Send toggles */}
+            <div className="flex gap-3">
               <button
-                key={opt}
-                onClick={() => setExportTarget(opt)}
+                onClick={() => { setDryRun(!dryRun); if (!dryRun) setSend(false) }}
                 className={`px-3 py-1.5 text-xs rounded-lg border ${
-                  exportTarget === opt
-                    ? 'border-accent text-accent bg-accent/10'
+                  dryRun
+                    ? 'border-warning text-warning bg-warning/10'
                     : 'border-border text-muted hover:text-text'
                 }`}
               >
-                {opt === 'csv' ? 'CSV' : opt === 'supabase' ? 'Supabase' : 'Ambos'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Dry / Send toggles */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => { setDryRun(!dryRun); if (!dryRun) setSend(false) }}
-            className={`px-3 py-1.5 text-xs rounded-lg border ${
-              dryRun
-                ? 'border-warning text-warning bg-warning/10'
-                : 'border-border text-muted hover:text-text'
-            }`}
-          >
-            Dry Run
-          </button>
-          <button
-            onClick={() => { if (!dryRun) setSend(!send) }}
-            disabled={dryRun}
-            className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
-              send && !dryRun
-                ? 'border-success text-success bg-success/10'
-                : 'border-border text-muted hover:text-text'
-            }`}
-          >
-            Enviar
-          </button>
-        </div>
-
-        {/* Territory warning */}
-        {territoryWarning && (
-          <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
-            <p className="text-warning font-medium mb-1">Território já prospectado</p>
-            <p className="text-muted">
-              {territoryWarning.niche} / {territoryWarning.city} — {territoryWarning.lead_count} leads
-              {territoryWarning.last_run_at ? ` · ${timeAgo(territoryWarning.last_run_at)}` : ''}
-            </p>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => {
-                  handleAddToQueue()
-                }}
-                className="px-2 py-1 text-[11px] rounded border border-warning text-warning hover:bg-warning/20"
-              >
-                Adicionar mesmo assim
+                Dry Run
               </button>
               <button
-                onClick={() => setTerritoryWarning(null)}
-                className="px-2 py-1 text-[11px] rounded border border-border text-muted hover:text-text"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Add to queue button */}
-        <button
-          onClick={handleAddToQueue}
-          disabled={!niche.trim() || !city.trim() || running}
-          className="w-full py-2 text-sm font-medium rounded-lg border border-border text-text hover:bg-card-hover disabled:opacity-40 flex items-center justify-center gap-2"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Adicionar à fila
-        </button>
-
-        {/* Queue list */}
-        {queue.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-[10px] uppercase tracking-wider text-muted">
-              Fila ({queue.length})
-            </p>
-            {queue.map((item, i) => (
-              <div
-                key={item.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
-                  runningIndex === i
-                    ? 'border-accent bg-accent/5'
-                    : 'border-border'
+                onClick={() => { if (!dryRun) setSend(!send) }}
+                disabled={dryRun}
+                className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
+                  send && !dryRun
+                    ? 'border-success text-success bg-success/10'
+                    : 'border-border text-muted hover:text-text'
                 }`}
               >
-                {runningIndex === i && (
-                  <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin shrink-0" />
-                )}
-                <span className="text-text truncate flex-1">
-                  {item.niche} / {item.city}
-                </span>
-                <span className="text-muted shrink-0 font-mono">
-                  {item.limit}:{item.minScore}
-                </span>
-                {!running && (
+                Enviar
+              </button>
+            </div>
+
+            {/* Territory warning */}
+            {territoryWarning && (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
+                <p className="text-warning font-medium mb-1">Território já prospectado</p>
+                <p className="text-muted">
+                  {territoryWarning.niche} / {territoryWarning.city} — {territoryWarning.lead_count} leads
+                  {territoryWarning.last_run_at ? ` · ${timeAgo(territoryWarning.last_run_at)}` : ''}
+                </p>
+                <div className="flex gap-2 mt-2">
                   <button
-                    onClick={() => handleRemoveFromQueue(item.id)}
-                    className="text-muted hover:text-danger shrink-0"
+                    onClick={() => {
+                      handleAddToQueue()
+                    }}
+                    className="px-2 py-1 text-[11px] rounded border border-warning text-warning hover:bg-warning/20"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
+                    Adicionar mesmo assim
                   </button>
-                )}
+                  <button
+                    onClick={() => setTerritoryWarning(null)}
+                    className="px-2 py-1 text-[11px] rounded border border-border text-muted hover:text-text"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
-            ))}
+            )}
+
+            {/* Add to queue button */}
+            <button
+              onClick={handleAddToQueue}
+              disabled={!niche.trim() || !city.trim() || running}
+              className="w-full py-2 text-sm font-medium rounded-lg border border-border text-text hover:bg-card-hover disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Adicionar à fila
+            </button>
+
+            {/* Queue list */}
+            {queue.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-muted">
+                  Fila ({queue.length})
+                </p>
+                {queue.map((item, i) => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                      runningIndex === i
+                        ? 'border-accent bg-accent/5'
+                        : 'border-border'
+                    }`}
+                  >
+                    {runningIndex === i && (
+                      <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin shrink-0" />
+                    )}
+                    <span className="text-text truncate flex-1">
+                      {item.niche} / {item.city}
+                    </span>
+                    <span className="text-muted shrink-0 font-mono">
+                      {item.limit}:{item.minScore}
+                    </span>
+                    {!running && (
+                      <button
+                        onClick={() => handleRemoveFromQueue(item.id)}
+                        className="text-muted hover:text-danger shrink-0"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Run / Cancel buttons */}
+            <div className="flex gap-2">
+              {running ? (
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-2 text-sm font-medium rounded-lg bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 flex items-center justify-center gap-2"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                  Cancelar
+                </button>
+              ) : (
+                <button
+                  onClick={handleRunQueue}
+                  disabled={queue.length === 0}
+                  className="flex-1 py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  Rodar Fila ({queue.length})
+                </button>
+              )}
+            </div>
           </div>
+          /* end manual mode */
         )}
 
-        {/* Run / Cancel buttons */}
-        <div className="flex gap-2">
-          {running ? (
-            <button
-              onClick={handleCancel}
-              className="flex-1 py-2 text-sm font-medium rounded-lg bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 flex items-center justify-center gap-2"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-              Cancelar
-            </button>
-          ) : (
-            <button
-              onClick={handleRunQueue}
-              disabled={queue.length === 0}
-              className="flex-1 py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              Rodar Fila ({queue.length})
-            </button>
-          )}
-        </div>
-
-        {/* History (collapsible) */}
+        {/* History (shared, always visible) */}
         {runs.length > 0 && (
           <div>
             <button
@@ -1046,10 +994,6 @@ export default function BotClient() {
             )}
           </div>
         )}
-
-        </div>
-        /* end manual mode */
-        )}
       </div>
 
       {/* ─── Terminal (right panel) ─── */}
@@ -1105,7 +1049,7 @@ export default function BotClient() {
 
           {status === 'done' && (
             <div className="text-emerald-400 mt-2 border-t border-border/30 pt-2">
-              ✅ Fila finalizada
+              Fila finalizada
             </div>
           )}
         </div>

@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
+import { getCountry } from '@/lib/bot-config'
 
 interface BotParams {
   niche: string
   city: string
   limit: number
   min_score: number
-  lang: string
-  export_target: string
+  country: string
   dry_run: boolean
   send: boolean
 }
@@ -16,6 +16,10 @@ interface BotParams {
 export async function POST(request: NextRequest) {
   if (!await getAuthUser()) return unauthorizedResponse()
   const params: BotParams = await request.json()
+
+  const countryConfig = getCountry(params.country)
+  const lang = countryConfig?.lang ?? 'pt'
+  const exportTarget = 'supabase'
 
   const botUrl = process.env.BOT_SERVER_URL
   if (!botUrl) {
@@ -45,8 +49,8 @@ export async function POST(request: NextRequest) {
       city: params.city,
       limit_count: params.limit,
       min_score: params.min_score,
-      lang: params.lang,
-      export_target: params.export_target,
+      lang,
+      export_target: exportTarget,
       dry_run: params.dry_run,
       send: params.send,
       status: 'running',
@@ -65,7 +69,16 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${process.env.BOT_SERVER_SECRET ?? ''}`,
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        niche: params.niche,
+        city: params.city,
+        limit: params.limit,
+        min_score: params.min_score,
+        lang,
+        export_target: exportTarget,
+        dry_run: params.dry_run,
+        send: params.send,
+      }),
     })
 
     if (!botResponse.ok || !botResponse.body) {
