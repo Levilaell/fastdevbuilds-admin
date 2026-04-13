@@ -82,30 +82,34 @@ async function resolvePhoneFromLid(
 
 export async function POST(request: Request) {
   try {
-    // Validate webhook authenticity — accept instance keys OR global Evolution API key
-    const webhookKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
-    const matchedInstance = webhookKey ? getInstanceByKey(webhookKey) : undefined
-    // Also accept a global API key (Evolution API may send a server-wide key in webhooks)
+    const body = await request.json()
+
+    // Validate webhook authenticity
+    // Evolution API may send the key in headers OR not at all
+    const headerKey = request.headers.get('apikey') ?? request.headers.get('x-api-key')
+    const bodyKey = typeof body.apikey === 'string' ? body.apikey : undefined
+    const webhookKey = headerKey ?? bodyKey
     const globalKey = process.env.EVOLUTION_API_KEY
+    const matchedInstance = webhookKey ? getInstanceByKey(webhookKey) : undefined
     const isGlobalKey = !matchedInstance && !!globalKey && webhookKey === globalKey
-    if (!matchedInstance && !isGlobalKey) {
-      console.warn('[webhook] rejected — invalid or missing API key.',
+    // Accept if: key matches an instance, key matches global, or no key but global isn't set either
+    // (Evolution API may not send a key at all in webhook payloads)
+    const isAuthenticated = !!matchedInstance || isGlobalKey || !webhookKey
+    if (!isAuthenticated) {
+      console.warn('[webhook] rejected — key mismatch.',
         'received:', webhookKey?.slice(0, 8) + '...',
-        'globalKey set:', !!globalKey,
         'instances:', getInstances().length)
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-
     // Determine which instance sent this webhook
     // Evolution API may use: instance, instanceName, sender, or nested instance.instanceName
     const bodyInstance: string =
-      (body.instance as string)
-      ?? body.instanceName
-      ?? body.sender
-      ?? body.data?.instance?.instanceName
-      ?? ''
+      (typeof body.instance === 'string' ? body.instance : '')
+      || body.instanceName
+      || body.sender
+      || body.data?.instance?.instanceName
+      || ''
     const instances = getInstances()
     const resolvedInstance = matchedInstance
       ?? instances.find(i => i.name === bodyInstance)
