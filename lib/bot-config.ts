@@ -27,11 +27,11 @@ export const COUNTRIES: readonly CountryConfig[] = [
       {
         category: 'Saúde',
         items: [
-          'clinicas odontologicas',
-          'clinicas medicas',
+          'clínicas odontológicas',
+          'clínicas médicas',
           'academias',
-          'spas e centros esteticos',
-          'psicologos',
+          'clínicas veterinárias',
+          'clínicas de psicologia',
           'fisioterapeutas',
         ],
       },
@@ -39,8 +39,8 @@ export const COUNTRIES: readonly CountryConfig[] = [
         category: 'Serviços profissionais',
         items: [
           'advogados',
-          'contadores',
-          'imobiliarias',
+          'escritórios de contabilidade',
+          'imobiliárias',
           'arquitetos',
           'engenheiros',
         ],
@@ -49,18 +49,19 @@ export const COUNTRIES: readonly CountryConfig[] = [
         category: 'Alimentação',
         items: [
           'restaurantes',
+          'pizzarias',
+          'padarias e confeitarias',
           'cafeterias',
-          'padarias',
           'bares',
         ],
       },
       {
         category: 'Beleza',
         items: [
-          'saloes de beleza',
+          'salões de beleza',
           'barbearias',
-          'clinicas de estetica',
-          'tatuadores',
+          'clínicas de estética',
+          'estúdios de tatuagem',
         ],
       },
       {
@@ -68,8 +69,18 @@ export const COUNTRIES: readonly CountryConfig[] = [
         items: [
           'escolas de idiomas',
           'cursos profissionalizantes',
-          'escolas de musica',
-          'auto escolas',
+          'escolas de música',
+          'autoescolas',
+        ],
+      },
+      {
+        category: 'Outros',
+        items: [
+          'pet shops',
+          'oficinas mecânicas',
+          'estúdios de pilates',
+          'lojas de roupas',
+          'floriculturas',
         ],
       },
     ],
