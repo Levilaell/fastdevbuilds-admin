@@ -4,7 +4,24 @@
 
 ## Objective
 
-Private admin panel for the FastDevBuilds sales team to manage the full prospect-to-close pipeline. A bot automatically prospects clients via WhatsApp and email; this dashboard gives visibility and control over every lead's journey.
+Private admin panel for the FastDevBuilds sales team to manage the full prospect-to-close pipeline. A bot (separate repo: `prospect-bot`) automatically prospects clients via WhatsApp (BR) and email (US); this dashboard gives visibility and control over every lead's journey.
+
+## Architecture
+
+```
+┌─────────────────────┐        ┌──────────────────────┐
+│  fastdevbuilds-admin │  SSE   │    prospect-bot       │
+│  (Vercel / Next.js)  │◄──────►│  (Railway / Node.js)  │
+│                      │        │                       │
+│  Dashboard + API     │        │  bot-server/server.js │
+│  lib/bot-config.ts ──┼── config ──► queue + run-auto  │
+│  (source of truth)   │        │  prospect.js (CLI)    │
+└──────────┬───────────┘        └──────────┬────────────┘
+           │                               │
+           └───────── Supabase ◄───────────┘
+```
+
+**Config flow**: `bot-config.ts` is the single source of truth for niches, cities, and country settings. The dashboard sends this config to the bot-server with each `/api/bot/queue` and `/run-auto` call. The bot-server's `auto-config.js` is a legacy fallback only used for standalone CLI runs.
 
 ## Stack
 
@@ -37,6 +54,22 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 | Warning | `--warning` | `#F59E0B` |
 | Danger | `--danger` | `#EF4444` |
 
+## Country-based Bot Configuration
+
+`lib/bot-config.ts` defines a `COUNTRIES` array. Each country has:
+
+| Field | Example (BR) | Example (US) |
+|---|---|---|
+| `code` | `'BR'` | `'US'` |
+| `lang` | `'pt'` | `'en'` |
+| `channel` | `'whatsapp'` | `'email'` |
+| `niches` | Portuguese niche names with accents | English niche names |
+| `cities` | 215 interior/medium cities | 330 interior/medium cities |
+
+To add a new country, add an entry to `COUNTRIES`. Language, channel, niches, and cities all derive from the country. There is no separate language or export target selector in the UI.
+
+**Important**: BR niche names use proper Portuguese accents (`clínicas odontológicas`, not `clinicas odontologicas`). This must match what's stored in Supabase for queue dedup to work correctly.
+
 ## Folder Structure
 
 ```
@@ -58,8 +91,12 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │   │   │   └── send/route.ts            # POST — send message via Evolution/save
 │   │   ├── inbox/route.ts               # GET — leads with conversations + unread counts
 │   │   ├── bot/
-│   │   │   ├── run/route.ts             # POST — start bot, stream SSE output
-│   │   │   └── runs/route.ts            # GET — last 5 bot run history
+│   │   │   ├── run/route.ts             # POST — manual bot run, streams SSE
+│   │   │   ├── run-auto/route.ts        # POST — auto bot run, sends config + streams SSE
+│   │   │   ├── queue/route.ts           # GET — fetches queue from bot-server (sends config)
+│   │   │   ├── runs/route.ts            # GET — last 5 bot run history
+│   │   │   ├── territories/route.ts     # GET — prospected niche/city combos
+│   │   │   └── cancel/route.ts          # POST — cancel running bot
 │   │   └── webhook/
 │   │       └── whatsapp/route.ts        # POST — Evolution API inbound messages (public)
 │   ├── (auth)/
@@ -84,9 +121,9 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │   ├── inbox/
 │   │   └── inbox-client.tsx             # Full inbox client (realtime, search, reply)
 │   ├── bot/
-│   │   └── bot-client.tsx               # Bot runner form + terminal + run history
+│   │   └── bot-client.tsx               # Auto/manual mode, country selector, terminal
 │   └── lead-detail/
-│       ├── tech-analysis.tsx            # Boolean audit + PageSpeed scores
+│       ├── tech-analysis.tsx            # Boolean audit + PageSpeed + visual scores
 │       ├── pain-score-card.tsx          # Score display + translated reasons
 │       ├── outreach-card.tsx            # Bot message + send status
 │       ├── status-select.tsx            # Pipeline status dropdown (client)
@@ -94,14 +131,14 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 │       ├── conversation-history.tsx     # Message bubbles (client)
 │       └── reply-box.tsx               # Textarea + AI suggest + send (client)
 ├── lib/
-│   ├── types.ts                         # Lead, LeadCard, LeadStatus, status labels/colors
+│   ├── bot-config.ts                    # Country config: niches, cities, lang, channel
+│   ├── types.ts                         # Lead, LeadCard, LeadStatus, BotRun, etc.
 │   ├── time-ago.ts                      # Relative time formatter (pt-BR)
 │   └── supabase/
 │       ├── client.ts                    # Browser client
-│       └── server.ts                    # Server client
+│       ├── server.ts                    # Server client
+│       └── service.ts                   # Service role client (server only)
 ├── proxy.ts                             # Auth route protection
-├── bot-server/
-│   └── server.js                        # Railway bot server (SSE streaming runner)
 ├── .env.local                           # Secrets — never commit
 └── .env.example
 ```
@@ -114,7 +151,7 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 | `/pipeline` | Kanban board of leads grouped by status enum |
 | `/leads/[id]` | Lead detail: full profile + conversation history |
 | `/inbox` | Received messages + reply composer with AI suggestion |
-| `/bot` | Trigger the prospect-bot via button; show run logs |
+| `/bot` | Auto/manual prospect-bot runner with terminal output |
 | `/metrics` | Conversion funnel chart + revenue totals |
 
 ## Supabase Schema
@@ -126,7 +163,8 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 | place_id | text | PK |
 | business_name | text | |
 | address | text | |
-| city | text | |
+| city | text | Extracted from address |
+| search_city | text | City string used in Google Places search |
 | phone | text | |
 | website | text | |
 | rating | numeric(3,1) | |
@@ -145,29 +183,39 @@ Visual direction: Linear / Vercel / Raycast — near-black background, depth via
 | has_booking | boolean | Booking system present |
 | tech_stack | text | wix/squarespace/wordpress/unknown |
 | scrape_failed | boolean | |
+| visual_score | numeric | AI visual analysis score |
+| visual_notes | text[] | AI visual analysis notes |
 | pain_score | smallint | 0–10 |
 | score_reasons | text | Comma-separated reasons |
 | message | text | Generated outreach message |
+| message_variant | text | Message template variant used |
 | email | text | Found via scraping or Hunter.io |
 | email_source | text | scrape/hunter/null |
+| email_subject | text | Subject line for email outreach |
 | outreach_sent | boolean | |
 | outreach_sent_at | timestamptz | |
 | outreach_channel | text | whatsapp/email/pending |
 | niche | text | Search niche used |
+| country | text | BR/US — derived from lang |
+| no_website | boolean | True if business has no website |
 | status | lead_status | Pipeline status enum |
 | status_updated_at | timestamptz | |
+| inbox_archived_at | timestamptz | Dashboard-only: when archived from inbox |
 
 ### Lead status enum (`lead_status`)
 
 ```sql
 CREATE TYPE lead_status AS ENUM (
-  'prospected',   -- Found by bot, not yet contacted
-  'sent',         -- Message sent
-  'replied',      -- Lead replied
-  'negotiating',  -- Active conversation
-  'scoped',       -- Project scoped
-  'closed',       -- Deal won
-  'lost'          -- Deal lost
+  'prospected',    -- Found by bot, not yet contacted
+  'sent',          -- Message sent
+  'replied',       -- Lead replied
+  'negotiating',   -- Active conversation
+  'scoped',        -- Project scoped
+  'closed',        -- Deal won
+  'finalizado',    -- Project delivered
+  'pago',          -- Payment received
+  'lost',          -- Deal lost
+  'disqualified'   -- Filtered out by bot (low score, no phone, etc.)
 );
 ```
 
@@ -180,6 +228,7 @@ CREATE TYPE lead_status AS ENUM (
 | direction | text | `in` \| `out` |
 | channel | text | `whatsapp` \| `email` |
 | message | text | |
+| subject | text | Email subject line (nullable) |
 | sent_at | timestamptz | |
 | read_at | timestamptz | nullable |
 | suggested_by_ai | boolean | |
@@ -217,7 +266,8 @@ CREATE TABLE bot_runs (
   status TEXT CHECK (status IN ('running', 'completed', 'failed')),
   started_at TIMESTAMPTZ DEFAULT NOW(),
   finished_at TIMESTAMPTZ,
-  duration_seconds INTEGER
+  duration_seconds INTEGER,
+  log TEXT
 );
 ```
 
@@ -245,3 +295,5 @@ BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
 - **No magic strings** — lead statuses must use the `lead_status` enum type
 - **Tailwind only** — no inline `style` attributes, no CSS modules, no external UI libraries
 - **Dark theme always** — every new component must use the color palette above
+- **Niche names with accents** — BR niches must use proper Portuguese diacritics to match Supabase data
+- **WhatsApp daily limit is 15** — enforced by bot, displayed in dashboard
