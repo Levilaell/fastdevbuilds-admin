@@ -7,11 +7,13 @@ export default function UserAvatar() {
   const [initial, setInitial] = useState('')
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => {
+    async function load() {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getUser()
       const email = data.user?.email ?? ''
       setInitial(email.charAt(0).toUpperCase())
-    })
+    }
+    load()
   }, [])
 
   if (!initial) return null

@@ -34,8 +34,6 @@ interface Territory {
 interface AutoQueueItem {
   niche: string
   searchCity: string
-  country: string
-  lang: string
 }
 
 interface AutoQueueData {
@@ -47,11 +45,6 @@ interface AutoQueueData {
     whatsappSlotsLeft: number
   }
   queue: AutoQueueItem[]
-  summary: {
-    br: number
-    us: number
-    estimatedLeads: number
-  }
 }
 
 // ─── Helpers ───
@@ -250,20 +243,20 @@ export default function BotClient() {
   // ─── SSE stream runner (manual) ───
 
   async function runItem(item: QueueItem): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const controller = new AbortController()
-      abortRef.current = controller
+    const controller = new AbortController()
+    abortRef.current = controller
 
-      setLines(prev => [
-        ...prev,
-        { text: `━━━ ${item.niche} / ${item.city} ━━━`, type: 'accent' },
-        {
-          text: `$ prospect-bot --niche "${item.niche}" --city "${item.city}" --limit ${item.limit}`,
-          type: 'info',
-        },
-      ])
+    setLines(prev => [
+      ...prev,
+      { text: `━━━ ${item.niche} / ${item.city} ━━━`, type: 'accent' },
+      {
+        text: `$ prospect-bot --niche "${item.niche}" --city "${item.city}" --limit ${item.limit}`,
+        type: 'info',
+      },
+    ])
 
-      fetch('/api/bot/run', {
+    try {
+      const res = await fetch('/api/bot/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -277,57 +270,50 @@ export default function BotClient() {
         }),
         signal: controller.signal,
       })
-        .then(async (res) => {
-          if (!res.body) {
-            setLines(prev => [...prev, { text: '❌ Sem resposta do servidor', type: 'error' }])
-            resolve(false)
-            return
+
+      if (!res.body) {
+        setLines(prev => [...prev, { text: '❌ Sem resposta do servidor', type: 'error' }])
+        return false
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue
+          const payload = part.slice(6)
+
+          if (payload === '[DONE]') {
+            return !cancelledRef.current
           }
 
-          const reader = res.body.getReader()
-          const decoder = new TextDecoder()
-          let buffer = ''
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            buffer += decoder.decode(value, { stream: true })
-            const parts = buffer.split('\n\n')
-            buffer = parts.pop() ?? ''
-
-            for (const part of parts) {
-              if (!part.startsWith('data: ')) continue
-              const payload = part.slice(6)
-
-              if (payload === '[DONE]') {
-                resolve(!cancelledRef.current)
-                return
-              }
-
-              try {
-                const parsed = JSON.parse(payload)
-                const lineText: string = parsed.line ?? payload
-                const lineType: TermLine['type'] = parsed.type ?? classifyLine(lineText)
-                setLines(prev => [...prev, { text: lineText, type: lineType }])
-              } catch {
-                setLines(prev => [...prev, { text: payload, type: classifyLine(payload) }])
-              }
-            }
+          try {
+            const parsed = JSON.parse(payload)
+            const lineText: string = parsed.line ?? payload
+            const lineType: TermLine['type'] = parsed.type ?? classifyLine(lineText)
+            setLines(prev => [...prev, { text: lineText, type: lineType }])
+          } catch {
+            setLines(prev => [...prev, { text: payload, type: classifyLine(payload) }])
           }
+        }
+      }
 
-          resolve(!cancelledRef.current)
-        })
-        .catch((err) => {
-          if (controller.signal.aborted) {
-            resolve(false)
-            return
-          }
-          const msg = err instanceof Error ? err.message : 'Unknown error'
-          setLines(prev => [...prev, { text: `❌ ${msg}`, type: 'error' }])
-          resolve(false)
-        })
-    })
+      return !cancelledRef.current
+    } catch (err) {
+      if (controller.signal.aborted) return false
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setLines(prev => [...prev, { text: `❌ ${msg}`, type: 'error' }])
+      return false
+    }
   }
 
   // ─── Run queue (manual) ───
