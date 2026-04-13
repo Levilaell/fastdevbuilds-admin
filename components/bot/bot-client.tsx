@@ -1042,7 +1042,7 @@ export default function BotClient() {
               </button>
             </div>
 
-            {/* Territory warning */}
+            {/* Territory warning  */}
             {territoryWarning && (
               <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs">
                 <p className="text-warning font-medium mb-1">
