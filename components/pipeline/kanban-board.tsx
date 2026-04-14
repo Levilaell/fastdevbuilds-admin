@@ -129,6 +129,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       })
 
       if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        const msg = body?.error ?? `HTTP ${res.status}`
         setLeads((prev) =>
           prev.map((l) =>
             l.place_id === draggableId
@@ -136,8 +138,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
               : l
           )
         )
-        setToast('Erro ao mover lead — status revertido')
-        setTimeout(() => setToast(''), 4000)
+        setToast(`Erro ao mover lead: ${msg}`)
+        setTimeout(() => setToast(''), 5000)
       }
     } catch {
       setLeads((prev) =>
@@ -170,6 +172,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         body: JSON.stringify({ status: 'disqualified' }),
       })
       if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        const msg = body?.error ?? `HTTP ${res.status}`
         setLeads((prev) =>
           prev.map((l) =>
             l.place_id === placeId
@@ -177,8 +181,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
               : l
           )
         )
-        setToast('Erro ao desqualificar lead')
-        setTimeout(() => setToast(''), 4000)
+        setToast(`Erro ao desqualificar: ${msg}`)
+        setTimeout(() => setToast(''), 5000)
       }
     } catch {
       setLeads((prev) =>
@@ -188,6 +192,8 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             : l
         )
       )
+      setToast('Erro de conexão ao desqualificar')
+      setTimeout(() => setToast(''), 5000)
     }
   }, [leads])
 
