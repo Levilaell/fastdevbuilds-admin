@@ -13,8 +13,8 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(suggestion.suggested_reply)
   const [loading, setLoading] = useState(false)
-  const [needsPhone, setNeedsPhone] = useState(false)
-  const [phoneInput, setPhoneInput] = useState('')
+  const [needsContact, setNeedsContact] = useState<'phone' | 'email' | false>(false)
+  const [contactInput, setContactInput] = useState('')
   const [error, setError] = useState('')
 
   const intentColor = INTENT_COLORS[suggestion.intent] ?? INTENT_COLORS.other
@@ -38,7 +38,9 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
       } else {
         const data = await res.json()
         if (data.error?.includes('telefone')) {
-          setNeedsPhone(true)
+          setNeedsContact('phone')
+        } else if (data.error?.includes('email')) {
+          setNeedsContact('email')
         } else {
           setError(data.error ?? 'Erro ao enviar')
         }
@@ -48,20 +50,21 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
     }
   }
 
-  async function handleSavePhoneAndApprove() {
-    if (!phoneInput.trim()) return
+  async function handleSaveContactAndApprove() {
+    if (!contactInput.trim()) return
     setLoading(true)
     try {
+      const field = needsContact === 'email' ? 'email' : 'phone'
       const res = await fetch(`/api/leads/${encodeURIComponent(suggestion.place_id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneInput.trim() }),
+        body: JSON.stringify({ [field]: contactInput.trim() }),
       })
       if (res.ok) {
-        setNeedsPhone(false)
+        setNeedsContact(false)
         await handleApprove()
       } else {
-        setError('Erro ao salvar telefone')
+        setError(`Erro ao salvar ${field === 'email' ? 'email' : 'telefone'}`)
       }
     } finally {
       setLoading(false)
@@ -112,20 +115,22 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
         )}
       </div>
 
-      {/* Phone input when needed */}
-      {needsPhone && (
+      {/* Contact input when needed */}
+      {needsContact && (
         <div className="flex items-center gap-2 mx-4 mb-3 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
-          <span className="text-xs text-warning shrink-0">Telefone:</span>
+          <span className="text-xs text-warning shrink-0">
+            {needsContact === 'email' ? 'Email:' : 'Telefone:'}
+          </span>
           <input
-            type="text"
-            value={phoneInput}
-            onChange={e => setPhoneInput(e.target.value)}
-            placeholder="5511999999999"
+            type={needsContact === 'email' ? 'email' : 'text'}
+            value={contactInput}
+            onChange={e => setContactInput(e.target.value)}
+            placeholder={needsContact === 'email' ? 'lead@example.com' : '5511999999999'}
             className="flex-1 h-7 px-2 text-xs rounded bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <button
-            onClick={handleSavePhoneAndApprove}
-            disabled={loading || !phoneInput.trim()}
+            onClick={handleSaveContactAndApprove}
+            disabled={loading || !contactInput.trim()}
             className="px-2 py-1 text-xs rounded bg-accent text-white disabled:opacity-50"
           >
             {loading ? '…' : 'Salvar e enviar'}
@@ -134,7 +139,7 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
       )}
 
       {/* Error */}
-      {error && !needsPhone && (
+      {error && !needsContact && (
         <p className="text-xs text-danger px-4 pb-2">{error}</p>
       )}
 
@@ -156,7 +161,7 @@ export default function AiSuggestionCard({ suggestion, onDismiss, onSent }: Prop
         </button>
         <button
           onClick={handleApprove}
-          disabled={loading || needsPhone}
+          disabled={loading || !!needsContact}
           className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50 ml-auto"
         >
           {loading ? 'Enviando…' : 'Aprovar e Enviar'}

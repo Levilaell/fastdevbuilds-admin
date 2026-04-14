@@ -32,22 +32,69 @@ export async function POST(
 
   const message = editedReply ?? suggestion.suggested_reply
 
-  // Fetch lead phone
+  // Determine channel from the triggering conversation, or fall back to lead's outreach_channel
+  let channel: 'whatsapp' | 'email' = 'whatsapp'
+  if (suggestion.conversation_id) {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('channel')
+      .eq('id', suggestion.conversation_id)
+      .maybeSingle()
+    if (conv?.channel === 'email' || conv?.channel === 'whatsapp') {
+      channel = conv.channel
+    }
+  }
+
+  // Fetch lead contact info
   const { data: lead } = await supabase
     .from('leads')
-    .select('phone')
+    .select('phone, email, outreach_channel')
     .eq('place_id', suggestion.place_id)
     .maybeSingle()
 
-  if (!lead?.phone) {
-    return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
+  // Fall back to lead's outreach_channel if conversation didn't determine it
+  if (!suggestion.conversation_id && lead?.outreach_channel === 'email') {
+    channel = 'email'
   }
 
-  // Send via WhatsApp — use lead's assigned instance
-  const instance = await getOrAssignInstance(supabase, suggestion.place_id)
-  const sent = await sendWhatsApp(lead.phone, message, instance?.name)
-  if (!sent) {
-    return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
+  if (channel === 'whatsapp') {
+    const phone = lead?.phone?.trim()
+    if (!phone) {
+      return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
+    }
+    const instance = await getOrAssignInstance(supabase, suggestion.place_id)
+    const sent = await sendWhatsApp(phone, message, instance?.name)
+    if (!sent) {
+      return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
+    }
+  } else {
+    const email = lead?.email?.trim()
+    if (!email) {
+      return Response.json({ error: 'Lead não tem email cadastrado' }, { status: 400 })
+    }
+    const apiKey = process.env.INSTANTLY_API_KEY
+    const campaignId = process.env.INSTANTLY_CAMPAIGN_ID
+    if (!apiKey || !campaignId) {
+      return Response.json({ error: 'Instantly not configured' }, { status: 501 })
+    }
+    const res = await fetch('https://api.instantly.ai/api/v1/lead/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        campaign_id: campaignId,
+        skip_if_in_workspace: false,
+        leads: [{
+          email,
+          custom_variables: { message, email_subject: 'Re: Your website' },
+        }],
+      }),
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status))
+      console.error('[ai-approve] Instantly email failed:', errText)
+      return Response.json({ error: `Email send failed: ${errText}` }, { status: 502 })
+    }
   }
 
   // Save outbound conversation
@@ -56,7 +103,7 @@ export async function POST(
     .insert({
       place_id: suggestion.place_id,
       direction: 'out',
-      channel: 'whatsapp',
+      channel,
       message,
       sent_at: new Date().toISOString(),
       suggested_by_ai: true,
