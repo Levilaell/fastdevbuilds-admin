@@ -69,6 +69,8 @@ export async function POST(
     }
 
     // Fallback 2: find a related lead on the same evolution_instance that has a phone
+    // IMPORTANT: only use when there's exactly ONE other lead on the instance,
+    // otherwise we'd send the message to the wrong person.
     if (!phone && lead?.evolution_instance) {
       const { data: related } = await supabase
         .from('leads')
@@ -76,11 +78,9 @@ export async function POST(
         .eq('evolution_instance', lead.evolution_instance)
         .not('phone', 'is', null)
         .neq('place_id', suggestion.place_id)
-        .order('status_updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (related?.phone?.trim()) {
-        phone = related.phone.trim()
+        .limit(2)
+      if (related && related.length === 1 && related[0].phone?.trim()) {
+        phone = related[0].phone.trim()
       }
     }
 

@@ -73,24 +73,31 @@ export async function getOrAssignInstance(
     // Instance was removed from config — reassign below
   }
 
-  // Round-robin: find the last assigned instance and pick the next one
-  const { data: lastAssigned } = await supabase
+  // Balanced assignment: pick the instance with fewest active leads (sent/replied/negotiating)
+  // This avoids the race condition of "next after last" where concurrent sends
+  // all read the same last-assigned and pile onto the same instance.
+  const { data: counts } = await supabase
     .from('leads')
     .select('evolution_instance')
     .not('evolution_instance', 'is', null)
-    .order('status_updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .in('status', ['sent', 'replied', 'negotiating'])
 
-  let nextIndex = 0
-  if (lastAssigned?.evolution_instance) {
-    const lastIndex = instances.findIndex(i => i.name === lastAssigned.evolution_instance)
-    if (lastIndex >= 0) {
-      nextIndex = (lastIndex + 1) % instances.length
-    }
+  const countMap = new Map<string, number>()
+  for (const inst of instances) countMap.set(inst.name, 0)
+  for (const row of counts ?? []) {
+    const name = row.evolution_instance as string
+    if (countMap.has(name)) countMap.set(name, (countMap.get(name) ?? 0) + 1)
   }
 
-  const assigned = instances[nextIndex]
+  let assigned = instances[0]
+  let minCount = Infinity
+  for (const inst of instances) {
+    const c = countMap.get(inst.name) ?? 0
+    if (c < minCount) {
+      minCount = c
+      assigned = inst
+    }
+  }
 
   // Persist assignment on lead
   await supabase
@@ -124,9 +131,15 @@ export async function sendWhatsApp(
     return false
   }
 
-  const instance = instanceName
-    ? instances.find(i => i.name === instanceName) ?? instances[0]
-    : instances[0]
+  let instance = instances[0]
+  if (instanceName) {
+    const found = instances.find(i => i.name === instanceName)
+    if (found) {
+      instance = found
+    } else {
+      console.warn('[whatsapp] instance', instanceName, 'not found in config — falling back to', instances[0].name)
+    }
+  }
 
   const cleanPhone = normalizePhone(phone)
   const endpoint = `${url}/message/sendText/${instance.name}`

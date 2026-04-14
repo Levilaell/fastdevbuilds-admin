@@ -100,9 +100,10 @@ export async function POST(request: Request) {
     }
 
     // Determine which instance sent this webhook
-    // Evolution API may use: instance, instanceName, sender, or nested instance.instanceName
+    // Evolution API may send instance as string OR object depending on version
     const bodyInstance: string =
       (typeof body.instance === 'string' ? body.instance : '')
+      || (typeof body.instance === 'object' && body.instance?.instanceName) || ''
       || body.instanceName
       || body.sender
       || body.data?.instance?.instanceName
@@ -110,7 +111,11 @@ export async function POST(request: Request) {
     const instances = getInstances()
     const resolvedInstance = matchedInstance
       ?? instances.find(i => i.name === bodyInstance)
-      ?? instances[0]
+      ?? null
+    if (!resolvedInstance && instances.length > 0) {
+      console.warn('[webhook] could not identify instance from key or body — bodyInstance:', bodyInstance,
+        'available:', instances.map(i => i.name).join(','))
+    }
     const webhookInstanceName = resolvedInstance?.name ?? ''
     const webhookInstanceKey = resolvedInstance?.apiKey ?? ''
 
@@ -148,6 +153,12 @@ export async function POST(request: Request) {
 
     // Extract phone number — remoteJid can be number@s.whatsapp.net or LID@lid
     const remoteJid: string = data.key.remoteJid ?? ''
+
+    // Ignore group chat messages — they aren't lead conversations
+    if (remoteJid.endsWith('@g.us')) {
+      return Response.json({ ok: true })
+    }
+
     const jidValue = remoteJid.split('@')[0]
     const isLid = remoteJid.endsWith('@lid')
 
@@ -200,33 +211,58 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_KEY!
     )
 
-    // Find lead by phone — fetch all leads with a phone number
-    const { data: leads } = await supabase
-      .from('leads')
-      .select('place_id, phone, status, evolution_instance')
-      .not('phone', 'is', null)
+    // ─── Lead matching (3 strategies, in order of reliability) ───
 
-    let lead = (leads ?? []).find((l) =>
-      l.phone ? phoneMatch(normalizedPhone, l.phone) : false
-    )
+    let lead: { place_id: string; phone: string | null; status: string; evolution_instance: string | null } | undefined
 
-    // Fallback: if inbound LID not resolved, match by evolution_instance
-    // When we sent a message to lead X via instance Y and they reply from a LID,
-    // the phone match fails but the instance match connects them.
+    // Strategy 1: match by stored whatsapp_jid (fastest, most reliable for LID contacts)
+    if (isLid) {
+      const { data: jidLead } = await supabase
+        .from('leads')
+        .select('place_id, phone, status, evolution_instance')
+        .eq('whatsapp_jid', remoteJid)
+        .limit(1)
+        .maybeSingle()
+      if (jidLead) {
+        lead = jidLead
+        console.log('[webhook] matched by whatsapp_jid:', lead.place_id)
+      }
+    }
+
+    // Strategy 2: match by phone number
+    if (!lead && normalizedPhone) {
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('place_id, phone, status, evolution_instance')
+        .not('phone', 'is', null)
+
+      lead = (leads ?? []).find((l) =>
+        l.phone ? phoneMatch(normalizedPhone, l.phone) : false
+      )
+      if (lead) {
+        console.log('[webhook] matched by phone:', lead.place_id)
+      }
+    }
+
+    // Strategy 3: if inbound LID not resolved, match by evolution_instance
+    // IMPORTANT: only match when there's exactly ONE active lead on the instance.
+    // Multiple leads share instances via round-robin — guessing wrong causes
+    // messages from different leads to appear in the same chat.
     if (!lead && !isFromMe && isLid && !normalizedPhone && webhookInstanceName) {
-      const { data: instanceLead } = await supabase
+      const { data: instanceLeads } = await supabase
         .from('leads')
         .select('place_id, phone, status, evolution_instance')
         .eq('evolution_instance', webhookInstanceName)
         .in('status', ['sent', 'replied', 'negotiating'])
         .not('phone', 'is', null)
-        .order('status_updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .limit(2)
 
-      if (instanceLead) {
-        lead = instanceLead
-        console.log('[webhook] matched unresolved LID to lead by instance:', instanceLead.place_id, instanceLead.phone)
+      if (instanceLeads && instanceLeads.length === 1) {
+        lead = instanceLeads[0]
+        console.log('[webhook] matched by instance (unique):', lead.place_id)
+      } else if (instanceLeads && instanceLeads.length > 1) {
+        console.log('[webhook] ambiguous LID — multiple active leads on instance', webhookInstanceName,
+          ':', instanceLeads.map(l => l.place_id).join(', '), '— creating unknown lead instead')
       }
     }
 
@@ -243,18 +279,24 @@ export async function POST(request: Request) {
       placeId = lead.place_id
       leadStatus = lead.status
 
-      // Update phone if we resolved a better one (e.g. from LID)
-      // Also store which instance this lead is associated with if not yet set
+      // Persist any new info we learned about this lead:
+      // - phone (if resolved from LID)
+      // - evolution_instance (if not yet set)
+      // - whatsapp_jid (LID → so future messages match instantly)
       const leadUpdates: Record<string, string> = {}
       if (isLid && isValidPhone(normalizedPhone) && normalizedPhone !== lead.phone) {
         leadUpdates.phone = normalizedPhone
       }
-      if (!lead.evolution_instance) {
+      if (isLid && remoteJid) {
+        leadUpdates.whatsapp_jid = remoteJid
+      }
+      if (!lead.evolution_instance && webhookInstanceName) {
         leadUpdates.evolution_instance = webhookInstanceName
       }
       if (Object.keys(leadUpdates).length > 0) {
         await supabase.from('leads').update(leadUpdates).eq('place_id', placeId)
         if (leadUpdates.phone) console.log('[webhook] updated phone for', placeId, 'to', normalizedPhone)
+        if (leadUpdates.whatsapp_jid) console.log('[webhook] stored jid for', placeId, ':', remoteJid)
         if (leadUpdates.evolution_instance) console.log('[webhook] assigned instance', webhookInstanceName, 'to', placeId)
       }
     } else if (isFromMe) {
@@ -289,6 +331,7 @@ export async function POST(request: Request) {
         business_name: pushName || normalizedPhone || jidValue,
         outreach_channel: 'whatsapp',
         evolution_instance: webhookInstanceName,
+        whatsapp_jid: isLid ? remoteJid : null,
         status: 'replied',
         niche: 'inbound',
         status_updated_at: new Date().toISOString(),

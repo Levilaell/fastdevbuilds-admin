@@ -88,6 +88,8 @@ export interface Lead {
   inbox_archived_at: string | null
   email_subject: string | null
   country: string | null
+  evolution_instance: string | null
+  whatsapp_jid: string | null
 }
 
 export interface Conversation {
