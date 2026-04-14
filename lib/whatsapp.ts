@@ -73,18 +73,18 @@ export async function getOrAssignInstance(
     // Instance was removed from config — reassign below
   }
 
-  // Balanced assignment: pick the instance with fewest active leads (sent/replied/negotiating)
-  // This avoids the race condition of "next after last" where concurrent sends
-  // all read the same last-assigned and pile onto the same instance.
-  const { data: counts } = await supabase
+  // Pick the instance with fewest sends in the last 24h
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: sent } = await supabase
     .from('leads')
     .select('evolution_instance')
     .not('evolution_instance', 'is', null)
-    .in('status', ['sent', 'replied', 'negotiating'])
+    .not('outreach_sent_at', 'is', null)
+    .gte('outreach_sent_at', since)
 
   const countMap = new Map<string, number>()
   for (const inst of instances) countMap.set(inst.name, 0)
-  for (const row of counts ?? []) {
+  for (const row of sent ?? []) {
     const name = row.evolution_instance as string
     if (countMap.has(name)) countMap.set(name, (countMap.get(name) ?? 0) + 1)
   }
