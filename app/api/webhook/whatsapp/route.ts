@@ -25,8 +25,9 @@ async function resolvePhoneFromLid(
   instanceApiKey?: string,
 ): Promise<string | null> {
   const evoUrl = process.env.EVOLUTION_API_URL
-  const instance = instanceName ?? process.env.EVOLUTION_INSTANCE_1
-  const apiKey = instanceApiKey ?? process.env.EVOLUTION_API_KEY_1
+  // Use || (not ??) so empty strings fall through to the env var defaults
+  const instance = instanceName || process.env.EVOLUTION_INSTANCE_1
+  const apiKey = instanceApiKey || process.env.EVOLUTION_API_KEY_1
 
   if (!evoUrl || !instance || !apiKey) return null
 
@@ -38,6 +39,7 @@ async function resolvePhoneFromLid(
       method: 'POST',
       headers,
       body: JSON.stringify({ where: { id: `${lid}@lid` } }),
+      signal: AbortSignal.timeout(8_000),
     })
     if (!lidRes.ok) return null
 
@@ -50,18 +52,20 @@ async function resolvePhoneFromLid(
       return null
     }
 
-    // Step 2: find all contacts and match by profilePictureUrl
-    const allRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+    // Step 2: find contacts with the same profile picture
+    // Filter by profilePictureUrl to avoid fetching all contacts (performance)
+    const matchRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({}),
+      body: JSON.stringify({ where: { profilePictureUrl: lidPic } }),
+      signal: AbortSignal.timeout(8_000),
     })
-    if (!allRes.ok) return null
+    if (!matchRes.ok) return null
 
-    const allContacts = await allRes.json()
-    if (!Array.isArray(allContacts)) return null
+    const matchContacts = await matchRes.json()
+    if (!Array.isArray(matchContacts)) return null
 
-    const match = allContacts.find(
+    const match = matchContacts.find(
       (c: { id: string; profilePictureUrl?: string }) =>
         c.id.endsWith('@s.whatsapp.net') && c.profilePictureUrl === lidPic,
     )
@@ -75,7 +79,11 @@ async function resolvePhoneFromLid(
     console.log('[webhook] no @s.whatsapp.net match found for LID profile picture')
     return null
   } catch (err) {
-    console.error('[webhook] resolvePhoneFromLid error:', err)
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      console.error('[webhook] resolvePhoneFromLid timeout for LID', lid)
+    } else {
+      console.error('[webhook] resolvePhoneFromLid error:', err)
+    }
     return null
   }
 }
@@ -101,9 +109,10 @@ export async function POST(request: Request) {
 
     // Determine which instance sent this webhook
     // Evolution API may send instance as string OR object depending on version
+    const rawInstance = body.instance
     const bodyInstance: string =
-      (typeof body.instance === 'string' ? body.instance : '')
-      || (typeof body.instance === 'object' && body.instance?.instanceName) || ''
+      (typeof rawInstance === 'string' ? rawInstance : '')
+      || (rawInstance != null && typeof rawInstance === 'object' ? rawInstance.instanceName : '')
       || body.instanceName
       || body.sender
       || body.data?.instance?.instanceName
@@ -145,6 +154,13 @@ export async function POST(request: Request) {
     const data = body.data
     if (!data?.key) {
       console.log('[webhook] no key in data, skipping')
+      return Response.json({ ok: true })
+    }
+
+    // messages.update is a delivery STATUS change (delivered, read, etc.)
+    // Some Evolution API versions include the original message in the payload,
+    // which would be processed as a duplicate. Filter out pure status updates.
+    if (event === 'messages.update' && data.update?.status !== undefined) {
       return Response.json({ ok: true })
     }
 
@@ -351,8 +367,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // For outbound messages sent from the phone, check for duplicates
-    // (the dashboard send flow already saves its own conversation record)
+    // For outbound messages sent from the phone/API, check for duplicates.
+    // The dashboard send flow already saves its own conversation record, but
+    // the webhook may arrive before or after that save (race condition).
+    // Use a wider window (120s) and also match on text prefix to catch the race.
     if (isFromMe) {
       const { data: existing } = await supabase
         .from('conversations')
@@ -360,7 +378,7 @@ export async function POST(request: Request) {
         .eq('place_id', placeId)
         .eq('direction', 'out')
         .eq('message', text)
-        .gte('sent_at', new Date(Date.now() - 60_000).toISOString())
+        .gte('sent_at', new Date(Date.now() - 120_000).toISOString())
         .limit(1)
 
       if (existing && existing.length > 0) {
