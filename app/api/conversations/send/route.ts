@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   // Fetch lead for phone/email check
   const { data: lead, error: leadError } = await supabase
     .from('leads')
-    .select('phone, email')
+    .select('phone, email, evolution_instance')
     .eq('place_id', place_id)
     .maybeSingle()
 
@@ -41,13 +41,33 @@ export async function POST(request: NextRequest) {
   if (channel === 'whatsapp') {
     let phone = lead.phone?.trim() || null
 
-    // Fallback: extract phone from place_id for unknown inbound leads
+    // Fallback 1: extract phone from place_id for unknown inbound leads
     if (!phone && place_id.startsWith('unknown_')) {
       const candidate = place_id.replace('unknown_', '')
       if (/^55\d{10,11}$/.test(candidate)) {
         phone = candidate
-        await supabase.from('leads').update({ phone: candidate }).eq('place_id', place_id)
       }
+    }
+
+    // Fallback 2: find related lead on same evolution_instance with a phone
+    if (!phone && lead.evolution_instance) {
+      const { data: related } = await supabase
+        .from('leads')
+        .select('phone')
+        .eq('evolution_instance', lead.evolution_instance)
+        .not('phone', 'is', null)
+        .neq('place_id', place_id)
+        .order('status_updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (related?.phone?.trim()) {
+        phone = related.phone.trim()
+      }
+    }
+
+    // Persist resolved phone for future sends
+    if (phone && !lead.phone) {
+      await supabase.from('leads').update({ phone }).eq('place_id', place_id)
     }
 
     if (!phone) {

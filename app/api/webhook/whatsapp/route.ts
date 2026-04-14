@@ -206,9 +206,29 @@ export async function POST(request: Request) {
       .select('place_id, phone, status, evolution_instance')
       .not('phone', 'is', null)
 
-    const lead = (leads ?? []).find((l) =>
+    let lead = (leads ?? []).find((l) =>
       l.phone ? phoneMatch(normalizedPhone, l.phone) : false
     )
+
+    // Fallback: if inbound LID not resolved, match by evolution_instance
+    // When we sent a message to lead X via instance Y and they reply from a LID,
+    // the phone match fails but the instance match connects them.
+    if (!lead && !isFromMe && isLid && !normalizedPhone && webhookInstanceName) {
+      const { data: instanceLead } = await supabase
+        .from('leads')
+        .select('place_id, phone, status, evolution_instance')
+        .eq('evolution_instance', webhookInstanceName)
+        .in('status', ['sent', 'replied', 'negotiating'])
+        .not('phone', 'is', null)
+        .order('status_updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (instanceLead) {
+        lead = instanceLead
+        console.log('[webhook] matched unresolved LID to lead by instance:', instanceLead.place_id, instanceLead.phone)
+      }
+    }
 
     // Convert unix timestamp to ISO
     const timestamp = data.messageTimestamp

@@ -48,7 +48,7 @@ export async function POST(
   // Fetch lead contact info
   const { data: lead } = await supabase
     .from('leads')
-    .select('phone, email, outreach_channel')
+    .select('phone, email, outreach_channel, evolution_instance')
     .eq('place_id', suggestion.place_id)
     .maybeSingle()
 
@@ -60,14 +60,33 @@ export async function POST(
   if (channel === 'whatsapp') {
     let phone = lead?.phone?.trim() || null
 
-    // Fallback: extract phone from place_id for unknown inbound leads (unknown_5511999999999)
+    // Fallback 1: extract phone from place_id for unknown inbound leads (unknown_5511999999999)
     if (!phone && suggestion.place_id.startsWith('unknown_')) {
       const candidate = suggestion.place_id.replace('unknown_', '')
       if (/^55\d{10,11}$/.test(candidate)) {
         phone = candidate
-        // Persist so future sends don't need this fallback
-        await supabase.from('leads').update({ phone: candidate }).eq('place_id', suggestion.place_id)
       }
+    }
+
+    // Fallback 2: find a related lead on the same evolution_instance that has a phone
+    if (!phone && lead?.evolution_instance) {
+      const { data: related } = await supabase
+        .from('leads')
+        .select('phone')
+        .eq('evolution_instance', lead.evolution_instance)
+        .not('phone', 'is', null)
+        .neq('place_id', suggestion.place_id)
+        .order('status_updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (related?.phone?.trim()) {
+        phone = related.phone.trim()
+      }
+    }
+
+    // Persist resolved phone on this lead for future sends
+    if (phone && !lead?.phone) {
+      await supabase.from('leads').update({ phone }).eq('place_id', suggestion.place_id)
     }
 
     if (!phone) {
