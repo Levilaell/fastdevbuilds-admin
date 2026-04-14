@@ -36,13 +36,18 @@ interface AutoQueueItem {
   searchCity: string;
 }
 
+interface InstanceSendCount {
+  name: string;
+  sent24h: number;
+}
+
 interface AutoQueueData {
   stats: {
     total: number;
     prospected: number;
     remaining: number;
     whatsappSentToday: number;
-    whatsappSlotsLeft: number;
+    instanceCounts: InstanceSendCount[];
   };
   queue: AutoQueueItem[];
 }
@@ -728,34 +733,21 @@ export default function BotClient() {
                   </div>
                 </div>
 
-                {/* WhatsApp slots — only for WhatsApp channel countries */}
-                {countryConfig.channel === "whatsapp" && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                      <p className="text-[10px] text-muted uppercase">
-                        WA hoje
-                      </p>
-                      <p className="text-sm font-medium text-text tabular-nums">
-                        {autoQueue.stats.whatsappSentToday}
-                      </p>
-                    </div>
-                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                      <p className="text-[10px] text-muted uppercase">
-                        Limite (3 inst.)
-                      </p>
-                      <p className="text-sm font-medium text-text tabular-nums">
-                        45
-                      </p>
-                    </div>
-                    <div className="bg-sidebar border border-border rounded-lg p-2.5 text-center">
-                      <p className="text-[10px] text-muted uppercase">
-                        Slots livres
-                      </p>
-                      <p
-                        className={`text-sm font-medium tabular-nums ${autoQueue.stats.whatsappSlotsLeft > 0 ? "text-success" : "text-danger"}`}
-                      >
-                        {autoQueue.stats.whatsappSlotsLeft}
-                      </p>
+                {/* WhatsApp send counts per instance */}
+                {countryConfig.channel === "whatsapp" && autoQueue.stats.instanceCounts.length > 0 && (
+                  <div className="bg-sidebar border border-border rounded-lg p-2.5">
+                    <p className="text-[10px] text-muted uppercase mb-2">Envios 24h</p>
+                    <div className="space-y-1.5">
+                      {autoQueue.stats.instanceCounts.map((inst) => (
+                        <div key={inst.name} className="flex items-center justify-between">
+                          <span className="text-xs text-text/70 truncate">{inst.name}</span>
+                          <span className="text-xs font-medium text-text tabular-nums">{inst.sent24h}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-border">
+                        <span className="text-xs font-medium text-text">Total</span>
+                        <span className="text-xs font-semibold text-text tabular-nums">{autoQueue.stats.whatsappSentToday}</span>
+                      </div>
                     </div>
                   </div>
                 )}
