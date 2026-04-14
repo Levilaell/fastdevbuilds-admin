@@ -39,7 +39,17 @@ export async function POST(request: NextRequest) {
 
   // Send via WhatsApp
   if (channel === 'whatsapp') {
-    const phone = lead.phone?.trim()
+    let phone = lead.phone?.trim() || null
+
+    // Fallback: extract phone from place_id for unknown inbound leads
+    if (!phone && place_id.startsWith('unknown_')) {
+      const candidate = place_id.replace('unknown_', '')
+      if (/^55\d{10,11}$/.test(candidate)) {
+        phone = candidate
+        await supabase.from('leads').update({ phone: candidate }).eq('place_id', place_id)
+      }
+    }
+
     if (!phone) {
       return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
     }

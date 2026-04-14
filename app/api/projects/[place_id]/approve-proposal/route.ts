@@ -46,13 +46,24 @@ export async function POST(
     .eq('place_id', place_id)
     .maybeSingle()
 
-  if (!lead?.phone) {
+  let phone = lead?.phone?.trim() || null
+
+  // Fallback: extract phone from place_id for unknown inbound leads (unknown_5511999999999)
+  if (!phone && place_id.startsWith('unknown_')) {
+    const candidate = place_id.replace('unknown_', '')
+    if (/^55\d{10,11}$/.test(candidate)) {
+      phone = candidate
+      await supabase.from('leads').update({ phone: candidate }).eq('place_id', place_id)
+    }
+  }
+
+  if (!phone) {
     return Response.json({ error: 'Lead não tem telefone cadastrado' }, { status: 400 })
   }
 
   // Send via WhatsApp — use lead's assigned instance
   const instance = await getOrAssignInstance(supabase, place_id)
-  const sent = await sendWhatsApp(lead.phone, message, instance?.name)
+  const sent = await sendWhatsApp(phone, message, instance?.name)
   if (!sent) {
     return Response.json({ error: 'Falha ao enviar WhatsApp' }, { status: 502 })
   }

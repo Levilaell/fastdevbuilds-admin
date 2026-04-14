@@ -264,16 +264,24 @@ export async function POST(request: Request) {
 
       console.log('[webhook] creating inbound lead for', placeId)
 
-      const { error: leadError } = await supabase.from('leads').upsert({
+      const upsertData: Record<string, unknown> = {
         place_id: placeId,
         business_name: pushName || normalizedPhone || jidValue,
-        phone: isValidPhone(normalizedPhone) ? normalizedPhone : null,
         outreach_channel: 'whatsapp',
         evolution_instance: webhookInstanceName,
         status: 'replied',
         niche: 'inbound',
         status_updated_at: new Date().toISOString(),
-      }, { onConflict: 'place_id' })
+      }
+      // Only set phone if we actually have one — avoid overwriting manually entered phone with null
+      if (isValidPhone(normalizedPhone)) {
+        upsertData.phone = normalizedPhone
+      }
+
+      const { error: leadError } = await supabase.from('leads').upsert(
+        upsertData,
+        { onConflict: 'place_id' },
+      )
 
       if (leadError) {
         console.error('[webhook] failed to upsert inbound lead:', leadError.message)
