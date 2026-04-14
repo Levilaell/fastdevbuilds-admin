@@ -406,6 +406,26 @@ export default function BotClient() {
         lineOffsetRef.current = data.totalLines;
       }
 
+      if (data.status === "not_found") {
+        stopPolling();
+        setStatus("error");
+        setLines((prev) => [
+          ...prev,
+          { text: "⚠️  Servidor reiniciou — execução perdida", type: "error" as const },
+        ]);
+        if (botRunIdRef.current) {
+          fetch(`/api/bot/runs/${botRunIdRef.current}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "failed" }),
+          }).catch(() => {});
+        }
+        serverRunIdRef.current = null;
+        botRunIdRef.current = null;
+        fetchRuns();
+        return;
+      }
+
       if (
         data.status === "completed" ||
         data.status === "failed" ||
