@@ -301,4 +301,4 @@ BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
 - **Tailwind only** — no inline `style` attributes, no CSS modules, no external UI libraries
 - **Dark theme always** — every new component must use the color palette above
 - **Niche names with accents** — BR niches must use proper Portuguese diacritics to match Supabase data
-- **WhatsApp daily limit is 15 per instance** — 3 instances = 45 total, round-robin rotation via `evolution_instance` column on leads
+- **WhatsApp multi-instance** — 3 instances, balanced assignment via `evolution_instance` column on leads (fewest 24h sends wins)
