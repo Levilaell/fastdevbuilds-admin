@@ -58,11 +58,14 @@ export default function SidebarNav() {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
     async function fetchUnread() {
+      // Join with leads to exclude disqualified/lost/archived — matches inbox visibility
       const { count } = await supabase
         .from('conversations')
-        .select('*', { count: 'exact', head: true })
+        .select('place_id, leads!inner(status, inbox_archived_at)', { count: 'exact', head: true })
         .eq('direction', 'in')
         .is('read_at', null)
+        .not('leads.status', 'in', '("disqualified","lost")')
+        .is('leads.inbox_archived_at', null)
       setUnreadCount(count ?? 0)
     }
 
