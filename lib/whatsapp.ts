@@ -109,6 +109,84 @@ export async function getOrAssignInstance(
   return assigned
 }
 
+/** Check if a normalized phone looks like a valid BR number. */
+export function isValidPhone(phone: string): boolean {
+  return phone.startsWith('55') && phone.length >= 12 && phone.length <= 13
+}
+
+/**
+ * Resolve a LID (Link ID) to a real phone number via Evolution API.
+ * Evolution API v1.x sends LID format (240552629022900@lid) in webhooks
+ * which does NOT contain the phone number and cannot be used for sending.
+ *
+ * Strategy: get the LID contact's profilePictureUrl, then find the
+ * @s.whatsapp.net contact with the same picture — that has the real number.
+ */
+export async function resolvePhoneFromLid(
+  lid: string,
+  instanceName?: string,
+  instanceApiKey?: string,
+): Promise<string | null> {
+  const evoUrl = process.env.EVOLUTION_API_URL
+  const instance = instanceName || process.env.EVOLUTION_INSTANCE_1
+  const apiKey = instanceApiKey || process.env.EVOLUTION_API_KEY_1
+
+  if (!evoUrl || !instance || !apiKey) return null
+
+  const headers = { 'Content-Type': 'application/json', apikey: apiKey }
+
+  try {
+    const lidRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ where: { id: `${lid}@lid` } }),
+      signal: AbortSignal.timeout(8_000),
+    })
+    if (!lidRes.ok) return null
+
+    const lidContacts = await lidRes.json()
+    if (!Array.isArray(lidContacts) || lidContacts.length === 0) return null
+
+    const lidPic: string = lidContacts[0].profilePictureUrl ?? ''
+    if (!lidPic) {
+      console.log('[whatsapp] LID contact has no profile picture, cannot resolve')
+      return null
+    }
+
+    const matchRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ where: { profilePictureUrl: lidPic } }),
+      signal: AbortSignal.timeout(8_000),
+    })
+    if (!matchRes.ok) return null
+
+    const matchContacts = await matchRes.json()
+    if (!Array.isArray(matchContacts)) return null
+
+    const match = matchContacts.find(
+      (c: { id: string; profilePictureUrl?: string }) =>
+        c.id.endsWith('@s.whatsapp.net') && c.profilePictureUrl === lidPic,
+    )
+
+    if (match) {
+      const realPhone = match.id.split('@')[0].replace(/\D/g, '')
+      console.log('[whatsapp] resolved LID', lid, '→', realPhone)
+      return realPhone
+    }
+
+    console.log('[whatsapp] no @s.whatsapp.net match found for LID profile picture')
+    return null
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      console.error('[whatsapp] resolvePhoneFromLid timeout for LID', lid)
+    } else {
+      console.error('[whatsapp] resolvePhoneFromLid error:', err)
+    }
+    return null
+  }
+}
+
 /**
  * Send a WhatsApp message via Evolution API.
  * If instanceName is provided, uses that specific instance.

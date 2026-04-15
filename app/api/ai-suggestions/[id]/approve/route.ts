@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
-import { sendWhatsApp, getOrAssignInstance } from '@/lib/whatsapp'
+import { sendWhatsApp, getOrAssignInstance, isValidPhone, resolvePhoneFromLid, getInstances } from '@/lib/whatsapp'
 
 export async function POST(
   request: NextRequest,
@@ -48,7 +48,7 @@ export async function POST(
   // Fetch lead contact info
   const { data: lead } = await supabase
     .from('leads')
-    .select('phone, email, outreach_channel, evolution_instance')
+    .select('phone, email, outreach_channel, evolution_instance, whatsapp_jid')
     .eq('place_id', suggestion.place_id)
     .maybeSingle()
 
@@ -81,6 +81,28 @@ export async function POST(
         .limit(2)
       if (related && related.length === 1 && related[0].phone?.trim()) {
         phone = related[0].phone.trim()
+      }
+    }
+
+    // Fallback 3: extract phone from whatsapp_jid (@s.whatsapp.net format)
+    if (!phone && lead?.whatsapp_jid) {
+      const jid = lead.whatsapp_jid as string
+      if (jid.endsWith('@s.whatsapp.net')) {
+        const candidate = jid.split('@')[0].replace(/\D/g, '')
+        if (isValidPhone(candidate)) {
+          phone = candidate
+        }
+      } else if (jid.endsWith('@lid')) {
+        // Fallback 4: resolve LID to phone via Evolution API
+        const lidValue = jid.split('@')[0]
+        const instName = lead.evolution_instance as string | undefined
+        const inst = instName
+          ? getInstances().find(i => i.name === instName)
+          : undefined
+        const resolved = await resolvePhoneFromLid(lidValue, inst?.name, inst?.apiKey)
+        if (resolved && isValidPhone(resolved)) {
+          phone = resolved
+        }
       }
     }
 
