@@ -82,9 +82,14 @@ export default function SidebarNav() {
       )
       .subscribe()
 
+    // Re-fetch when inbox marks messages as read
+    const onUnreadUpdated = () => fetchUnread()
+    window.addEventListener('unread-updated', onUnreadUpdated)
+
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
+      window.removeEventListener('unread-updated', onUnreadUpdated)
     }
   }, [])
 

@@ -111,8 +111,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     const newStatus = destination.droppableId as LeadStatus
     const oldStatus = source.droppableId
 
-    if (!confirm(`Mover lead de "${STATUS_LABELS[oldStatus as LeadStatus]}" para "${STATUS_LABELS[newStatus]}"?`)) return
-
     setLeads((prev) =>
       prev.map((l) =>
         l.place_id === draggableId

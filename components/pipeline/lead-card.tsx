@@ -112,9 +112,7 @@ function LeadCardComponent({ lead, onDisqualify }: LeadCardProps) {
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            if (confirm('Desqualificar este lead? Ele será removido do pipeline.')) {
-              onDisqualify(lead.place_id)
-            }
+            onDisqualify(lead.place_id)
           }}
           title="Desqualificar"
           className="absolute top-2 right-2 p-1 rounded bg-card border border-border text-muted hover:text-danger hover:border-danger/50 opacity-0 group-hover:opacity-100 transition-opacity"

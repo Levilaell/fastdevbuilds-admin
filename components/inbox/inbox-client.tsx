@@ -335,6 +335,8 @@ export default function InboxClient() {
         item.place_id === placeId ? { ...item, unread_count: 0 } : item
       )
     )
+    // Notify sidebar to re-fetch unread count
+    window.dispatchEvent(new Event('unread-updated'))
   }, [])
 
   // Select a conversation — mark as read only after confirming the correct conversation loaded
