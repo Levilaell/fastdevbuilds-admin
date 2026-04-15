@@ -123,6 +123,7 @@ export interface InboxItem {
   place_id: string
   business_name: string | null
   outreach_channel: string | null
+  evolution_instance: string | null
   status: LeadStatus
   last_message: string | null
   last_message_at: string | null
@@ -236,6 +237,7 @@ export type LeadCard = Pick<
   | 'city'
   | 'pain_score'
   | 'outreach_channel'
+  | 'evolution_instance'
   | 'status'
   | 'status_updated_at'
   | 'niche'

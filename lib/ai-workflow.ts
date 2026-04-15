@@ -6,7 +6,7 @@ import {
   buildClassifyUserPrompt,
   getProposalSystemPrompt,
   buildProposalUserPrompt,
-  CLAUDE_CODE_SYSTEM_PROMPT,
+  CLAUDE_CODE_SITE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
   buildPixMessage,
   isUSLead,
@@ -247,8 +247,8 @@ export async function generateClaudeCodePrompt(
 ): Promise<string> {
   const anthropic = new Anthropic()
 
-  // Include ALL conversation messages (not just filtered) so Claude has full context
-  const relevantMessages = conversations
+  // Include last 20 messages for full context, formatted with role labels
+  const conversationHistory = conversations
     .slice(-20)
     .map(c => `${c.direction === 'out' ? 'Levi' : 'Cliente'}: ${c.message}`)
     .join('\n')
@@ -267,12 +267,12 @@ export async function generateClaudeCodePrompt(
 
   const response = await anthropic.messages.create({
     model: MODEL_SMART,
-    max_tokens: 3000,
-    system: CLAUDE_CODE_SYSTEM_PROMPT,
+    max_tokens: 4500,
+    system: CLAUDE_CODE_SITE_SYSTEM_PROMPT,
     messages: [
       {
         role: 'user',
-        content: buildClaudeCodeUserPrompt(lead, project, reasonsText, scopeText, relevantMessages),
+        content: buildClaudeCodeUserPrompt(lead, project, reasonsText, scopeText, conversationHistory),
       },
     ],
   })

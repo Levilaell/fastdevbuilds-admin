@@ -136,6 +136,12 @@ async function LeadDetailContent({ id }: { id: string }) {
                   {lead.outreach_channel}
                 </span>
               )}
+              {/* Instance badge */}
+              {lead.evolution_instance && (
+                <span className="text-[10px] text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
+                  {lead.evolution_instance}
+                </span>
+              )}
               {/* Status badge */}
               <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_COLORS[lead.status]}`}>
                 {STATUS_LABELS[lead.status]}

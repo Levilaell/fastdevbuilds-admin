@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channel, status, status_updated_at, niche'
+const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()

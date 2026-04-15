@@ -79,7 +79,14 @@ function LeadCardComponent({ lead, onDisqualify }: LeadCardProps) {
           <h3 className="text-sm font-medium text-text truncate group-hover/link:text-accent">
             {lead.business_name || 'Sem nome'}
           </h3>
-          <ChannelBadge channel={lead.outreach_channel} />
+          <div className="flex items-center gap-1 shrink-0">
+            {lead.evolution_instance && (
+              <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
+                {lead.evolution_instance}
+              </span>
+            )}
+            <ChannelBadge channel={lead.outreach_channel} />
+          </div>
         </div>
 
         <PainBar score={lead.pain_score} />

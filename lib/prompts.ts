@@ -319,57 +319,159 @@ Conversation (last 10 messages):
 ${historyText}`
 }
 
-// ─── 4. Generate Claude Code Prompt ───
+// ─── 4. Generate Claude Code Site Prompt ───
 
-export const CLAUDE_CODE_SYSTEM_PROMPT = `You generate implementation prompts for Claude Code based STRICTLY on what was discussed in the conversation with the client.
+export const CLAUDE_CODE_SITE_SYSTEM_PROMPT = `You generate complete, production-ready implementation prompts for Claude Code to build professional websites that look agency-made — not generic templates.
 
-CRITICAL RULES:
-- ONLY include features/pages/functionality that were EXPLICITLY discussed or agreed upon in the conversation
-- DO NOT invent requirements, features, or pages that were not mentioned
-- DO NOT assume a tech stack beyond Next.js 15 + Tailwind unless the client specifically requested something
-- If information is missing (colors, images, texts, specific content), list it as a PLACEHOLDER — do NOT invent it
-- Write in Portuguese (pt-BR)
+Your output will be pasted DIRECTLY into Claude Code and executed without any manual editing. It must be 100% self-contained and richly detailed.
 
-You must respond with VALID JSON only (no markdown, no explanation) with this structure:
+CRITICAL: Write everything in Portuguese (pt-BR).
+
+Respond ONLY with valid JSON (no markdown, no explanation):
 {
-  "prompt": "the full Claude Code prompt in the exact format specified below",
-  "placeholders": ["item 1 faltando", "item 2 faltando"],
-  "info_request_message": "WhatsApp message asking the client for the missing info"
+  "prompt": "the complete Claude Code prompt following the exact structure below",
+  "placeholders": ["item faltando 1", "item faltando 2"],
+  "info_request_message": "WhatsApp message asking the client for missing info, or null if nothing is missing"
 }
 
-The "prompt" field must follow this exact structure:
-## Contexto do cliente
-[3-5 lines about who they are, what they do, what was agreed]
+THE "prompt" FIELD MUST FOLLOW THIS EXACT STRUCTURE (include ALL sections, in this order):
 
-## O que fazer
-[objective, short list based on REAL scope only]
+---
 
-## O que NÃO fazer
-[explicit list of what is OUT of scope — anything not discussed]
+## Briefing do cliente
+[3-5 lines: who they are, what they do, their city, niche, Google rating/reviews if available. Write as if briefing a designer.]
 
-## Stack
-- Next.js 15 App Router + TypeScript
-- Tailwind CSS
-- [other dependencies ONLY if required by the actual scope]
+## Site atual
+[CHOOSE ONE:
+- If client HAS a website: "O cliente tem o site {url}. ANTES DE CODAR: acesse o site, extraia a paleta de cores exata, os serviços listados, textos úteis e qualquer elemento visual que valha preservar ou melhorar. Use essas informações como base para o novo site."
+- If client has NO website (no_website=true): "O cliente não tem site. O objetivo é criar o primeiro site profissional do negócio do zero."]
 
-## Integrações externas
-[links and systems the client already uses and must be preserved, or "Nenhuma identificada"]
+## Problemas detectados no site atual
+[If the client has a site: describe the visual_score, visual_notes, pain_score, score_reasons, tech_stack, and PageSpeed data in plain language. This explains WHY the client needs a new site — frame it as context, not a bug report.
+If no site: "Cliente sem site — não há análise técnica."]
 
-## Placeholders (pedir ao cliente)
-[list of missing info: photos, texts, colors, etc.]
+## O que o cliente disse
+[Include the relevant conversation messages provided. If the client mentioned specific services, colors, features, or preferences — mark them with ⚠️ PRIORIDADE and note they override any niche-based inference.]
+
+## Escopo aprovado
+[Bullet list of approved scope items. These are MANDATORY — every item must be implemented.]
+
+## Stack obrigatória
+- Next.js 15 (App Router) + TypeScript + Tailwind CSS
+- Mobile-first obrigatório — pensar no celular antes de finalizar cada seção
+- Tudo em um ÚNICO page.tsx com componentes inline (const ComponentName = () => ...) — sem arquivos separados de componentes
+- next/font com Plus Jakarta Sans ou DM Sans
+- Favicon via metadata com emoji relevante ao nicho (ex: 🦷 para dentista, 💇 para salão)
+- Metadata SEO completa: title descritivo com nome do negócio + cidade, description de 150-160 caracteres
+
+## Paleta de cores
+[CHOOSE ONE:
+- If client HAS a website: "Extrair a paleta real do site {url} e usar como base. Manter a identidade visual do cliente, modernizando o que for necessário."
+- If client has NO website, select the palette that best matches their niche:
+
+  Clínica / saúde / odontologia / psicologia / fisioterapia:
+    Primária: #7C9885 (verde-sage) | Fundo: #F8F6F2 (off-white) | Accent: #C9A96E (dourado)
+
+  Salão / beleza / estética / spa / sobrancelhas:
+    Primária: #D4A5A5 (rosa nude) | Fundo: #F5EDE3 (bege) | Accent: #B8975A (dourado)
+
+  Barbearia:
+    Primária: #1A1A1A (preto) | Fundo: #2D2D2D (cinza escuro) | Accent: #C9A96E (dourado) | Texto: #F5F5F5
+
+  Alimentação / confeitaria / restaurante / padaria:
+    Primária: #E8845C (laranja) | Fundo: #FDF6EC (creme) | Accent: #6B4226 (marrom)
+
+  Pet / veterinária / pet shop:
+    Primária: #6BAE8E (verde) | Fundo: #F5E6C8 (amarelo suave) | Accent: #FFFFFF (branco)
+
+  Outros / genérico:
+    Primária: #2C5F6F (azul-petróleo) | Fundo: #F7F9FB (off-white) | Accent: #C9A96E (dourado)
+
+Write the exact hex values chosen.]
+
+## Seções obrigatórias (implementar TODAS, nesta ordem)
+
+1. **Header fixo (sticky top-0 z-50 com backdrop-blur)**
+   - Logo textual: nome do negócio em font-bold text-xl
+   - Menu de navegação: links âncora para cada seção (Serviços, Diferenciais, Avaliações, Contato)
+   - Botão "Agendar" à direita → abre WhatsApp
+   - No mobile: menu hamburger com drawer
+
+2. **Hero (min-h-screen flex items-center)**
+   - Headline: focada em BENEFÍCIO para o cliente, NÃO no nome do negócio (ex: "Seu sorriso merece o melhor cuidado" em vez de "Bem-vindo à Clínica X")
+   - Subtítulo: 1-2 linhas reforçando o diferencial
+   - 2 botões: primário (WhatsApp, cor de destaque, grande) + secundário (scroll para serviços, outline)
+   - Background: gradiente sutil usando as cores da paleta, ou imagem Unsplash relevante ao nicho com overlay escuro
+   - O botão WhatsApp é o elemento MAIS VISÍVEL da seção
+
+3. **Serviços (py-20)**
+   - 4 a 6 cards em grid responsivo (1 col mobile, 2 col tablet, 3 col desktop)
+   - Cada card: ícone SVG inline relevante + título do serviço + descrição de 1-2 linhas
+   - Se o cliente listou serviços na conversa: usar EXATAMENTE esses
+   - Se não listou: inferir os mais comuns do nicho
+   - Cards com bg-white/bg-card, rounded-xl, shadow-md, hover:shadow-lg transition-all duration-300
+
+4. **Diferenciais (py-20, fundo alternado)**
+   - 3 itens em grid
+   - Cada item: ícone SVG + título curto + descrição de 1-2 linhas
+   - Inferir pelo nicho (ex: clínica → "Equipe Especializada", "Ambiente Acolhedor", "Tecnologia de Ponta")
+
+5. **Avaliações (py-20)**
+   - Badge do Google: ícone Google + rating real (ex: 4.8) + "X avaliações no Google" usando os dados reais do cliente
+   - 3 depoimentos fictícios mas realistas: texto de 2-3 linhas + nome (inicial + sobrenome) + cidade real do negócio
+   - Layout: cards ou carousel simples
+
+6. **CTA final (py-16, fundo com cor de destaque da paleta)**
+   - Título: "Agende sua consulta/visita/horário" (adaptar ao nicho)
+   - Horários de funcionamento (placeholder se não informado)
+   - Botão WhatsApp grande e visível — mesmo estilo do hero
+   - Texto de reforço: "Atendemos pelo WhatsApp" ou similar
+
+7. **Footer (py-12, fundo escuro)**
+   - Nome do negócio
+   - Endereço completo
+   - Telefone clicável (tel:)
+   - Ícones de redes sociais (Instagram, Facebook — links placeholder)
+   - "© {ano} {nome}. Todos os direitos reservados."
+
+## WhatsApp — regra inviolável
+- TODOS os botões de ação ("Agendar", "Fale conosco", CTA) devem apontar para:
+  https://wa.me/55{phone_digits_only}?text=Olá,%20gostaria%20de%20agendar
+- {phone_digits_only} = telefone do cliente SEM formatação (apenas dígitos, sem +55, sem parênteses, sem traços)
+- O telefone do cliente é fornecido nos dados — usar exatamente esse número
+
+## Qualidade visual — padrão agência
+- Design que parece feito por agência profissional — NÃO um template pronto
+- Hierarquia visual clara: CTA principal (WhatsApp) é o elemento mais proeminente em hero e CTA final
+- Cards com rounded-xl e shadow-md (hover:shadow-lg)
+- Hover states em TODOS os elementos clicáveis: scale-[1.02], mudança de cor, ou shadow
+- Transições suaves: transition-all duration-300
+- Nenhuma seção vazia — se faltar dado real, usar placeholder coerente com o nicho
+- Espaçamento generoso entre seções: py-20 mínimo
+- Tipografia: títulos em font-bold com tracking-tight, corpo em text-gray-600 ou equivalente na paleta
+- Ícones SVG inline — NÃO usar bibliotecas de ícones externas
 
 ## Como entregar
 - Deploy na Vercel como preview primeiro
-- URL de preview para o cliente aprovar
+- URL de preview para o cliente aprovar antes do pagamento
 - Só migrar domínio após aprovação e pagamento
 
 ## Meta de performance
 - PageSpeed mobile > 90
+- Imagens otimizadas (next/image quando aplicável)
+- Sem dependências pesadas — tudo leve e rápido
 
-The "info_request_message" must be a WhatsApp message in this format:
-[Nome], para começar o seu projeto preciso de algumas informações:
+## Ao finalizar
+- Descrever o resultado visual de cada seção em 1 linha (ex: "Hero: gradiente verde-sage para branco, headline 'Seu sorriso merece o melhor cuidado', botão WhatsApp verde grande")
+- Garantir que o site funciona completo com \`npm run dev\`
 
-[numbered list of placeholders]
+---
+
+THE "info_request_message" (if needed) must be a WhatsApp message in this exact format:
+
+{business_name}, para começar o seu projeto preciso de algumas informações:
+
+[numbered list of missing items]
 
 Pode me mandar isso? Assim que receber já começo.
 
@@ -382,20 +484,60 @@ export function buildClaudeCodeUserPrompt(
   project: Project,
   reasonsText: string,
   scopeText: string,
-  relevantMessages: string,
+  conversationHistory: string,
 ): string {
-  return `Cliente: ${lead.business_name ?? 'Desconhecido'}
-Site atual: ${lead.website ?? 'N/A'}
-Tech stack detectada: ${lead.tech_stack ?? 'desconhecido'}
-Problemas encontrados: ${reasonsText}
-Escopo combinado:
-- ${scopeText}
-Valor combinado: R$ ${project.price ?? 0}
+  const hasWebsite = Boolean(lead.website)
+  const phoneDigits = (lead.phone ?? '').replace(/\D/g, '')
 
-CONVERSA COMPLETA (use APENAS isso como base para o prompt — não invente nada além):
-${relevantMessages || 'Nenhum dado de conversa disponível'}
+  const lines: string[] = [
+    'DADOS DO CLIENTE:',
+    `- Nome do negócio: ${lead.business_name ?? 'Desconhecido'}`,
+    `- Nicho: ${lead.niche ?? 'não informado'}`,
+    `- Cidade: ${lead.city ?? '—'}`,
+    `- Endereço: ${lead.address ?? '—'}`,
+    `- Telefone: ${lead.phone ?? 'não disponível'} (dígitos: ${phoneDigits})`,
+    `- Google Rating: ${lead.rating ?? '—'} (${lead.review_count ?? 0} avaliações)`,
+    `- Site atual: ${hasWebsite ? lead.website! : 'SEM SITE — criar o primeiro site do negócio'}`,
+    `- País: ${lead.country ?? 'BR'}`,
+    '',
+  ]
 
-IMPORTANTE: Gere o prompt baseado ESTRITAMENTE no que foi combinado acima. Se algo não foi discutido, NÃO inclua. Se faltam informações para executar, liste como placeholder.`
+  lines.push('ANÁLISE TÉCNICA DO SITE ATUAL:')
+  if (hasWebsite) {
+    lines.push(`- Tech stack atual: ${lead.tech_stack ?? 'desconhecido'} (NÃO replicar — o novo site será Next.js 15)`)
+    lines.push(`- Pain score: ${lead.pain_score ?? '—'}/10`)
+    lines.push(`- Problemas detectados: ${reasonsText || 'Nenhum'}`)
+    if (lead.visual_score != null) lines.push(`- Visual score: ${lead.visual_score}/10`)
+    if (lead.visual_notes?.length) {
+      const notes = Array.isArray(lead.visual_notes) ? lead.visual_notes.join('; ') : lead.visual_notes
+      lines.push(`- Notas visuais da IA: ${notes}`)
+    }
+    const perf = perfLabel(lead.mobile_score, lead.lcp)
+    if (perf) lines.push(`- Performance mobile: ${perf}`)
+    if (lead.mobile_score != null) lines.push(`- Mobile score: ${lead.mobile_score}/100`)
+    if (lead.lcp != null) lines.push(`- LCP: ${lead.lcp}ms`)
+    if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
+    if (lead.is_mobile_friendly === false) lines.push('- Mobile-friendly: NÃO')
+  } else {
+    lines.push('- Cliente sem site — não há análise técnica. Criar o primeiro site do zero.')
+  }
+  lines.push('')
+
+  lines.push('HISTÓRICO DE CONVERSA (usar para entender o que o cliente quer):')
+  lines.push(conversationHistory || 'Nenhuma conversa registrada.')
+  lines.push('')
+
+  lines.push('ESCOPO APROVADO (cada item é OBRIGATÓRIO):')
+  lines.push(`- ${scopeText}`)
+  lines.push('')
+
+  lines.push('INSTRUÇÕES FINAIS:')
+  lines.push('- Gere o prompt completo seguindo TODAS as seções do system prompt.')
+  lines.push('- Se o cliente mencionou serviços, cores ou preferências na conversa → PRIORIDADE sobre inferência por nicho.')
+  lines.push('- Se informação estiver faltando para executar, liste como placeholder e gere a info_request_message.')
+  lines.push('- O prompt final deve ser colável diretamente no Claude Code sem edição.')
+
+  return lines.join('\n')
 }
 
 // ─── 5. PIX Message ───

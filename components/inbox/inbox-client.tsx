@@ -84,6 +84,11 @@ function ConversationListItem({
               {item.outreach_channel}
             </span>
           )}
+          {item.evolution_instance && (
+            <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
+              {item.evolution_instance}
+            </span>
+          )}
           <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[item.status]}`}>
             {STATUS_LABELS[item.status]}
           </span>
@@ -619,6 +624,11 @@ export default function InboxClient() {
                         }`}
                       >
                         {activeItem.outreach_channel}
+                      </span>
+                    )}
+                    {activeItem.evolution_instance && (
+                      <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
+                        {activeItem.evolution_instance}
                       </span>
                     )}
                     <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[activeItem.status]}`}>
