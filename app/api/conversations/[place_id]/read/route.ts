@@ -1,12 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 
 export async function PATCH(
   _request: Request,
   { params }: { params: Promise<{ place_id: string }> }
 ) {
+  if (!(await getAuthUser())) return unauthorizedResponse()
   const { place_id } = await params
   if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('conversations')

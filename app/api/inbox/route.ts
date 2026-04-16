@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import type { LeadStatus } from '@/lib/types'
 
 interface RawRow {
@@ -20,11 +21,13 @@ interface LeadInfo {
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await getAuthUser())) return unauthorizedResponse()
+
   const showArchived = request.nextUrl.searchParams.get('archived') === 'true'
   const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 50, 200)
   const offset = Math.max(Number(request.nextUrl.searchParams.get('offset')) || 0, 0)
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   // Step 1: Fetch ALL conversations with explicit range to avoid Supabase
   // default ~1000 row limit that silently truncates results.

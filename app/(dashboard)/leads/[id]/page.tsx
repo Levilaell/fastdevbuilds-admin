@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import {
   STATUS_LABELS,
   STATUS_COLORS,
@@ -48,10 +49,11 @@ function LeadDetailSkeleton() {
 
 async function LeadDetailContent({ id }: { id: string }) {
   const supabase = await createClient()
+  const svc = createServiceClient()
 
   const [leadResult, convResult, suggestionResult, projectResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', id).single(),
-    supabase
+    svc
       .from('conversations')
       .select('*')
       .eq('place_id', id)
@@ -96,7 +98,7 @@ async function LeadDetailContent({ id }: { id: string }) {
     .map((c) => c.id)
 
   if (unreadIds.length > 0) {
-    await supabase
+    await svc
       .from('conversations')
       .update({ read_at: new Date().toISOString() })
       .in('id', unreadIds)

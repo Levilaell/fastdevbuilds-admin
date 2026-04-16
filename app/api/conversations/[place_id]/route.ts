@@ -1,13 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ place_id: string }> }
 ) {
+  if (!(await getAuthUser())) return unauthorizedResponse()
   const { place_id } = await params
   if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const { data, error } = await supabase
     .from('conversations')
@@ -26,16 +27,14 @@ export async function GET(
   // This handles cases where the bot sync or webhook didn't save it.
   const hasOutbound = conversations.some((c: { direction: string }) => c.direction === 'out')
   if (!hasOutbound) {
-    const svc = createServiceClient()
-    const { data: lead } = await svc
+    const { data: lead } = await supabase
       .from('leads')
       .select('message, outreach_sent, outreach_sent_at, outreach_channel')
       .eq('place_id', place_id)
       .maybeSingle()
 
     if (lead?.outreach_sent && lead.message) {
-      // Insert the missing outreach into the conversations table for persistence
-      const { data: inserted } = await svc
+      const { data: inserted } = await supabase
         .from('conversations')
         .insert({
           place_id,
