@@ -10,6 +10,8 @@ import {
   isValidPhone,
   resolvePhoneFromLid,
 } from "@/lib/whatsapp";
+import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
+import { onInboundLeadMessage } from "@/lib/leads/on-inbound";
 import { logWebhook } from "./debug/route";
 import type { Lead } from "@/lib/types";
 
@@ -413,21 +415,7 @@ export async function POST(request: Request) {
         })
         .eq("place_id", placeId);
 
-      const dismissAutoReplySuggestions = async () => {
-        await supabase
-          .from("ai_suggestions")
-          .update({ status: "rejected" })
-          .eq("place_id", placeId)
-          .eq("status", "pending");
-      };
-
-      await dismissAutoReplySuggestions();
-      setTimeout(() => {
-        dismissAutoReplySuggestions().catch(console.error);
-      }, 5_000);
-      setTimeout(() => {
-        dismissAutoReplySuggestions().catch(console.error);
-      }, 15_000);
+      await dismissPendingSuggestions(supabase, placeId);
 
       return Response.json({ ok: true });
     }
@@ -445,18 +433,7 @@ export async function POST(request: Request) {
       .select("id")
       .single();
 
-    const leadUpdate: Record<string, unknown> = {
-      last_inbound_at: sentAt,
-      last_human_reply_at: sentAt,
-      follow_up_paused: true,
-    };
-
-    if (leadStatus === "sent") {
-      leadUpdate.status = "replied";
-      leadUpdate.status_updated_at = new Date().toISOString();
-    }
-
-    await supabase.from("leads").update(leadUpdate).eq("place_id", placeId);
+    await onInboundLeadMessage(supabase, placeId, sentAt, leadStatus);
 
     const fullLead = await supabase
       .from("leads")
