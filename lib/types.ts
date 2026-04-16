@@ -31,7 +31,7 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   scoped: "Escopo",
   finalizado: "Finalizado",
   pago: "Pago",
-  closed: "Em progresso",
+  closed: "Fechado",
   lost: "Perdido",
   disqualified: "Desqualificado",
 };

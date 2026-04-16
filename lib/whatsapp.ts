@@ -25,19 +25,85 @@ export interface EvolutionInstance {
   apiKey: string;
 }
 
-/** Read all configured Evolution API instances from numbered env vars. */
+let cachedInstances: EvolutionInstance[] | null = null;
+
+/**
+ * Load Evolution API instances.
+ *
+ * Priority:
+ *   1. EVOLUTION_INSTANCES_JSON  — preferred, fully dynamic
+ *   2. Numbered env vars (EVOLUTION_INSTANCE_1 … _20) — legacy fallback,
+ *      scans through gaps so a missing _2 won't hide _3
+ *
+ * Result is cached for the lifetime of the process.
+ */
 export function getInstances(): EvolutionInstance[] {
+  if (cachedInstances) return cachedInstances;
+
+  const json = process.env.EVOLUTION_INSTANCES_JSON?.trim();
+
+  if (json) {
+    cachedInstances = parseInstancesJson(json);
+  } else {
+    cachedInstances = loadLegacyInstances();
+  }
+
+  return cachedInstances;
+}
+
+function parseInstancesJson(raw: string): EvolutionInstance[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.error("[whatsapp] EVOLUTION_INSTANCES_JSON is not valid JSON — falling back to numbered env vars");
+    return loadLegacyInstances();
+  }
+
+  if (!Array.isArray(parsed)) {
+    console.error("[whatsapp] EVOLUTION_INSTANCES_JSON must be a JSON array — falling back to numbered env vars");
+    return loadLegacyInstances();
+  }
+
   const instances: EvolutionInstance[] = [];
-  for (let i = 1; i <= 10; i++) {
+  for (const entry of parsed) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as Record<string, unknown>).name === "string" &&
+      typeof (entry as Record<string, unknown>).apiKey === "string" &&
+      (entry as Record<string, unknown>).name &&
+      (entry as Record<string, unknown>).apiKey
+    ) {
+      instances.push({
+        name: (entry as Record<string, string>).name,
+        apiKey: (entry as Record<string, string>).apiKey,
+      });
+    } else {
+      console.warn("[whatsapp] skipping invalid entry in EVOLUTION_INSTANCES_JSON:", entry);
+    }
+  }
+
+  return instances;
+}
+
+/** Scan EVOLUTION_INSTANCE_1 … _20, skipping gaps. */
+function loadLegacyInstances(): EvolutionInstance[] {
+  const instances: EvolutionInstance[] = [];
+  for (let i = 1; i <= 20; i++) {
     const name = process.env[`EVOLUTION_INSTANCE_${i}`];
     const apiKey = process.env[`EVOLUTION_API_KEY_${i}`];
     if (name && apiKey) {
       instances.push({ name, apiKey });
-    } else {
-      break;
     }
+    // no break — scan through gaps
   }
   return instances;
+}
+
+/** Clear cached instances (useful for tests or hot-reload scenarios). */
+export function resetInstanceCache(): void {
+  cachedInstances = null;
 }
 
 /** Find an instance by its API key (used by webhook to identify sender). */
@@ -129,8 +195,9 @@ export async function resolvePhoneFromLid(
   instanceApiKey?: string,
 ): Promise<string | null> {
   const evoUrl = process.env.EVOLUTION_API_URL;
-  const instance = instanceName || process.env.EVOLUTION_INSTANCE_1;
-  const apiKey = instanceApiKey || process.env.EVOLUTION_API_KEY_1;
+  const fallback = getInstances()[0];
+  const instance = instanceName || fallback?.name;
+  const apiKey = instanceApiKey || fallback?.apiKey;
 
   if (!evoUrl || !instance || !apiKey) return null;
 
