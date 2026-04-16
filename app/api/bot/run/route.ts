@@ -166,6 +166,19 @@ export async function POST(request: NextRequest) {
             })),
           )
         }
+
+        // Schedule follow-ups for newly sent leads that don't have one yet
+        const followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        await supabase
+          .from('leads')
+          .update({
+            follow_up_count: 0,
+            next_follow_up_at: followUpAt,
+          })
+          .eq('outreach_sent', true)
+          .gte('outreach_sent_at', runStart)
+          .is('next_follow_up_at', null)
+          .or('follow_up_paused.is.null,follow_up_paused.eq.false')
       } catch (err) {
         console.error('[bot/run] conversation sync failed:', err)
       }

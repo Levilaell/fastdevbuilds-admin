@@ -33,6 +33,14 @@ export async function GET(request: Request) {
     // Update bot_runs record with latest stats when run completes
     if (botRunId && (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled')) {
       const supabase = createServiceClient()
+
+      // Get run start time for scoping follow-up scheduling
+      const { data: runRecord } = await supabase
+        .from('bot_runs')
+        .select('started_at')
+        .eq('id', botRunId)
+        .single()
+
       await supabase
         .from('bot_runs')
         .update({
@@ -45,6 +53,21 @@ export async function GET(request: Request) {
           log: data.logs?.join?.('\n') ?? null,
         })
         .eq('id', botRunId)
+
+      // Schedule follow-ups for leads sent during this run that don't have one yet
+      if (runRecord?.started_at && data.status === 'completed') {
+        const followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        await supabase
+          .from('leads')
+          .update({
+            follow_up_count: 0,
+            next_follow_up_at: followUpAt,
+          })
+          .eq('outreach_sent', true)
+          .gte('outreach_sent_at', runRecord.started_at)
+          .is('next_follow_up_at', null)
+          .or('follow_up_paused.is.null,follow_up_paused.eq.false')
+      }
     }
 
     return Response.json(data)
