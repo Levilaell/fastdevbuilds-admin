@@ -215,8 +215,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Temporary fallback for unresolved inbound LID.
-    // Only use when there is exactly ONE active lead on the instance.
     if (
       !lead &&
       !isFromMe &&
@@ -282,26 +280,6 @@ export async function POST(request: Request) {
           .from("leads")
           .update(leadUpdates)
           .eq("place_id", placeId);
-
-        if (leadUpdates.phone) {
-          console.log(
-            "[webhook] updated phone for",
-            placeId,
-            "to",
-            normalizedPhone,
-          );
-        }
-        if (leadUpdates.whatsapp_jid) {
-          console.log("[webhook] stored jid for", placeId, ":", remoteJid);
-        }
-        if (leadUpdates.evolution_instance) {
-          console.log(
-            "[webhook] assigned instance",
-            webhookInstanceName,
-            "to",
-            placeId,
-          );
-        }
       }
     } else if (isFromMe) {
       const lidPlaceId = `unknown_${jidValue}`;
@@ -314,9 +292,7 @@ export async function POST(request: Request) {
       if (lidLead) {
         placeId = lidLead.place_id;
         leadStatus = lidLead.status;
-        console.log("[webhook] matched outbound to LID-based lead:", placeId);
       } else {
-        console.log("[webhook] outbound message to unknown number, skipping");
         return Response.json({ ok: true });
       }
     } else {
@@ -325,8 +301,6 @@ export async function POST(request: Request) {
         normalizedPhone && isValidPhone(normalizedPhone)
           ? `unknown_${normalizedPhone}`
           : `unknown_${jidValue}`;
-
-      console.log("[webhook] creating inbound lead for", placeId);
 
       const upsertData: Record<string, unknown> = {
         place_id: placeId,
@@ -346,16 +320,9 @@ export async function POST(request: Request) {
         upsertData.phone = normalizedPhone;
       }
 
-      const { error: leadError } = await supabase
+      await supabase
         .from("leads")
         .upsert(upsertData, { onConflict: "place_id" });
-
-      if (leadError) {
-        console.error(
-          "[webhook] failed to upsert inbound lead:",
-          leadError.message,
-        );
-      }
     }
 
     if (isFromMe) {
@@ -369,13 +336,10 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        console.log(
-          "[webhook] outbound message already saved by send flow, skipping duplicate",
-        );
         return Response.json({ ok: true });
       }
 
-      const { error: convError } = await supabase.from("conversations").insert({
+      await supabase.from("conversations").insert({
         place_id: placeId,
         direction: "out",
         channel: "whatsapp",
@@ -384,13 +348,6 @@ export async function POST(request: Request) {
         suggested_by_ai: false,
       });
 
-      if (convError) {
-        console.error(
-          "[webhook] failed to save outbound conversation:",
-          convError.message,
-        );
-      }
-
       await supabase
         .from("leads")
         .update({
@@ -398,7 +355,6 @@ export async function POST(request: Request) {
         })
         .eq("place_id", placeId);
 
-      console.log("[webhook] saved outbound message for lead", placeId);
       return Response.json({ ok: true });
     }
 
@@ -419,7 +375,6 @@ export async function POST(request: Request) {
       .limit(1);
 
     if (inboundDup && inboundDup.length > 0) {
-      console.log("[webhook] duplicate inbound message detected, skipping");
       return Response.json({ ok: true });
     }
 
@@ -440,12 +395,6 @@ export async function POST(request: Request) {
     const isAutoReplyMessage = autoReplyByContent || autoReplyBySpeed;
 
     if (isAutoReplyMessage) {
-      console.log(
-        "[webhook] auto-reply detected for",
-        placeId,
-        autoReplyByContent ? "(content match)" : "(instant reply)",
-      );
-
       await supabase.from("conversations").insert({
         place_id: placeId,
         direction: "in",
@@ -480,15 +429,10 @@ export async function POST(request: Request) {
         dismissAutoReplySuggestions().catch(console.error);
       }, 15_000);
 
-      console.log(
-        "[webhook] saved auto-reply message for lead",
-        placeId,
-        "(skipping AI)",
-      );
       return Response.json({ ok: true });
     }
 
-    const { data: conv, error: convError } = await supabase
+    const { data: conv } = await supabase
       .from("conversations")
       .insert({
         place_id: placeId,
@@ -500,13 +444,6 @@ export async function POST(request: Request) {
       })
       .select("id")
       .single();
-
-    if (convError) {
-      console.error(
-        "[webhook] failed to save conversation:",
-        convError.message,
-      );
-    }
 
     const leadUpdate: Record<string, unknown> = {
       last_inbound_at: sentAt,
@@ -529,16 +466,11 @@ export async function POST(request: Request) {
 
     if (fullLead.data) {
       const history = await getRecentConversations(supabase, placeId, 5);
-      console.log("[webhook] firing classifyAndSuggest for", placeId);
-
       classifyAndSuggest(fullLead.data as Lead, text, history, conv?.id).catch(
-        (err) => {
-          console.error("[classify] failed:", err.message);
-        },
+        console.error,
       );
     }
 
-    console.log("[webhook] saved inbound message for lead", placeId);
     return Response.json({ ok: true });
   } catch (err) {
     console.error("[webhook] error:", err);
