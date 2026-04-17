@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     )
     .lte("next_follow_up_at", now)
     .eq("follow_up_paused", false)
+    .is("last_inbound_at", null)
     .lt("follow_up_count", 2)
     .not("status", "in", "(lost,disqualified)")
     .limit(50);

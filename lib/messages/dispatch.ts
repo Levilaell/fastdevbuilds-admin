@@ -79,6 +79,25 @@ export async function dispatchMessage(
     if (!result.ok) {
       console.error("[dispatch] whatsapp failed:", result);
 
+      // Invalid WhatsApp number — disqualify immediately, never retry
+      if (result.reason === "number_not_on_whatsapp") {
+        await supabase
+          .from("leads")
+          .update({
+            status: "disqualified" as const,
+            outreach_error: "invalid_whatsapp_number",
+            status_updated_at: now,
+            next_follow_up_at: null,
+          })
+          .eq("place_id", place_id);
+
+        return {
+          ok: false,
+          error: "Número não existe no WhatsApp",
+          httpStatus: 400,
+        };
+      }
+
       await supabase
         .from("leads")
         .update({

@@ -323,6 +323,24 @@ export async function sendWhatsApp(
     console.log("[whatsapp] status:", res.status, "body:", body.slice(0, 300));
 
     if (!res.ok) {
+      // Detect invalid WhatsApp number: Evolution API returns 400 + { "exists": false }
+      if (res.status === 400) {
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed && parsed.exists === false) {
+            console.warn("[whatsapp] number not on WhatsApp:", cleanPhone);
+            return {
+              ok: false,
+              reason: "number_not_on_whatsapp",
+              status: res.status,
+              body,
+            };
+          }
+        } catch {
+          // Not JSON — fall through to generic provider_error
+        }
+      }
+
       return {
         ok: false,
         reason: "provider_error",

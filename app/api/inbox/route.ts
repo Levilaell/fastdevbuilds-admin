@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   if (!(await getAuthUser())) return unauthorizedResponse()
 
   const showArchived = request.nextUrl.searchParams.get('archived') === 'true'
-  const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 50, 200)
+  const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 200, 200)
   const offset = Math.max(Number(request.nextUrl.searchParams.get('offset')) || 0, 0)
 
   const supabase = createServiceClient()
