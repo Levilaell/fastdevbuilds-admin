@@ -260,8 +260,28 @@ export async function resolvePhoneFromLid(
 }
 
 export type SendResult =
-  | { ok: true }
+  | { ok: true; remoteJid?: string }
   | { ok: false; reason: string; status?: number; body?: string };
+
+/**
+ * Extract remoteJid from Evolution API send response.
+ * Evolution returns the conversation's canonical JID (often @s.whatsapp.net
+ * after a successful handshake, sometimes @lid on newer setups).
+ * Persisting this on the lead lets future webhooks match by whatsapp_jid
+ * even when LID→phone resolution fails.
+ */
+function extractRemoteJid(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body);
+    const jid =
+      parsed?.key?.remoteJid ??
+      parsed?.data?.key?.remoteJid ??
+      parsed?.message?.key?.remoteJid;
+    return typeof jid === "string" && jid.includes("@") ? jid : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Send a WhatsApp message via Evolution API.
@@ -349,7 +369,7 @@ export async function sendWhatsApp(
       };
     }
 
-    return { ok: true };
+    return { ok: true, remoteJid: extractRemoteJid(body) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[whatsapp] fetch error:", message);

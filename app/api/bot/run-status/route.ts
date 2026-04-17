@@ -56,6 +56,18 @@ export async function GET(request: Request) {
 
       // Schedule follow-ups for leads sent during this run that don't have one yet
       if (runRecord?.started_at && data.status === 'completed') {
+        // Backfill last_outbound_at + clear outreach_error on bot-sent leads
+        // (bot writes outreach_sent_at but not the operational fields).
+        await supabase
+          .from('leads')
+          .update({
+            last_outbound_at: runRecord.started_at,
+            outreach_error: null,
+          })
+          .eq('outreach_sent', true)
+          .gte('outreach_sent_at', runRecord.started_at)
+          .is('last_outbound_at', null)
+
         const followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         await supabase
           .from('leads')

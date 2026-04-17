@@ -167,6 +167,17 @@ export async function POST(request: NextRequest) {
           )
         }
 
+        // Backfill last_outbound_at + clear outreach_error for bot-sent leads.
+        // Bot writes outreach_sent_at directly but does not touch the
+        // operational messaging-state fields; without this, follow-up + inbox
+        // views under-report activity and stale errors linger.
+        await supabase
+          .from('leads')
+          .update({ last_outbound_at: runStart, outreach_error: null })
+          .eq('outreach_sent', true)
+          .gte('outreach_sent_at', runStart)
+          .is('last_outbound_at', null)
+
         // Schedule follow-ups for newly sent leads that don't have one yet
         const followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         await supabase

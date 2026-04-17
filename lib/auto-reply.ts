@@ -2,9 +2,14 @@
  * Detects if a message is an automatic/bot reply.
  *
  * Two-tier design:
- *   1. STRONG patterns — a single match marks the message as bot.
+ *   1. STRONG patterns — a single match marks the message as bot,
+ *      regardless of length. These are phrases only an auto-responder uses.
  *   2. Weak signals — each adds to a score; threshold >= 3 marks as bot.
  *      Kept conservative so short human replies never trip the heuristics.
+ *
+ * Length gate: short messages (< 20 chars) only bypass STRONG-pattern
+ * matching — weak-signal scoring is skipped for them so normal "oi" /
+ * "quem é" style replies never get flagged.
  */
 
 // ── Tier 1: strong patterns (single match = bot) ───────────────────────────
@@ -12,18 +17,33 @@ const STRONG_PATTERNS: RegExp[] = [
   // Greeting + "we'll get back" — requires both halves to avoid flagging
   // genuine short replies like "Obrigado pelo contato"
   /obrigad[oa]\s+(pelo|por)\s+(seu\s+)?(contato|mensagem).{0,40}(retorn|respond|breve|hor[áa]rio)/i,
-  /retornaremos\s+(em\s+breve|o\s+mais\s+rápido)/i,
+  /retornaremos\s+(em\s+breve|o\s+mais\s+rápido|seu|sua|assim)/i,
   /em\s+breve\s+(entraremos|retornaremos|responderemos)/i,
-  /entraremos\s+em\s+contato.{0,30}(breve|hor[áa]rio|aguarde)/i,
+  /entraremos\s+em\s+contato.{0,30}(breve|hor[áa]rio|aguarde|poss[íi]vel)/i,
   /responderemos\s+(em\s+breve|o\s+mais|assim\s+que)/i,
   /aguarde\s+(nosso\s+)?(retorno|contato|resposta)/i,
   /sua\s+mensagem\s+foi\s+recebida/i,
   /recebemos\s+sua\s+(mensagem|solicitação)/i,
 
+  // Generic virtual-attendant greetings (short, but unambiguous)
+  /como\s+(podemos|posso)\s+(te\s+)?ajudar/i,
+  /em\s+que\s+(podemos|posso)\s+(te\s+)?ajudar/i,
+  /how\s+(can|may)\s+(we|I)\s+help\s+you/i,
+  /how\s+may\s+I\s+assist/i,
+
+  // Mailbox / leave-a-message prompts
+  /deixe\s+(sua|seu)\s+(mensagem|recado)/i,
+  /envie\s+(sua|seu)\s+(mensagem|recado)/i,
+  /por\s+favor,?\s+(deixe|envie)\s+(sua|seu)\s+(mensagem|recado)/i,
+  /leave\s+(a|your)\s+message/i,
+
   // Business hours
-  /hor[áa]rio\s+de\s+(atendimento|funcionamento)/i,
+  /hor[áa]rio\s+de\s+(atendimento|funcionamento|expediente)/i,
   /fora\s+do\s+(hor[áa]rio|expediente)/i,
   /das\s+\d{1,2}h?\s*(às?|a)\s*\d{1,2}h/i,
+  /nosso\s+hor[áa]rio/i,
+  /our\s+(business|office)\s+hours\s+are/i,
+  /we(?:\s+are|'re)\s+(currently\s+)?closed/i,
 
   // Explicit auto-reply markers
   /auto[\s-]?reply/i,
@@ -45,7 +65,6 @@ const STRONG_PATTERNS: RegExp[] = [
   /agradece\s+seu\s+contato/i,
   /enquanto\s+aguarda\s+(meu|nosso)\s+retorno/i,
   /em\s+atendimento\s*[-–—]\s*(deixe|envie)/i,
-  /deixe\s+sua\s+mensagem.{0,30}(contato|retorno|poss[íi]vel)/i,
   /quer\s+(saber|agendar).{0,20}(hor[áa]rio|link|funciona)/i,
 
   // Virtual assistant self-identification
@@ -61,7 +80,6 @@ const STRONG_PATTERNS: RegExp[] = [
   /this\s+mailbox\s+is\s+not\s+monitored/i,
   /we('ve|\s+have)\s+received\s+your\s+(email|message|inquiry)/i,
   /we\s+will\s+(get\s+back|respond|reply)\s+(to\s+you\s+)?(shortly|soon|within)/i,
-  /our\s+(business|office)\s+hours\s+are/i,
   /currently\s+closed/i,
 ];
 
@@ -78,11 +96,8 @@ const MENU_PHRASES: RegExp[] = [
 ];
 
 const GENERIC_WELCOME: RegExp[] = [
-  /como\s+(podemos|posso)\s+(te\s+)?ajudar/i,
-  /em\s+que\s+(podemos|posso)\s+(te\s+)?ajudar/i,
   /bem[\s-]?vind[oa]\s+(à|ao|a|ao\s+nosso)/i,
   /ol[áa]!\s*(tudo\s+bem|seja\s+bem)/i,
-  /how\s+(can|may)\s+(we|I)\s+help\s+you/i,
   /welcome\s+to\s+\w+/i,
 ];
 
@@ -135,13 +150,15 @@ export interface AutoReplyContext {
 export function isAutoReply(message: string, ctx?: AutoReplyContext): boolean {
   const msg = message.trim();
 
-  // Short messages are almost never auto-replies
-  if (msg.length < 20) return false;
+  if (!msg) return false;
 
-  // Tier 1: single strong match
+  // Tier 1: single strong match. Runs first so short unambiguous auto-reply
+  // phrases ("Deixe sua mensagem", "Como podemos ajudar?") are caught.
   if (STRONG_PATTERNS.some((p) => p.test(msg))) return true;
 
-  // Tier 2: combined weak signals (conservative threshold of 3)
+  // Tier 2 is noisier, so short messages bypass it entirely.
+  if (msg.length < 20) return false;
+
   let score = 0;
 
   if (MENU_PHRASES.some((p) => p.test(msg))) score += 2;

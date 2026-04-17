@@ -32,6 +32,13 @@ export type DispatchResult =
  *
  * Handles: recipient resolution, sending, conversation insert,
  * suggestion dismissal, and lead status transitions.
+ *
+ * Invariants enforced here:
+ *   - Every successful send results in exactly one "out" conversation row.
+ *   - Every successful send sets last_outbound_at and clears outreach_error.
+ *   - Status transitions: prospected → sent, replied → negotiating.
+ *   - whatsapp_jid is persisted from Evolution's send response when we don't
+ *     already have one, so later inbound webhooks can match by JID.
  */
 export async function dispatchMessage(
   opts: DispatchOptions,
@@ -49,6 +56,8 @@ export async function dispatchMessage(
   const now = new Date().toISOString();
 
   // ── 1. Send ────────────────────────────────────────────────────────────
+
+  let sendRemoteJid: string | undefined;
 
   if (channel === "whatsapp") {
     const resolved = await resolvePhoneForLead({
@@ -113,6 +122,8 @@ export async function dispatchMessage(
         detail: result,
       };
     }
+
+    sendRemoteJid = result.remoteJid;
   } else {
     const email = lead.email?.trim();
     if (!email) {
@@ -173,11 +184,11 @@ export async function dispatchMessage(
 
   await dismissPendingSuggestions(supabase, place_id, excludeSuggestionId);
 
-  // ── 4. Lead status transitions + last_outbound_at ─────────────────────
+  // ── 4. Lead state update: status, outbound tracking, JID backfill ─────
 
   const { data: leadCheck } = await supabase
     .from("leads")
-    .select("status, follow_up_paused")
+    .select("status, follow_up_paused, whatsapp_jid")
     .eq("place_id", place_id)
     .maybeSingle();
 
@@ -192,6 +203,23 @@ export async function dispatchMessage(
         }
       : {};
 
+  // Persist remoteJid returned by Evolution so future inbound webhooks can
+  // match by whatsapp_jid (needed when Evolution sends @lid JIDs whose
+  // profile-pic resolution fails).
+  const jidUpdate =
+    sendRemoteJid && !leadCheck?.whatsapp_jid
+      ? { whatsapp_jid: sendRemoteJid }
+      : {};
+
+  // Every successful outbound touches these invariants — extracted so each
+  // branch below stays DRY and we can't forget a field.
+  const baseOutboundPatch = {
+    last_outbound_at: now,
+    outreach_error: null,
+    ...jidUpdate,
+    ...scheduleFollowUp,
+  };
+
   if (leadCheck?.status === "prospected") {
     await supabase
       .from("leads")
@@ -201,9 +229,7 @@ export async function dispatchMessage(
         outreach_sent_at: now,
         outreach_channel: channel,
         status_updated_at: now,
-        last_outbound_at: now,
-        outreach_error: null,
-        ...scheduleFollowUp,
+        ...baseOutboundPatch,
       })
       .eq("place_id", place_id);
   } else if (leadCheck?.status === "replied") {
@@ -212,19 +238,13 @@ export async function dispatchMessage(
       .update({
         status: "negotiating",
         status_updated_at: now,
-        last_outbound_at: now,
-        outreach_error: null,
-        ...scheduleFollowUp,
+        ...baseOutboundPatch,
       })
       .eq("place_id", place_id);
   } else {
     await supabase
       .from("leads")
-      .update({
-        last_outbound_at: now,
-        outreach_error: null,
-        ...scheduleFollowUp,
-      })
+      .update(baseOutboundPatch)
       .eq("place_id", place_id);
   }
 

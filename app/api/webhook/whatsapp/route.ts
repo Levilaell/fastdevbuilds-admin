@@ -14,6 +14,149 @@ import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
 import { onInboundLeadMessage } from "@/lib/leads/on-inbound";
 import { logWebhook } from "./debug/route";
 import type { Lead } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Window (ms) used to attribute ambiguous LID inbounds to recent outbound
+ * sends on the same instance. Kept conservative to avoid cross-lead bleed.
+ */
+const INSTANCE_ATTRIBUTION_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+type MatchedLead = {
+  place_id: string;
+  phone: string | null;
+  status: string;
+  evolution_instance: string | null;
+  whatsapp_jid: string | null;
+};
+
+const LEAD_SELECT =
+  "place_id, phone, status, evolution_instance, whatsapp_jid";
+
+/**
+ * Match a webhook event against a stored lead using, in order:
+ *   1. whatsapp_jid exact match (works for LID and s.whatsapp.net)
+ *   2. phone match (after normalization)
+ *   3. outbound echo: same instance + identical outreach message text
+ *      (handles bot-sent leads whose @lid echo arrives before any
+ *      whatsapp_jid has been persisted).
+ *   4. inbound fast-reply race: same instance + most recent outbound in
+ *      the attribution window + no inbound yet + no JID yet. Only fires
+ *      when it's unambiguous (exactly one candidate).
+ *
+ * Returns the matched lead or null. The caller decides whether to fall
+ * back to creating an unknown_* shadow lead.
+ */
+async function matchLead(params: {
+  supabase: SupabaseClient;
+  remoteJid: string;
+  normalizedPhone: string;
+  isFromMe: boolean;
+  text: string;
+  webhookInstanceName: string;
+}): Promise<MatchedLead | null> {
+  const {
+    supabase,
+    remoteJid,
+    normalizedPhone,
+    isFromMe,
+    text,
+    webhookInstanceName,
+  } = params;
+
+  // 1. whatsapp_jid exact
+  if (remoteJid) {
+    const { data: jidLead } = await supabase
+      .from("leads")
+      .select(LEAD_SELECT)
+      .eq("whatsapp_jid", remoteJid)
+      .limit(1)
+      .maybeSingle();
+
+    if (jidLead) {
+      console.log("[webhook] matched by whatsapp_jid:", jidLead.place_id);
+      return jidLead as MatchedLead;
+    }
+  }
+
+  // 2. phone match
+  if (normalizedPhone) {
+    const { data: leads } = await supabase
+      .from("leads")
+      .select(LEAD_SELECT)
+      .not("phone", "is", null);
+
+    const phoneHit = (leads ?? []).find((l) =>
+      l.phone ? phoneMatch(normalizedPhone, l.phone) : false,
+    );
+
+    if (phoneHit) {
+      console.log("[webhook] matched by phone:", phoneHit.place_id);
+      return phoneHit as MatchedLead;
+    }
+  }
+
+  if (!webhookInstanceName) return null;
+
+  // 3. outbound echo by message text (bot-sent leads)
+  if (isFromMe && text) {
+    const { data: textHit } = await supabase
+      .from("leads")
+      .select(LEAD_SELECT)
+      .eq("evolution_instance", webhookInstanceName)
+      .eq("outreach_sent", true)
+      .eq("message", text)
+      .is("whatsapp_jid", null)
+      .order("outreach_sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (textHit) {
+      console.log(
+        "[webhook] matched outbound echo by message text:",
+        textHit.place_id,
+      );
+      return textHit as MatchedLead;
+    }
+  }
+
+  // 4. inbound fast-reply race: instance + most-recent outbound without inbound
+  if (!isFromMe) {
+    const since = new Date(
+      Date.now() - INSTANCE_ATTRIBUTION_WINDOW_MS,
+    ).toISOString();
+    const { data: candidates } = await supabase
+      .from("leads")
+      .select(
+        "place_id, phone, status, evolution_instance, whatsapp_jid, outreach_sent_at",
+      )
+      .eq("evolution_instance", webhookInstanceName)
+      .eq("outreach_sent", true)
+      .gte("outreach_sent_at", since)
+      .is("last_inbound_at", null)
+      .is("whatsapp_jid", null)
+      .order("outreach_sent_at", { ascending: false })
+      .limit(2);
+
+    if (candidates && candidates.length === 1) {
+      console.log(
+        "[webhook] matched by instance attribution:",
+        candidates[0].place_id,
+      );
+      return candidates[0] as MatchedLead;
+    }
+    if (candidates && candidates.length > 1) {
+      console.log(
+        "[webhook] ambiguous instance attribution on",
+        webhookInstanceName,
+        "—",
+        candidates.map((c) => c.place_id).join(", "),
+      );
+    }
+  }
+
+  return null;
+}
 
 export async function POST(request: Request) {
   try {
@@ -179,75 +322,14 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_KEY!,
     );
 
-    let lead:
-      | {
-          place_id: string;
-          phone: string | null;
-          status: string;
-          evolution_instance: string | null;
-        }
-      | undefined;
-
-    if (isLid) {
-      const { data: jidLead } = await supabase
-        .from("leads")
-        .select("place_id, phone, status, evolution_instance")
-        .eq("whatsapp_jid", remoteJid)
-        .limit(1)
-        .maybeSingle();
-
-      if (jidLead) {
-        lead = jidLead;
-        console.log("[webhook] matched by whatsapp_jid:", lead.place_id);
-      }
-    }
-
-    if (!lead && normalizedPhone) {
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("place_id, phone, status, evolution_instance")
-        .not("phone", "is", null);
-
-      lead = (leads ?? []).find((l) =>
-        l.phone ? phoneMatch(normalizedPhone, l.phone) : false,
-      );
-
-      if (lead) {
-        console.log("[webhook] matched by phone:", lead.place_id);
-      }
-    }
-
-    if (
-      !lead &&
-      !isFromMe &&
-      isLid &&
-      !normalizedPhone &&
-      webhookInstanceName
-    ) {
-      const { data: instanceLeads } = await supabase
-        .from("leads")
-        .select("place_id, phone, status, evolution_instance")
-        .eq("evolution_instance", webhookInstanceName)
-        .in("status", ["sent", "replied", "negotiating"])
-        .not("phone", "is", null)
-        .limit(2);
-
-      if (instanceLeads && instanceLeads.length === 1) {
-        lead = instanceLeads[0];
-        console.log(
-          "[webhook] matched by instance (temporary fallback):",
-          lead.place_id,
-        );
-      } else if (instanceLeads && instanceLeads.length > 1) {
-        console.log(
-          "[webhook] ambiguous LID — multiple active leads on instance",
-          webhookInstanceName,
-          ":",
-          instanceLeads.map((l) => l.place_id).join(", "),
-          "— creating unknown lead instead",
-        );
-      }
-    }
+    const lead = await matchLead({
+      supabase,
+      remoteJid,
+      normalizedPhone,
+      isFromMe,
+      text,
+      webhookInstanceName,
+    });
 
     const timestamp = data.messageTimestamp;
     const sentAt = timestamp
@@ -261,16 +343,17 @@ export async function POST(request: Request) {
       placeId = lead.place_id;
       leadStatus = lead.status;
 
+      // Backfill missing identifiers on the matched lead so future events
+      // match faster and more reliably. Never overwrite existing values.
       const leadUpdates: Record<string, string> = {};
 
       if (
-        isLid &&
         isValidPhone(normalizedPhone) &&
-        normalizedPhone !== lead.phone
+        (!lead.phone || normalizePhone(lead.phone) !== normalizedPhone)
       ) {
         leadUpdates.phone = normalizedPhone;
       }
-      if (isLid && remoteJid) {
+      if (remoteJid && !lead.whatsapp_jid) {
         leadUpdates.whatsapp_jid = remoteJid;
       }
       if (!lead.evolution_instance && webhookInstanceName) {
@@ -284,6 +367,10 @@ export async function POST(request: Request) {
           .eq("place_id", placeId);
       }
     } else if (isFromMe) {
+      // Outbound echo we couldn't attribute to any lead. Only keep the
+      // conversation if a shadow unknown_ lead already exists for this JID;
+      // otherwise drop it — creating a bare unknown_ from our own outbound
+      // would only generate noise.
       const lidPlaceId = `unknown_${jidValue}`;
       const { data: lidLead } = await supabase
         .from("leads")
@@ -298,6 +385,7 @@ export async function POST(request: Request) {
         return Response.json({ ok: true });
       }
     } else {
+      // Genuine unknown inbound — create the shadow lead.
       const pushName: string = data.pushName ?? "";
       placeId =
         normalizedPhone && isValidPhone(normalizedPhone)
@@ -309,7 +397,7 @@ export async function POST(request: Request) {
         business_name: pushName || normalizedPhone || jidValue,
         outreach_channel: "whatsapp",
         evolution_instance: webhookInstanceName,
-        whatsapp_jid: isLid ? remoteJid : null,
+        whatsapp_jid: remoteJid || null,
         status: "replied",
         niche: "inbound",
         status_updated_at: new Date().toISOString(),
@@ -327,6 +415,7 @@ export async function POST(request: Request) {
         .upsert(upsertData, { onConflict: "place_id" });
     }
 
+    // ── Outbound echo path ────────────────────────────────────────────────
     if (isFromMe) {
       const { data: existing } = await supabase
         .from("conversations")
@@ -350,16 +439,35 @@ export async function POST(request: Request) {
         suggested_by_ai: false,
       });
 
+      // Mirror dispatch.ts transitions when an outbound originates outside
+      // the dashboard (e.g. sales rep replies from their phone directly):
+      //   prospected → sent    (bot-sent leads that skipped dispatch)
+      //   replied    → negotiating
+      const outboundPatch: Record<string, unknown> = {
+        last_outbound_at: sentAt,
+        outreach_error: null,
+      };
+
+      if (leadStatus === "prospected") {
+        outboundPatch.status = "sent";
+        outboundPatch.outreach_sent = true;
+        outboundPatch.outreach_sent_at = sentAt;
+        outboundPatch.outreach_channel = "whatsapp";
+        outboundPatch.status_updated_at = sentAt;
+      } else if (leadStatus === "replied") {
+        outboundPatch.status = "negotiating";
+        outboundPatch.status_updated_at = sentAt;
+      }
+
       await supabase
         .from("leads")
-        .update({
-          last_outbound_at: sentAt,
-        })
+        .update(outboundPatch)
         .eq("place_id", placeId);
 
       return Response.json({ ok: true });
     }
 
+    // ── Inbound path ─────────────────────────────────────────────────────
     const { data: inboundDup } = await supabase
       .from("conversations")
       .select("id")
