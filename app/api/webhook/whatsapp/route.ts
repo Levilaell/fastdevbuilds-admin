@@ -34,6 +34,80 @@ const LEAD_SELECT =
   "place_id, phone, status, evolution_instance, whatsapp_jid";
 
 /**
+ * Coerce an Evolution `messageTimestamp` into a valid ISO string.
+ *
+ * Observed shapes across Evolution versions / payload types:
+ *   - unix seconds as number (`1713356400`)
+ *   - unix seconds as numeric string (`"1713356400"`)
+ *   - ISO / RFC string (`"2026-04-17T12:34:56Z"`)
+ *   - protobuf Long object (`{ low, high, unsigned }`)
+ *   - null / undefined / empty string
+ *
+ * The old code did `timestamp ? new Date(Number(timestamp) * 1000) : ...`
+ * which produced an Invalid Date for any non-numeric truthy value. Calling
+ * `.toISOString()` on an Invalid Date throws RangeError: Invalid time value,
+ * crashing the whole webhook handler before lead state could be updated.
+ *
+ * Returns `{ iso, fallback }` — `fallback = true` means we couldn't parse
+ * the incoming timestamp and used `Date.now()` instead.
+ */
+function parseEventTimestampToIso(raw: unknown): {
+  iso: string;
+  fallback: boolean;
+} {
+  const fallback = () => ({ iso: new Date().toISOString(), fallback: true });
+
+  if (raw == null || raw === "") return fallback();
+
+  // protobuf Long → { low, high, unsigned }
+  if (typeof raw === "object") {
+    const maybe = raw as { low?: unknown; high?: unknown; toNumber?: unknown };
+    if (typeof maybe.toNumber === "function") {
+      const n = (maybe.toNumber as () => number)();
+      if (Number.isFinite(n)) {
+        const d = new Date(n * 1000);
+        if (!Number.isNaN(d.getTime())) return { iso: d.toISOString(), fallback: false };
+      }
+    }
+    if (typeof maybe.low === "number" && typeof maybe.high === "number") {
+      const n = maybe.high * 0x1_0000_0000 + (maybe.low >>> 0);
+      if (Number.isFinite(n) && n > 0) {
+        const d = new Date(n * 1000);
+        if (!Number.isNaN(d.getTime())) return { iso: d.toISOString(), fallback: false };
+      }
+    }
+    return fallback();
+  }
+
+  // number as unix seconds
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return fallback();
+    const d = new Date(raw * 1000);
+    if (!Number.isNaN(d.getTime())) return { iso: d.toISOString(), fallback: false };
+    return fallback();
+  }
+
+  // string — try numeric first, then ISO
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return fallback();
+
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (Number.isFinite(n) && n > 0) {
+        const d = new Date(n * 1000);
+        if (!Number.isNaN(d.getTime())) return { iso: d.toISOString(), fallback: false };
+      }
+    }
+
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) return { iso: d.toISOString(), fallback: false };
+  }
+
+  return fallback();
+}
+
+/**
  * Match a webhook event against a stored lead using, in order:
  *   1. whatsapp_jid exact match (works for LID and s.whatsapp.net)
  *   2. phone match (after normalization)
@@ -340,9 +414,15 @@ export async function POST(request: Request) {
     });
 
     const timestamp = data.messageTimestamp;
-    const sentAt = timestamp
-      ? new Date(Number(timestamp) * 1000).toISOString()
-      : new Date().toISOString();
+    const parsedTs = parseEventTimestampToIso(timestamp);
+    if (parsedTs.fallback && timestamp != null && timestamp !== "") {
+      console.warn(
+        "[webhook] invalid messageTimestamp — using now() instead. raw:",
+        typeof timestamp,
+        JSON.stringify(timestamp).slice(0, 120),
+      );
+    }
+    const sentAt = parsedTs.iso;
 
     let placeId: string;
     let leadStatus: string | null = null;
