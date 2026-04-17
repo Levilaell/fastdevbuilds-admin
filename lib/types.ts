@@ -113,6 +113,7 @@ export interface Conversation {
   read_at: string | null;
   suggested_by_ai: boolean | null;
   approved_by: string | null;
+  provider_message_id: string | null;
 }
 
 export const SCORE_REASON_LABELS: Record<string, string> = {

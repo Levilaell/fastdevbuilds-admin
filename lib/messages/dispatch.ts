@@ -6,7 +6,7 @@ import {
 } from "@/lib/whatsapp";
 import { resolvePhoneForLead } from "@/lib/messages/resolve-phone";
 import { sendEmail } from "@/lib/messages/send-email";
-import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
+import { recordOutboundMessage } from "@/lib/messages/record-outbound";
 
 export interface DispatchOptions {
   supabase: SupabaseClient;
@@ -173,63 +173,17 @@ export async function dispatchMessage(
     }
   }
 
-  // ── 2. Save conversation ──────────────────────────────────────────────
-
-  const { data: conv, error: convError } = await supabase
-    .from("conversations")
-    .insert({
-      place_id,
-      direction: "out",
-      channel,
-      message,
-      subject: channel === "email" ? (subject || null) : null,
-      sent_at: now,
-      suggested_by_ai: suggestedByAi ?? false,
-    })
-    .select()
-    .single();
-
-  if (convError) {
-    return { ok: false, error: convError.message, httpStatus: 500 };
-  }
-
-  // ── 3. Dismiss pending AI suggestions ─────────────────────────────────
-
-  await dismissPendingSuggestions(supabase, place_id, excludeSuggestionId);
-
-  // ── 4. Lead state update: status, outbound tracking, JID backfill ─────
-
-  const { data: leadCheck } = await supabase
-    .from("leads")
-    .select("status, follow_up_paused, whatsapp_jid")
-    .eq("place_id", place_id)
-    .maybeSingle();
-
-  // Schedule follow-up when this is a human-initiated send and lead hasn't paused
-  const scheduleFollowUp =
-    !opts.isFollowUp && !leadCheck?.follow_up_paused
-      ? {
-          follow_up_count: 0,
-          next_follow_up_at: new Date(
-            Date.now() + 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        }
-      : {};
-
-  // Persist remoteJid so future inbound webhooks can match by whatsapp_jid
-  // (needed when Evolution sends @lid JIDs whose profile-pic resolution fails).
-  //
-  // Strategy (in order of reliability):
-  //   1. Use remoteJid parsed from the send response — Evolution's shape
-  //      varies between versions, so this can come back undefined.
-  //   2. Fallback: call `/chat/whatsappNumbers/<instance>` with the phone to
-  //      get the canonical JID directly. This is authoritative and works
-  //      even for LID-migrated contacts.
+  // ── 2. JID fallback (WhatsApp only) ───────────────────────────────────
+  // The Evolution send response doesn't always include a parseable remoteJid,
+  // so we fall back to `/chat/whatsappNumbers/{instance}` which takes phone
+  // and returns the canonical JID (handles LID-migrated contacts too). This
+  // needs the phone+instance actually used for sending, which only dispatch
+  // knows — record-outbound takes the resolved JID as input.
   let jidToPersist: string | null = sendRemoteJid ?? null;
   if (
     channel === "whatsapp" &&
     !jidToPersist &&
-    !leadCheck?.whatsapp_jid &&
+    !lead.whatsapp_jid &&
     dispatchContext.phone
   ) {
     jidToPersist = await lookupJidFromPhone(
@@ -244,53 +198,29 @@ export async function dispatchMessage(
     );
   }
 
-  const jidUpdate =
-    jidToPersist && !leadCheck?.whatsapp_jid
-      ? { whatsapp_jid: jidToPersist }
-      : {};
-
-  if (Object.keys(jidUpdate).length > 0) {
+  if (channel === "whatsapp" && jidToPersist && !lead.whatsapp_jid) {
     console.log("[dispatch:jid] persisting", jidToPersist, "for", place_id);
-  } else if (channel === "whatsapp" && !leadCheck?.whatsapp_jid) {
+  } else if (channel === "whatsapp" && !jidToPersist && !lead.whatsapp_jid) {
     console.warn("[dispatch:jid] could not resolve jid for", place_id);
   }
 
-  // Every successful outbound touches these invariants — extracted so each
-  // branch below stays DRY and we can't forget a field.
-  const baseOutboundPatch = {
-    last_outbound_at: now,
-    outreach_error: null,
-    ...jidUpdate,
-    ...scheduleFollowUp,
-  };
+  // ── 3. Record outbound (shared with bot→CRM outreach endpoints) ───────
+  const recorded = await recordOutboundMessage({
+    supabase,
+    place_id,
+    channel,
+    message,
+    subject,
+    whatsapp_jid: jidToPersist,
+    suggested_by_ai: suggestedByAi,
+    is_follow_up: opts.isFollowUp,
+    excludeSuggestionId,
+    sent_at: now,
+  });
 
-  if (leadCheck?.status === "prospected") {
-    await supabase
-      .from("leads")
-      .update({
-        status: "sent",
-        outreach_sent: true,
-        outreach_sent_at: now,
-        outreach_channel: channel,
-        status_updated_at: now,
-        ...baseOutboundPatch,
-      })
-      .eq("place_id", place_id);
-  } else if (leadCheck?.status === "replied") {
-    await supabase
-      .from("leads")
-      .update({
-        status: "negotiating",
-        status_updated_at: now,
-        ...baseOutboundPatch,
-      })
-      .eq("place_id", place_id);
-  } else {
-    await supabase
-      .from("leads")
-      .update(baseOutboundPatch)
-      .eq("place_id", place_id);
+  if (!recorded.ok) {
+    return { ok: false, error: recorded.error, httpStatus: 500 };
   }
 
-  return { ok: true, conversation: conv };
+  return { ok: true, conversation: recorded.conversation };
 }
