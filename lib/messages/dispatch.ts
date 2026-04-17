@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendWhatsApp, getOrAssignInstance } from "@/lib/whatsapp";
+import {
+  sendWhatsApp,
+  getOrAssignInstance,
+  lookupJidFromPhone,
+} from "@/lib/whatsapp";
 import { resolvePhoneForLead } from "@/lib/messages/resolve-phone";
 import { sendEmail } from "@/lib/messages/send-email";
 import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
@@ -58,6 +62,10 @@ export async function dispatchMessage(
   // ── 1. Send ────────────────────────────────────────────────────────────
 
   let sendRemoteJid: string | undefined;
+  const dispatchContext: { phone: string | null; instance: string | null } = {
+    phone: null,
+    instance: null,
+  };
 
   if (channel === "whatsapp") {
     const resolved = await resolvePhoneForLead({
@@ -84,6 +92,11 @@ export async function dispatchMessage(
 
     const instance = await getOrAssignInstance(supabase, place_id);
     const result = await sendWhatsApp(resolved.phone, message, instance?.name);
+
+    // Capture phone+instance so we can backfill the JID after send even if
+    // the Evolution response didn't include a remoteJid we could parse.
+    dispatchContext.phone = resolved.phone;
+    dispatchContext.instance = instance?.name ?? null;
 
     if (!result.ok) {
       console.error("[dispatch] whatsapp failed:", result);
@@ -203,13 +216,44 @@ export async function dispatchMessage(
         }
       : {};
 
-  // Persist remoteJid returned by Evolution so future inbound webhooks can
-  // match by whatsapp_jid (needed when Evolution sends @lid JIDs whose
-  // profile-pic resolution fails).
+  // Persist remoteJid so future inbound webhooks can match by whatsapp_jid
+  // (needed when Evolution sends @lid JIDs whose profile-pic resolution fails).
+  //
+  // Strategy (in order of reliability):
+  //   1. Use remoteJid parsed from the send response — Evolution's shape
+  //      varies between versions, so this can come back undefined.
+  //   2. Fallback: call `/chat/whatsappNumbers/<instance>` with the phone to
+  //      get the canonical JID directly. This is authoritative and works
+  //      even for LID-migrated contacts.
+  let jidToPersist: string | null = sendRemoteJid ?? null;
+  if (
+    channel === "whatsapp" &&
+    !jidToPersist &&
+    !leadCheck?.whatsapp_jid &&
+    dispatchContext.phone
+  ) {
+    jidToPersist = await lookupJidFromPhone(
+      dispatchContext.phone,
+      dispatchContext.instance ?? undefined,
+    );
+    console.log(
+      "[dispatch:jid] fallback lookup for",
+      place_id,
+      "→",
+      jidToPersist ?? "(null)",
+    );
+  }
+
   const jidUpdate =
-    sendRemoteJid && !leadCheck?.whatsapp_jid
-      ? { whatsapp_jid: sendRemoteJid }
+    jidToPersist && !leadCheck?.whatsapp_jid
+      ? { whatsapp_jid: jidToPersist }
       : {};
+
+  if (Object.keys(jidUpdate).length > 0) {
+    console.log("[dispatch:jid] persisting", jidToPersist, "for", place_id);
+  } else if (channel === "whatsapp" && !leadCheck?.whatsapp_jid) {
+    console.warn("[dispatch:jid] could not resolve jid for", place_id);
+  }
 
   // Every successful outbound touches these invariants — extracted so each
   // branch below stays DRY and we can't forget a field.

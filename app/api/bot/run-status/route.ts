@@ -1,5 +1,6 @@
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { createServiceClient } from '@/lib/supabase/service'
+import { backfillWhatsappJidsForRun } from '@/lib/leads/backfill-jid'
 
 export async function GET(request: Request) {
   if (!await getAuthUser()) return unauthorizedResponse()
@@ -79,6 +80,10 @@ export async function GET(request: Request) {
           .gte('outreach_sent_at', runRecord.started_at)
           .is('next_follow_up_at', null)
           .or('follow_up_paused.is.null,follow_up_paused.eq.false')
+
+        // Backfill whatsapp_jid for leads sent during this run (bot path
+        // never writes it, and Evolution echo matching is racy).
+        await backfillWhatsappJidsForRun(supabase, runRecord.started_at)
       }
     }
 

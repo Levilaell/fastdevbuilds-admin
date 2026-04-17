@@ -265,10 +265,7 @@ export type SendResult =
 
 /**
  * Extract remoteJid from Evolution API send response.
- * Evolution returns the conversation's canonical JID (often @s.whatsapp.net
- * after a successful handshake, sometimes @lid on newer setups).
- * Persisting this on the lead lets future webhooks match by whatsapp_jid
- * even when LID→phone resolution fails.
+ * Evolution versions differ in envelope shape — try every known location.
  */
 function extractRemoteJid(body: string): string | undefined {
   try {
@@ -276,10 +273,152 @@ function extractRemoteJid(body: string): string | undefined {
     const jid =
       parsed?.key?.remoteJid ??
       parsed?.data?.key?.remoteJid ??
-      parsed?.message?.key?.remoteJid;
+      parsed?.message?.key?.remoteJid ??
+      parsed?.response?.key?.remoteJid ??
+      parsed?.result?.key?.remoteJid ??
+      parsed?.messages?.[0]?.key?.remoteJid ??
+      parsed?.jid ??
+      parsed?.remoteJid;
     return typeof jid === "string" && jid.includes("@") ? jid : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Look up the canonical WhatsApp JID for a phone on a given instance.
+ *
+ * Uses Evolution's `/chat/whatsappNumbers/{instance}` endpoint, which maps
+ * phone numbers to their canonical JID — including `@lid` form for contacts
+ * that WhatsApp has migrated off phone-based identifiers.
+ *
+ * This is the *reliable* way to populate `whatsapp_jid` — unlike parsing the
+ * send response (shape varies) or the webhook echo (racy / config-dependent).
+ */
+export async function lookupJidFromPhone(
+  phone: string,
+  instanceName?: string,
+  instanceApiKey?: string,
+): Promise<string | null> {
+  const evoUrl = process.env.EVOLUTION_API_URL;
+  const fallback = getInstances()[0];
+  const instance = instanceName || fallback?.name;
+  const apiKey = instanceApiKey
+    || (instanceName ? getInstanceByName(instanceName)?.apiKey : undefined)
+    || fallback?.apiKey;
+
+  if (!evoUrl || !instance || !apiKey || !phone) {
+    console.log(
+      "[whatsapp:lookup] missing config — evoUrl:",
+      !!evoUrl,
+      "instance:",
+      instance,
+      "apiKey:",
+      !!apiKey,
+      "phone:",
+      !!phone,
+    );
+    return null;
+  }
+
+  const cleanPhone = normalizePhone(phone);
+  if (!isValidPhone(cleanPhone)) {
+    console.log("[whatsapp:lookup] invalid phone after normalization:", cleanPhone);
+    return null;
+  }
+
+  const headers = { "Content-Type": "application/json", apikey: apiKey };
+  const endpoint = `${evoUrl}/chat/whatsappNumbers/${instance}`;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ numbers: [cleanPhone] }),
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    const bodyText = await res.text();
+
+    if (!res.ok) {
+      console.warn(
+        "[whatsapp:lookup] non-ok status",
+        res.status,
+        "for",
+        cleanPhone,
+        "body:",
+        bodyText.slice(0, 200),
+      );
+      return null;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      console.warn(
+        "[whatsapp:lookup] non-JSON response for",
+        cleanPhone,
+        ":",
+        bodyText.slice(0, 200),
+      );
+      return null;
+    }
+
+    const list = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { numbers?: unknown[] })?.numbers)
+        ? (parsed as { numbers: unknown[] }).numbers
+        : null;
+
+    if (!list || list.length === 0) {
+      console.log(
+        "[whatsapp:lookup] empty response for",
+        cleanPhone,
+        "raw:",
+        bodyText.slice(0, 200),
+      );
+      return null;
+    }
+
+    const entry = list[0] as {
+      exists?: boolean;
+      jid?: string;
+      number?: string;
+    };
+
+    if (entry.exists === false) {
+      console.log("[whatsapp:lookup] number not on whatsapp:", cleanPhone);
+      return null;
+    }
+
+    const jid = typeof entry.jid === "string" && entry.jid.includes("@")
+      ? entry.jid
+      : null;
+
+    if (!jid) {
+      console.log(
+        "[whatsapp:lookup] no jid in response for",
+        cleanPhone,
+        "entry:",
+        entry,
+      );
+      return null;
+    }
+
+    console.log("[whatsapp:lookup]", cleanPhone, "→", jid);
+    return jid;
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "Unknown";
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[whatsapp:lookup] fetch failed for",
+      cleanPhone,
+      ":",
+      name,
+      message,
+    );
+    return null;
   }
 }
 
@@ -340,7 +479,15 @@ export async function sendWhatsApp(
     });
 
     const body = await res.text();
-    console.log("[whatsapp] status:", res.status, "body:", body.slice(0, 300));
+    const parsedJid = extractRemoteJid(body);
+    console.log(
+      "[whatsapp:send] status:",
+      res.status,
+      "parsedJid:",
+      parsedJid ?? "(none)",
+      "body:",
+      body.slice(0, 500),
+    );
 
     if (!res.ok) {
       // Detect invalid WhatsApp number: Evolution API returns 400 + { "exists": false }
@@ -369,7 +516,7 @@ export async function sendWhatsApp(
       };
     }
 
-    return { ok: true, remoteJid: extractRemoteJid(body) };
+    return { ok: true, remoteJid: parsedJid };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[whatsapp] fetch error:", message);

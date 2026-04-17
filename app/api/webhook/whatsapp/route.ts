@@ -99,25 +99,33 @@ async function matchLead(params: {
   if (!webhookInstanceName) return null;
 
   // 3. outbound echo by message text (bot-sent leads)
+  // Intentionally NOT gated by `outreach_sent=true`: the bot may save the
+  // message row before flipping outreach_sent, creating a narrow race where
+  // Evolution's echo arrives first and would otherwise miss.
   if (isFromMe && text) {
     const { data: textHit } = await supabase
       .from("leads")
       .select(LEAD_SELECT)
       .eq("evolution_instance", webhookInstanceName)
-      .eq("outreach_sent", true)
       .eq("message", text)
       .is("whatsapp_jid", null)
-      .order("outreach_sent_at", { ascending: false })
+      .order("outreach_sent_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle();
 
     if (textHit) {
       console.log(
-        "[webhook] matched outbound echo by message text:",
+        "[webhook:match] matched outbound echo by message text:",
         textHit.place_id,
       );
       return textHit as MatchedLead;
     }
+    console.log(
+      "[webhook:match] text-echo miss on instance",
+      webhookInstanceName,
+      "— text preview:",
+      text.slice(0, 60),
+    );
   }
 
   // 4. inbound fast-reply race: instance + most-recent outbound without inbound

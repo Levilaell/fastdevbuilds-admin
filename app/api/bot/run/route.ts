@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { getCountry } from '@/lib/bot-config'
 import { getInstances } from '@/lib/whatsapp'
+import { backfillWhatsappJidsForRun } from '@/lib/leads/backfill-jid'
 
 interface BotParams {
   niche: string
@@ -190,6 +191,11 @@ export async function POST(request: NextRequest) {
           .gte('outreach_sent_at', runStart)
           .is('next_follow_up_at', null)
           .or('follow_up_paused.is.null,follow_up_paused.eq.false')
+
+        // Backfill whatsapp_jid so inbound replies match the real lead
+        // instead of creating unknown_* rows. Safe to re-run — only touches
+        // rows with NULL whatsapp_jid.
+        await backfillWhatsappJidsForRun(supabase, runStart)
       } catch (err) {
         console.error('[bot/run] conversation sync failed:', err)
       }
