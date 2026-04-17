@@ -1,304 +1,127 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 @AGENTS.md
 
-# FastDevBuilds Admin — Project Guide
+## Commands
 
-## Objective
-
-Private admin panel for the FastDevBuilds sales team to manage the full prospect-to-close pipeline. A bot (separate repo: `prospect-bot`) automatically prospects clients via WhatsApp (BR) and email (US); this dashboard gives visibility and control over every lead's journey.
-
-## Architecture
-
-```
-┌─────────────────────┐        ┌──────────────────────┐
-│  fastdevbuilds-admin │  SSE   │    prospect-bot       │
-│  (Vercel / Next.js)  │◄──────►│  (Railway / Node.js)  │
-│                      │        │                       │
-│  Dashboard + API     │        │  bot-server/server.js │
-│  lib/bot-config.ts ──┼── config ──► queue + run-auto  │
-│  (source of truth)   │        │  prospect.js (CLI)    │
-└──────────┬───────────┘        └──────────┬────────────┘
-           │                               │
-           └───────── Supabase ◄───────────┘
+```bash
+npm run dev        # next dev — local on :3000
+npm run build      # next build — also runs type-check
+npm run lint       # eslint (flat config, eslint-config-next)
+npm start          # next start (after build)
 ```
 
-**Config flow**: `bot-config.ts` is the single source of truth for niches, cities, and country settings. The dashboard sends this config to the bot-server with each `/api/bot/queue` and `/run-auto` call. The bot-server's `auto-config.js` is a legacy fallback only used for standalone CLI runs.
+There are no tests. Verify changes by running `npm run build` (type errors surface here) and exercising the affected flow against a real Supabase + Evolution instance — see "Local testing" below.
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 16 (App Router, TypeScript strict) |
-| Styling | Tailwind CSS v4 — no external component libraries |
-| Database / Auth | Supabase (PostgreSQL + Auth + Realtime) |
-| AI | Anthropic Claude API (`@anthropic-ai/sdk`) |
-| Deploy | Vercel |
+Next.js 16 (App Router) · React 19 · TypeScript strict · Tailwind v4 (no UI library) · Supabase (Postgres + Auth) · Anthropic SDK · Evolution API for WhatsApp · Instantly for email · deployed on Vercel.
 
-> **Next.js 16 breaking changes**: `middleware.ts` → `proxy.ts`, function name `middleware` → `proxy`. The edge runtime is NOT supported in proxy — it runs Node.js only. `params` in layouts/pages is now a `Promise` and must be `await`ed.
+## Next.js 16 — read before editing
 
-## Color Palette (dark theme — used everywhere)
+This is **not** the Next.js most training data describes. Heed `AGENTS.md`. Specifics that bite:
 
-Visual direction: Linear / Vercel / Raycast — near-black background, depth via 1px borders (no shadows), violet accent, semi-transparent badge fills.
+- Auth/edge logic lives in `proxy.ts` (root), not `middleware.ts`. The exported function is `proxy`, not `middleware`. The matcher syntax is the same, but a file named `middleware.ts` is silently ignored.
+- `params` and `searchParams` in pages/layouts are `Promise`s — `await` them.
+- Root `app/layout.tsx` returns `children` only; `(auth)` and `(dashboard)` route groups own their own `<html>`/`<body>` so the auth pages can be chromeless.
+- When in doubt about an API, check `node_modules/next/dist/docs/` rather than guessing from memory.
 
-| Token | CSS var | Value |
+## Architecture
+
+### Three Supabase clients — pick deliberately
+
+| File | Use from | Purpose |
 |---|---|---|
-| Background | `--bg` | `#080808` |
-| Card | `--card` | `#111111` |
-| Card hover | `--card-hover` | `#1A1A1A` |
-| Border | `--border` | `#222222` |
-| Sidebar | `--sidebar` | `#0D0D0D` |
-| Accent | `--accent` | `#7C3AED` |
-| Accent hover | `--accent-hover` | `#6D28D9` |
-| Text primary | `--text` | `#FAFAFA` |
-| Text muted | `--muted` | `#525252` |
-| Success | `--success` | `#10B981` |
-| Warning | `--warning` | `#F59E0B` |
-| Danger | `--danger` | `#EF4444` |
+| `lib/supabase/client.ts` | browser components | anon key, RLS-bound to current user |
+| `lib/supabase/server.ts` | server components & route handlers | anon key + cookies, RLS-bound to current user |
+| `lib/supabase/service.ts` | webhooks, cron, AI workers | service-role, **bypasses RLS** |
 
-## Country-based Bot Configuration
+Service-role routes that aren't auth-gated by the proxy MUST authenticate the caller themselves (`lib/supabase/auth.ts` → `getAuthUser` / `unauthorizedResponse`) or be opened intentionally as public webhooks under `/api/webhook/*` (the proxy whitelists that prefix).
 
-`lib/bot-config.ts` defines a `COUNTRIES` array. Each country has:
+### Outbound messaging — single dispatcher
 
-| Field | Example (BR) | Example (US) |
-|---|---|---|
-| `code` | `'BR'` | `'US'` |
-| `lang` | `'pt'` | `'en'` |
-| `channel` | `'whatsapp'` | `'email'` |
-| `niches` | Portuguese niche names with accents | English niche names |
-| `cities` | 135 cities (ordered by opportunity priority) | 330 interior/medium cities |
+Every WhatsApp/email send for a known lead goes through `dispatchMessage()` in `lib/messages/dispatch.ts`. It is the only place that owns these invariants — do not bypass it from new code:
 
-To add a new country, add an entry to `COUNTRIES`. Language, channel, niches, and cities all derive from the country. There is no separate language or export target selector in the UI.
+- exactly one `conversations` row per successful send (direction `out`)
+- `last_outbound_at` set, `outreach_error` cleared
+- status transitions `prospected → sent` and `replied → negotiating`
+- `whatsapp_jid` backfilled from the send response, falling back to `lookupJidFromPhone` (Evolution's `/chat/whatsappNumbers/<instance>`) so future inbound webhooks match by JID
+- pending AI suggestions for the lead are dismissed
+- a 24h follow-up is scheduled unless `isFollowUp: true` or `follow_up_paused`
 
-**Important**: BR niche names use proper Portuguese accents (`clínicas odontológicas`, not `clinicas odontologicas`). This must match what's stored in Supabase for queue dedup to work correctly.
+The webhook (`app/api/webhook/whatsapp/route.ts`) replicates the status-transition + outbound-tracking logic for echoes from sends that originated **outside** the dashboard (sales rep typing on their phone, or the prospect-bot writing leads + calling Evolution directly without dispatcher visibility). Keep these two paths in sync.
 
-## Folder Structure
+### Inbound webhook matching
 
+`matchLead()` in the WhatsApp webhook route tries, in order:
+
+1. `whatsapp_jid` exact match
+2. phone match (after `normalizePhone` — strips formatting, prefixes `55` for BR)
+3. text-echo: outbound `fromMe` event whose message text matches a lead with `whatsapp_jid IS NULL` on the same instance (catches bot-sent leads before any JID is known)
+4. instance-attribution: same instance + recent outbound + `last_inbound_at IS NULL`, fires only when exactly **one** candidate exists in a 2h window
+
+If all four fail, an `unknown_<phone>` (or `unknown_<lid>`) shadow lead is created — these show up in the inbox and are a signal the matching heuristics missed something. JID is **refreshed on every match** because Evolution migrates contacts between `@s.whatsapp.net` and `@lid` and the same lead will show up in either form across events.
+
+LID JIDs (`*@lid`) don't contain a phone number; resolution goes through `resolvePhoneFromLid` (`lib/whatsapp.ts`), which matches profile-picture URLs across `findContacts` calls — slow, racy, and may return null. Don't assume `phone` is non-null on inbound paths.
+
+### Multi-instance Evolution
+
+Configure via `EVOLUTION_INSTANCES_JSON` (preferred, hot-swappable) or numbered `EVOLUTION_INSTANCE_<N>` / `EVOLUTION_API_KEY_<N>` env vars (legacy). `getOrAssignInstance()` does least-sends-in-last-24h round-robin and persists `evolution_instance` on the lead — never reassign it manually. Each instance has its own API key; webhook payloads are identified by header `apikey` (or fallback body field), and the matched instance name flows into all match heuristics.
+
+### Auto-reply detection
+
+`lib/auto-reply.ts` — two-tier classifier (strong patterns trigger immediately; weak signals require composite score ≥ 3) plus `isInstantReply` (< 3s after our outbound = auto). When triggered, the inbound is recorded with `approved_by: 'auto-reply'`, `last_auto_reply_at` is set, `follow_up_paused = true`, and pending suggestions are dismissed — but no AI suggestion is generated.
+
+### AI workflow
+
+`lib/ai-workflow.ts` runs three stages with explicit model choices:
+
+- `classifyAndSuggest` (Haiku 4.5) — on every real inbound, writes to `ai_suggestions`
+- `generateProposal` (Sonnet 4) — on demand, writes to `projects`; if a previously-dismissed proposal exists (`proposal_message IS NULL`), it skips regeneration
+- `generateClaudeCodePrompt` (Sonnet 4) — generates the build prompt + placeholder list once a project is scoped
+
+System/user prompts and the model-version constants live in `lib/prompts.ts` and `lib/ai-workflow.ts`. Country routing (`isUSLead`) controls language, currency, and channel (BR → WhatsApp/PT/BRL, US → email/EN/USD).
+
+### Bot integration
+
+The actual prospecting bot is a **separate repo** (`prospect-bot`) running on Railway. This dashboard is the source of truth for niches/cities/country config (`lib/bot-config.ts`) — that config is sent to the bot-server with each `/api/bot/queue` and `/api/bot/run-auto` call. After a bot run, `lib/leads/backfill-jid.ts` looks up canonical JIDs for newly-sent leads via Evolution because the bot doesn't write `whatsapp_jid` itself.
+
+### Bot → CRM outreach endpoints
+
+The **only** correct way for the bot to report a send from here on:
+
+- `POST /api/bot/outreach/sent` — successful send. Reuses `recordOutboundMessage` (`lib/messages/record-outbound.ts`) so the lead picks up the same invariants `dispatchMessage` enforces (status transition, `last_outbound_at`, JID backfill, follow-up scheduling, suggestion dismissal). Idempotent within ±60s on `(place_id, direction='out', message)` so retries are safe.
+- `POST /api/bot/outreach/failed` — failed send. Writes `outreach_error` only; leaves status, `outreach_sent`, and conversations untouched so the lead remains retryable.
+
+Both require `Authorization: Bearer $BOT_TO_CRM_SECRET` (fail-closed when unset) and are whitelisted in `proxy.ts` so the bot-server can reach them without Supabase cookies. The bot is expected to upsert the lead row **before** calling `/sent`; missing leads return 404.
+
+### Follow-up cron
+
+`POST /api/follow-up/run` is the worker. It requires `Authorization: Bearer <CRON_SECRET>` (env var, not in `.env.example`). Schedule it externally (Vercel Cron, GitHub Actions, etc.) — there is no internal scheduler. Two follow-ups max, gated by `next_follow_up_at` (24h after first send, 72h between follow-ups). Permanent failures (HTTP 400 / 501) clear `next_follow_up_at` so they aren't retried.
+
+## Schema essentials
+
+Three primary tables (full column list in `lib/types.ts`): `leads` (PK `place_id`), `conversations` (`direction in|out`, `channel whatsapp|email`), `projects` (one per closed lead). `ai_suggestions` carries Claude reply suggestions (status `pending|approved|rejected|sent`).
+
+Lead status enum and pipeline order:
 ```
-/
-├── app/
-│   ├── layout.tsx                       # Root layout — returns children, no html/body
-│   ├── page.tsx                         # Redirects to /pipeline
-│   ├── globals.css                      # Design system: CSS vars, scrollbar, transitions
-│   ├── api/
-│   │   ├── leads/
-│   │   │   ├── route.ts                 # GET /api/leads — filtered list
-│   │   │   └── [place_id]/
-│   │   │       ├── route.ts             # GET /api/leads/[place_id] — full lead
-│   │   │       └── status/route.ts      # PATCH — update lead status
-│   │   ├── conversations/
-│   │   │   ├── [place_id]/route.ts      # GET — conversation history
-│   │   │   ├── [place_id]/read/route.ts # PATCH — mark inbound as read
-│   │   │   ├── suggest/route.ts         # POST — Claude AI reply suggestion
-│   │   │   └── send/route.ts            # POST — send message via Evolution/save
-│   │   ├── inbox/route.ts               # GET — leads with conversations + unread counts
-│   │   ├── bot/
-│   │   │   ├── run/route.ts             # POST — manual bot run, streams SSE
-│   │   │   ├── run-auto/route.ts        # POST — auto bot run, sends config + streams SSE
-│   │   │   ├── queue/route.ts           # GET — fetches queue from bot-server (sends config)
-│   │   │   ├── runs/route.ts            # GET — last 5 bot run history
-│   │   │   ├── territories/route.ts     # GET — prospected niche/city combos
-│   │   │   └── cancel/route.ts          # POST — cancel running bot
-│   │   └── webhook/
-│   │       └── whatsapp/route.ts        # POST — Evolution API inbound messages (public)
-│   ├── (auth)/
-│   │   ├── layout.tsx                   # Auth root layout — no sidebar
-│   │   └── login/page.tsx
-│   └── (dashboard)/
-│       ├── layout.tsx                   # Dashboard root layout — sidebar + header
-│       ├── pipeline/page.tsx            # Kanban board (Server Component + Suspense)
-│       ├── leads/[id]/page.tsx
-│       ├── inbox/page.tsx
-│       ├── bot/page.tsx
-│       └── metrics/page.tsx
-├── components/
-│   ├── sidebar-nav.tsx                  # Nav links with icons + inbox badge (realtime)
-│   ├── logout-button.tsx
-│   ├── page-header.tsx
-│   ├── user-avatar.tsx                  # Shows initial of logged-in user email
-│   ├── pipeline/
-│   │   ├── kanban-board.tsx             # DnD board with optimistic updates
-│   │   ├── lead-card.tsx                # Card: name, channel badge, pain bar, city, time
-│   │   └── pipeline-filters.tsx         # Search, channel, min score, niche
-│   ├── inbox/
-│   │   └── inbox-client.tsx             # Full inbox client (realtime, search, reply)
-│   ├── bot/
-│   │   └── bot-client.tsx               # Auto/manual mode, country selector, terminal
-│   └── lead-detail/
-│       ├── tech-analysis.tsx            # Boolean audit + PageSpeed + visual scores
-│       ├── pain-score-card.tsx          # Score display + translated reasons
-│       ├── outreach-card.tsx            # Bot message + send status
-│       ├── status-select.tsx            # Pipeline status dropdown (client)
-│       ├── conversation-panel.tsx       # Wraps history + reply box (client)
-│       ├── conversation-history.tsx     # Message bubbles (client)
-│       └── reply-box.tsx               # Textarea + AI suggest + send (client)
-├── lib/
-│   ├── bot-config.ts                    # Country config: niches, cities, lang, channel
-│   ├── types.ts                         # Lead, LeadCard, LeadStatus, BotRun, etc.
-│   ├── time-ago.ts                      # Relative time formatter (pt-BR)
-│   └── supabase/
-│       ├── client.ts                    # Browser client
-│       ├── server.ts                    # Server client
-│       └── service.ts                   # Service role client (server only)
-├── proxy.ts                             # Auth route protection
-├── .env.local                           # Secrets — never commit
-└── .env.example
+prospected → sent → replied → negotiating → scoped → closed → finalizado → pago
+                                                            ↘ lost / disqualified
 ```
+`PIPELINE_STATUSES` in `lib/types.ts` controls which columns render on the kanban; `lost`/`disqualified`/`finalizado`/`pago` are intentionally hidden there.
 
-## Pages
+Migrations are split across `migrations/` (legacy, hand-applied) and `supabase/migrations/` (newer). The schema definitions in `lib/types.ts` are authoritative — if a column there isn't in the DB, run the matching migration.
 
-| Route | Purpose |
-|---|---|
-| `/login` | Email + password auth — redirects to `/pipeline` on success |
-| `/pipeline` | Kanban board of leads grouped by status enum |
-| `/leads/[id]` | Lead detail: full profile + conversation history |
-| `/inbox` | Received messages + reply composer with AI suggestion |
-| `/bot` | Auto/manual prospect-bot runner with terminal output |
-| `/metrics` | Conversion funnel chart + revenue totals |
+## Local testing
 
-## Supabase Schema
+There is no test suite. Verify webhook/dispatch changes by:
 
-### `leads` table (PK: `place_id`)
+1. Pointing Evolution's webhook at a tunnel (e.g. `ngrok http 3000`) → `https://<tunnel>/api/webhook/whatsapp`
+2. Sending a real WhatsApp message and watching `[webhook:match]` / `[dispatch:*]` logs — they're verbose by design and the only way to trace the matching path
+3. For follow-up: `curl -X POST localhost:3000/api/follow-up/run -H "Authorization: Bearer $CRON_SECRET"`
 
-| Column | Type | Notes |
-|---|---|---|
-| place_id | text | PK |
-| business_name | text | |
-| address | text | |
-| city | text | Extracted from address |
-| search_city | text | City string used in Google Places search |
-| phone | text | |
-| website | text | |
-| rating | numeric(3,1) | |
-| review_count | integer | |
-| perf_score | numeric(5,2) | |
-| mobile_score | numeric(5,2) | |
-| fcp | numeric(10,2) | First Contentful Paint ms |
-| lcp | numeric(10,2) | Largest Contentful Paint ms |
-| cls | numeric(6,4) | Cumulative Layout Shift |
-| has_ssl | boolean | |
-| is_mobile_friendly | boolean | |
-| has_pixel | boolean | Meta Pixel detected |
-| has_analytics | boolean | Google Analytics/GTM |
-| has_whatsapp | boolean | WhatsApp link on site |
-| has_form | boolean | Contact form present |
-| has_booking | boolean | Booking system present |
-| tech_stack | text | wix/squarespace/wordpress/unknown |
-| scrape_failed | boolean | |
-| visual_score | numeric | AI visual analysis score |
-| visual_notes | text[] | AI visual analysis notes |
-| pain_score | smallint | 0–10 |
-| score_reasons | text | Comma-separated reasons |
-| message | text | Generated outreach message |
-| message_variant | text | Message template variant used |
-| email | text | Found via scraping or Hunter.io |
-| email_source | text | scrape/hunter/null |
-| email_subject | text | Subject line for email outreach |
-| outreach_sent | boolean | |
-| outreach_sent_at | timestamptz | |
-| outreach_channel | text | whatsapp/email/pending |
-| niche | text | Search niche used |
-| country | text | BR/US — derived from lang |
-| no_website | boolean | True if business has no website |
-| evolution_instance | text | Assigned Evolution API instance for WhatsApp rotation |
-| status | lead_status | Pipeline status enum |
-| status_updated_at | timestamptz | |
-| inbox_archived_at | timestamptz | Dashboard-only: when archived from inbox |
+## Visual conventions
 
-### Lead status enum (`lead_status`)
-
-```sql
-CREATE TYPE lead_status AS ENUM (
-  'prospected',    -- Found by bot, not yet contacted
-  'sent',          -- Message sent
-  'replied',       -- Lead replied
-  'negotiating',   -- Active conversation
-  'scoped',        -- Project scoped
-  'closed',        -- Deal won
-  'finalizado',    -- Project delivered
-  'pago',          -- Payment received
-  'lost',          -- Deal lost
-  'disqualified'   -- Filtered out by bot (low score, no phone, etc.)
-);
-```
-
-### `conversations` table
-
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| place_id | text | FK → leads.place_id |
-| direction | text | `in` \| `out` |
-| channel | text | `whatsapp` \| `email` |
-| message | text | |
-| subject | text | Email subject line (nullable) |
-| sent_at | timestamptz | |
-| read_at | timestamptz | nullable |
-| suggested_by_ai | boolean | |
-| approved_by | text | nullable |
-
-### `projects` table
-
-| Column | Type |
-|---|---|
-| id | uuid (PK) |
-| place_id | text (FK → leads.place_id) |
-| scope | text |
-| price | numeric |
-| currency | text |
-| status | text |
-| created_at | timestamptz |
-| updated_at | timestamptz |
-
-### `bot_runs` table
-
-```sql
-CREATE TABLE bot_runs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  niche TEXT,
-  city TEXT,
-  limit_count INTEGER,
-  min_score INTEGER,
-  lang TEXT,
-  export_target TEXT,
-  dry_run BOOLEAN,
-  send BOOLEAN,
-  collected INTEGER,
-  qualified INTEGER,
-  sent INTEGER,
-  status TEXT CHECK (status IN ('running', 'completed', 'failed')),
-  started_at TIMESTAMPTZ DEFAULT NOW(),
-  finished_at TIMESTAMPTZ,
-  duration_seconds INTEGER,
-  log TEXT
-);
-```
-
-## Environment Variables
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=       # Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon key (safe for client)
-SUPABASE_SERVICE_KEY=           # Service role key — server only
-ANTHROPIC_API_KEY=              # Claude API key
-EVOLUTION_API_URL=              # WhatsApp gateway URL (shared by all instances)
-EVOLUTION_INSTANCE_1=           # WhatsApp instance 1 name
-EVOLUTION_API_KEY_1=            # WhatsApp instance 1 key
-EVOLUTION_INSTANCE_2=           # WhatsApp instance 2 name (optional)
-EVOLUTION_API_KEY_2=            # WhatsApp instance 2 key (optional)
-EVOLUTION_INSTANCE_3=           # WhatsApp instance 3 name (optional)
-EVOLUTION_API_KEY_3=            # WhatsApp instance 3 key (optional)
-BOT_SERVER_URL=                 # Railway bot server URL
-BOT_SERVER_SECRET=              # Shared secret between dashboard ↔ bot server
-```
-
-## Code Rules
-
-- **TypeScript strict** everywhere — no `any`, no type assertions without justification
-- **async/await** — no `.then()` chains
-- **Server Components by default** — add `'use client'` only when needed (hooks, event handlers)
-- **params is a Promise** in Next.js 16 — always `await params` in page/layout components
-- **Error boundaries** — wrap async data fetches in try/catch; surface errors to the user
-- **No magic strings** — lead statuses must use the `lead_status` enum type
-- **Tailwind only** — no inline `style` attributes, no CSS modules, no external UI libraries
-- **Dark theme always** — every new component must use the color palette above
-- **Niche names with accents** — BR niches must use proper Portuguese diacritics to match Supabase data
-- **WhatsApp multi-instance** — 3 instances, balanced assignment via `evolution_instance` column on leads (fewest 24h sends wins)
+Dark theme defined in `app/globals.css` as CSS vars consumed by Tailwind v4's `@theme inline`. Use the semantic tokens (`bg-bg`, `bg-card`, `border-border`, `text-text`, `text-muted`, `bg-accent`) — never hardcode hex. Visual direction is Linear/Vercel/Raycast: 1px borders for depth (no shadows), violet accent (`#7C3AED`), semi-transparent badge fills.

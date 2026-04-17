@@ -5,8 +5,14 @@ import { createServerClient } from '@supabase/ssr'
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Public routes — no auth required
-  if (pathname.startsWith('/api/webhook/')) {
+  // Public routes — no auth required. These routes handle their own auth
+  // (Bearer shared secret for bot/webhook paths); letting the proxy redirect
+  // them to /login would break external callers that can't carry cookies.
+  if (
+    pathname.startsWith('/api/webhook/') ||
+    pathname.startsWith('/api/bot/outreach/') ||
+    pathname.startsWith('/api/admin/')
+  ) {
     return NextResponse.next()
   }
 
