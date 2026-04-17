@@ -107,19 +107,33 @@ function parseEventTimestampToIso(raw: unknown): {
   return fallback();
 }
 
+type MatchMethod =
+  | "jid"
+  | "phone"
+  | "text-echo"
+  | "instance-attribution"
+  | "none";
+
+interface MatchResult {
+  lead: MatchedLead | null;
+  method: MatchMethod;
+}
+
 /**
  * Match a webhook event against a stored lead using, in order:
- *   1. whatsapp_jid exact match (works for LID and s.whatsapp.net)
- *   2. phone match (after normalization)
- *   3. outbound echo: same instance + identical outreach message text
- *      (handles bot-sent leads whose @lid echo arrives before any
- *      whatsapp_jid has been persisted).
- *   4. inbound fast-reply race: same instance + most recent outbound in
- *      the attribution window + no inbound yet + no JID yet. Only fires
- *      when it's unambiguous (exactly one candidate).
+ *   1. whatsapp_jid exact match.
+ *   2. phone match (after normalization). Unlike JID, phone is stable across
+ *      Evolution's `@s.whatsapp.net` ↔ `@lid` migrations.
+ *   3. outbound echo by message text (bot-sent leads whose @lid echo arrives
+ *      before any whatsapp_jid has been persisted).
+ *   4. instance attribution: same instance + recent outbound + no inbound
+ *      yet. Fires only when exactly one candidate exists. This is the
+ *      critical fallback for the case where dispatch persisted a JID in one
+ *      form (e.g. `<phone>@s.whatsapp.net` from `whatsappNumbers`) but the
+ *      inbound webhook arrives in a different form (`<lid>@lid`).
  *
- * Returns the matched lead or null. The caller decides whether to fall
- * back to creating an unknown_* shadow lead.
+ * Returns the matched lead + which method found it. The caller uses the
+ * method to decide whether to refresh whatsapp_jid with the incoming form.
  */
 async function matchLead(params: {
   supabase: SupabaseClient;
@@ -128,7 +142,7 @@ async function matchLead(params: {
   isFromMe: boolean;
   text: string;
   webhookInstanceName: string;
-}): Promise<MatchedLead | null> {
+}): Promise<MatchResult> {
   const {
     supabase,
     remoteJid,
@@ -148,8 +162,8 @@ async function matchLead(params: {
       .maybeSingle();
 
     if (jidLead) {
-      console.log("[webhook] matched by whatsapp_jid:", jidLead.place_id);
-      return jidLead as MatchedLead;
+      console.log("[webhook:match] method=jid place_id=", jidLead.place_id);
+      return { lead: jidLead as MatchedLead, method: "jid" };
     }
   }
 
@@ -165,12 +179,12 @@ async function matchLead(params: {
     );
 
     if (phoneHit) {
-      console.log("[webhook] matched by phone:", phoneHit.place_id);
-      return phoneHit as MatchedLead;
+      console.log("[webhook:match] method=phone place_id=", phoneHit.place_id);
+      return { lead: phoneHit as MatchedLead, method: "phone" };
     }
   }
 
-  if (!webhookInstanceName) return null;
+  if (!webhookInstanceName) return { lead: null, method: "none" };
 
   // 3. outbound echo by message text (bot-sent leads)
   // Intentionally NOT gated by `outreach_sent=true`: the bot may save the
@@ -189,10 +203,10 @@ async function matchLead(params: {
 
     if (textHit) {
       console.log(
-        "[webhook:match] matched outbound echo by message text:",
+        "[webhook:match] method=text-echo place_id=",
         textHit.place_id,
       );
-      return textHit as MatchedLead;
+      return { lead: textHit as MatchedLead, method: "text-echo" };
     }
     console.log(
       "[webhook:match] text-echo miss on instance",
@@ -202,42 +216,52 @@ async function matchLead(params: {
     );
   }
 
-  // 4. inbound fast-reply race: instance + most-recent outbound without inbound
-  if (!isFromMe) {
-    const since = new Date(
-      Date.now() - INSTANCE_ATTRIBUTION_WINDOW_MS,
-    ).toISOString();
-    const { data: candidates } = await supabase
-      .from("leads")
-      .select(
-        "place_id, phone, status, evolution_instance, whatsapp_jid, outreach_sent_at",
-      )
-      .eq("evolution_instance", webhookInstanceName)
-      .eq("outreach_sent", true)
-      .gte("outreach_sent_at", since)
-      .is("last_inbound_at", null)
-      .is("whatsapp_jid", null)
-      .order("outreach_sent_at", { ascending: false })
-      .limit(2);
+  // 4. instance attribution: same instance + recent outbound + no inbound
+  // yet. Dropped the `whatsapp_jid IS NULL` filter so leads whose JID was
+  // seeded in a different form (e.g. @s.whatsapp.net) can still be matched
+  // when the inbound comes as @lid — that was the core reason outbound
+  // and inbound ended up on different place_ids.
+  const since = new Date(
+    Date.now() - INSTANCE_ATTRIBUTION_WINDOW_MS,
+  ).toISOString();
+  const { data: candidates } = await supabase
+    .from("leads")
+    .select(
+      "place_id, phone, status, evolution_instance, whatsapp_jid, outreach_sent_at",
+    )
+    .eq("evolution_instance", webhookInstanceName)
+    .eq("outreach_sent", true)
+    .gte("outreach_sent_at", since)
+    .is("last_inbound_at", null)
+    .order("outreach_sent_at", { ascending: false })
+    .limit(2);
 
-    if (candidates && candidates.length === 1) {
-      console.log(
-        "[webhook] matched by instance attribution:",
-        candidates[0].place_id,
-      );
-      return candidates[0] as MatchedLead;
-    }
-    if (candidates && candidates.length > 1) {
-      console.log(
-        "[webhook] ambiguous instance attribution on",
-        webhookInstanceName,
-        "—",
-        candidates.map((c) => c.place_id).join(", "),
-      );
-    }
+  if (candidates && candidates.length === 1) {
+    console.log(
+      "[webhook:match] method=instance-attribution place_id=",
+      candidates[0].place_id,
+      "(stored jid:",
+      candidates[0].whatsapp_jid,
+      ", incoming:",
+      remoteJid,
+      ")",
+    );
+    return {
+      lead: candidates[0] as MatchedLead,
+      method: "instance-attribution",
+    };
   }
 
-  return null;
+  if (candidates && candidates.length > 1) {
+    console.log(
+      "[webhook:match] ambiguous instance attribution on",
+      webhookInstanceName,
+      "— candidates:",
+      candidates.map((c) => c.place_id).join(", "),
+    );
+  }
+
+  return { lead: null, method: "none" };
 }
 
 export async function POST(request: Request) {
@@ -404,7 +428,7 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_KEY!,
     );
 
-    const lead = await matchLead({
+    const matchResult = await matchLead({
       supabase,
       remoteJid,
       normalizedPhone,
@@ -412,6 +436,26 @@ export async function POST(request: Request) {
       text,
       webhookInstanceName,
     });
+    const lead = matchResult.lead;
+
+    console.log(
+      "[webhook:match] summary — direction:",
+      isFromMe ? "OUT" : "IN",
+      "remoteJid:",
+      remoteJid,
+      "isLid:",
+      isLid,
+      "normalizedPhone:",
+      normalizedPhone || "(none)",
+      "instance:",
+      webhookInstanceName || "(none)",
+      "method:",
+      matchResult.method,
+      "matchedPlaceId:",
+      lead?.place_id ?? "(none)",
+      "willCreateUnknown:",
+      !lead && !isFromMe,
+    );
 
     const timestamp = data.messageTimestamp;
     const parsedTs = parseEventTimestampToIso(timestamp);
@@ -432,7 +476,7 @@ export async function POST(request: Request) {
       leadStatus = lead.status;
 
       // Backfill missing identifiers on the matched lead so future events
-      // match faster and more reliably. Never overwrite existing values.
+      // match faster and more reliably.
       const leadUpdates: Record<string, string> = {};
 
       if (
@@ -441,9 +485,26 @@ export async function POST(request: Request) {
       ) {
         leadUpdates.phone = normalizedPhone;
       }
-      if (remoteJid && !lead.whatsapp_jid) {
+
+      // Refresh whatsapp_jid when it's missing OR differs from the incoming
+      // form. Evolution migrates contacts between `@s.whatsapp.net` and
+      // `@lid`; without this, a JID seeded from `lookupJidFromPhone` in one
+      // form would never match webhook events arriving in the other form,
+      // and every inbound would fall through to `unknown_*`.
+      if (remoteJid && lead.whatsapp_jid !== remoteJid) {
         leadUpdates.whatsapp_jid = remoteJid;
+        if (lead.whatsapp_jid) {
+          console.log(
+            "[webhook:match] refreshing jid for",
+            placeId,
+            "old:",
+            lead.whatsapp_jid,
+            "new:",
+            remoteJid,
+          );
+        }
       }
+
       if (!lead.evolution_instance && webhookInstanceName) {
         leadUpdates.evolution_instance = webhookInstanceName;
       }
@@ -479,6 +540,21 @@ export async function POST(request: Request) {
         normalizedPhone && isValidPhone(normalizedPhone)
           ? `unknown_${normalizedPhone}`
           : `unknown_${jidValue}`;
+
+      console.warn(
+        "[webhook:match] creating unknown_ shadow —",
+        "place_id:",
+        placeId,
+        "remoteJid:",
+        remoteJid,
+        "isLid:",
+        isLid,
+        "normalizedPhone:",
+        normalizedPhone || "(none)",
+        "instance:",
+        webhookInstanceName || "(none)",
+        "— all 4 match steps failed; investigate match log above",
+      );
 
       const upsertData: Record<string, unknown> = {
         place_id: placeId,
