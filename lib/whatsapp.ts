@@ -182,6 +182,46 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
+ * Decide which JID to persist when current and incoming forms differ.
+ *
+ * Evolution migrates contacts between `@s.whatsapp.net` (phone-based,
+ * canonical) and `@lid` (opaque, session-scoped). A naïve "overwrite on
+ * every event" strategy causes the stored JID to flap, which in turn
+ * breaks JID-exact matching for the other side of the flap.
+ *
+ * Rules (strictly ordered):
+ *   1. incoming is NULL → keep current (nothing to do).
+ *   2. current is NULL → take incoming.
+ *   3. values equal → keep current (no-op).
+ *   4. current @s.whatsapp.net, incoming @lid → keep current
+ *      (do NOT downgrade the canonical phone-JID).
+ *   5. current @lid, incoming @s.whatsapp.net → take incoming
+ *      (upgrade to canonical).
+ *   6. anything else (unexpected mix) → keep current (conservative).
+ *
+ * Returns the JID that SHOULD be stored. Callers write only when the
+ * returned value differs from `current`.
+ */
+export function pickCanonicalJid(
+  current: string | null,
+  incoming: string | null,
+): string | null {
+  if (!incoming) return current;
+  if (!current) return incoming;
+  if (current === incoming) return current;
+
+  const currentIsPhone = current.endsWith("@s.whatsapp.net");
+  const incomingIsPhone = incoming.endsWith("@s.whatsapp.net");
+  const currentIsLid = current.endsWith("@lid");
+  const incomingIsLid = incoming.endsWith("@lid");
+
+  if (currentIsPhone && incomingIsLid) return current;
+  if (currentIsLid && incomingIsPhone) return incoming;
+
+  return current;
+}
+
+/**
  * Resolve a LID (Link ID) to a real phone number via Evolution API.
  * Evolution API v1.x sends LID format (240552629022900@lid) in webhooks
  * which does NOT contain the phone number and cannot be used for sending.
@@ -264,12 +304,13 @@ export type SendResult =
   | { ok: false; reason: string; status?: number; body?: string };
 
 /**
- * Extract remoteJid from Evolution API send response.
- * Evolution versions differ in envelope shape — try every known location.
+ * Extract remoteJid from an Evolution API send response (stringified JSON or
+ * already-parsed object). Evolution versions differ in envelope shape —
+ * we try every known location in priority order and return the first match.
  */
-function extractRemoteJid(body: string): string | undefined {
+export function extractRemoteJid(body: string | unknown): string | undefined {
   try {
-    const parsed = JSON.parse(body);
+    const parsed = typeof body === "string" ? JSON.parse(body) : body;
     const jid =
       parsed?.key?.remoteJid ??
       parsed?.data?.key?.remoteJid ??
@@ -280,6 +321,36 @@ function extractRemoteJid(body: string): string | undefined {
       parsed?.jid ??
       parsed?.remoteJid;
     return typeof jid === "string" && jid.includes("@") ? jid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Extract `key.id` from an Evolution send response. Shape varies by Evolution
+ * version (and between send-response vs webhook envelopes), so we try every
+ * known location in priority order — same pattern as `extractRemoteJid`.
+ *
+ * The returned id is the provider-supplied message id used as the dedup key
+ * by the `conversations.provider_message_id` UNIQUE index (PR 2).
+ */
+export function extractProviderMessageId(
+  body: string | unknown,
+): string | undefined {
+  try {
+    const parsed = typeof body === "string" ? JSON.parse(body) : body;
+    const id =
+      parsed?.key?.id ??
+      parsed?.data?.key?.id ??
+      parsed?.message?.key?.id ??
+      parsed?.response?.key?.id ??
+      parsed?.result?.key?.id ??
+      parsed?.messages?.[0]?.key?.id ??
+      parsed?.messageId ??
+      parsed?.id;
+    if (typeof id !== "string") return undefined;
+    const trimmed = id.trim();
+    return trimmed ? trimmed : undefined;
   } catch {
     return undefined;
   }

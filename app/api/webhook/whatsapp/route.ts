@@ -8,6 +8,7 @@ import {
   getInstances,
   getInstanceByKey,
   isValidPhone,
+  pickCanonicalJid,
   resolvePhoneFromLid,
 } from "@/lib/whatsapp";
 import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
@@ -21,6 +22,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * sends on the same instance. Kept conservative to avoid cross-lead bleed.
  */
 const INSTANCE_ATTRIBUTION_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Text-echo strategy (match method #3): only consider outbounds whose
+ * `outreach_sent_at` falls inside this window. Outside it, equal text is
+ * almost always cross-lead noise rather than a real echo.
+ */
+const TEXT_ECHO_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Minimum message length for text-echo matching. Short messages (`"oi"`,
+ * `"teste"`, diagnostic pings) collide across unrelated leads; observed in
+ * production as the main source of wrong attributions on method #3.
+ */
+const TEXT_ECHO_MIN_LENGTH = 30;
 
 type MatchedLead = {
   place_id: string;
@@ -186,33 +201,61 @@ async function matchLead(params: {
 
   if (!webhookInstanceName) return { lead: null, method: "none" };
 
-  // 3. outbound echo by message text (bot-sent leads)
-  // Intentionally NOT gated by `outreach_sent=true`: the bot may save the
-  // message row before flipping outreach_sent, creating a narrow race where
-  // Evolution's echo arrives first and would otherwise miss.
-  if (isFromMe && text) {
+  // 3. outbound echo by message text (bot-sent leads, pre-PR1 legacy path).
+  // Hardened in PR 2 after production incidents where short or generic
+  // texts ("oi", diag pings) collided with unrelated leads:
+  //   - requires fromMe=true AND text.length >= TEXT_ECHO_MIN_LENGTH
+  //   - limits candidates to outbounds in the last TEXT_ECHO_WINDOW_MS
+  //   - leaves `outreach_sent` NOT gated (bot race still possible) but the
+  //     length + window constraints alone are enough to stop the bleed.
+  if (isFromMe && text && text.length >= TEXT_ECHO_MIN_LENGTH) {
+    const since = new Date(Date.now() - TEXT_ECHO_WINDOW_MS).toISOString();
     const { data: textHit } = await supabase
       .from("leads")
-      .select(LEAD_SELECT)
+      .select(`${LEAD_SELECT}, outreach_sent_at`)
       .eq("evolution_instance", webhookInstanceName)
       .eq("message", text)
       .is("whatsapp_jid", null)
+      .gte("outreach_sent_at", since)
       .order("outreach_sent_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle();
 
     if (textHit) {
+      const sentAtRaw = textHit.outreach_sent_at as string | null;
+      const ageMin = sentAtRaw
+        ? Math.floor((Date.now() - new Date(sentAtRaw).getTime()) / 60_000)
+        : -1;
       console.log(
         "[webhook:match] method=text-echo place_id=",
         textHit.place_id,
+        "msg_len=",
+        text.length,
+        "age_min=",
+        ageMin,
       );
-      return { lead: textHit as MatchedLead, method: "text-echo" };
+      return {
+        lead: {
+          place_id: textHit.place_id as string,
+          phone: (textHit.phone as string | null) ?? null,
+          status: textHit.status as string,
+          evolution_instance:
+            (textHit.evolution_instance as string | null) ?? null,
+          whatsapp_jid: (textHit.whatsapp_jid as string | null) ?? null,
+        },
+        method: "text-echo",
+      };
     }
     console.log(
       "[webhook:match] text-echo miss on instance",
       webhookInstanceName,
       "— text preview:",
       text.slice(0, 60),
+    );
+  } else if (isFromMe && text && text.length < TEXT_ECHO_MIN_LENGTH) {
+    console.log(
+      "[webhook:match] text-echo skipped — msg too short, len=",
+      text.length,
     );
   }
 
@@ -262,6 +305,60 @@ async function matchLead(params: {
   }
 
   return { lead: null, method: "none" };
+}
+
+/**
+ * Persist a webhook event we couldn't safely attribute to a lead. Replaces
+ * the old "create unknown_<lid>@lid shadow lead" behaviour, which then
+ * hijacked the JID-exact match path for all subsequent messages from that
+ * contact. The quarantine table is write-only from here; a reconciliation
+ * worker will attempt to map these to real leads later.
+ */
+async function quarantineInbound(opts: {
+  supabase: SupabaseClient;
+  providerMessageId: string | null;
+  remoteJid: string;
+  pushName: string | null;
+  messageText: string;
+  instance: string;
+  fromMe: boolean;
+  reason: "lid_unresolved" | "no_match" | "other";
+  rawPayload: unknown;
+}): Promise<void> {
+  const { error } = await opts.supabase
+    .from("webhook_inbound_quarantine")
+    .insert({
+      provider_message_id: opts.providerMessageId,
+      remote_jid: opts.remoteJid,
+      push_name: opts.pushName,
+      message_text: opts.messageText,
+      evolution_instance: opts.instance || null,
+      from_me: opts.fromMe,
+      reason: opts.reason,
+      raw_payload: opts.rawPayload,
+    });
+
+  if (error) {
+    console.error(
+      "[webhook:quarantine] insert failed —",
+      "reason:",
+      opts.reason,
+      "jid:",
+      opts.remoteJid,
+      "error:",
+      error.message,
+    );
+    return;
+  }
+
+  console.log(
+    "[webhook:quarantine] jid=",
+    opts.remoteJid,
+    "reason=",
+    opts.reason,
+    "provider_id=",
+    opts.providerMessageId ?? "(none)",
+  );
 }
 
 export async function POST(request: Request) {
@@ -372,6 +469,48 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
+    // Idempotency: Evolution retries and replayed webhook batches reliably
+    // include the same `data.key.id`; using it as our dedup key eliminates
+    // the fragile ±5s / 120s time-window checks the handler used before.
+    const keyId =
+      typeof data.key?.id === "string" ? data.key.id.trim() : "";
+    const fallbackMsgId =
+      typeof data.messageId === "string" ? data.messageId.trim() : "";
+    const providerMessageId: string | null =
+      keyId || fallbackMsgId || null;
+    if (!providerMessageId) {
+      console.warn(
+        "[webhook:no-provider-id] event=",
+        event,
+        "remoteJid=",
+        remoteJid,
+      );
+    }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!,
+    );
+
+    if (providerMessageId) {
+      const { data: duplicate } = await supabase
+        .from("conversations")
+        .select("place_id")
+        .eq("provider_message_id", providerMessageId)
+        .limit(1)
+        .maybeSingle();
+
+      if (duplicate) {
+        console.log(
+          "[webhook:dedup] provider_id=",
+          providerMessageId,
+          "place_id=",
+          duplicate.place_id,
+        );
+        return Response.json({ ok: true });
+      }
+    }
+
     let phone: string;
     if (isLid) {
       console.log(
@@ -421,11 +560,6 @@ export async function POST(request: Request) {
       `[webhook] ${isFromMe ? "OUT" : "IN"} phone:`,
       normalizedPhone || "(unresolved LID)",
       preview,
-    );
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY!,
     );
 
     const matchResult = await matchLead({
@@ -479,27 +613,50 @@ export async function POST(request: Request) {
       // match faster and more reliably.
       const leadUpdates: Record<string, string> = {};
 
-      if (
-        isValidPhone(normalizedPhone) &&
-        (!lead.phone || normalizePhone(lead.phone) !== normalizedPhone)
-      ) {
-        leadUpdates.phone = normalizedPhone;
+      // Phone: only fill when NULL. When the stored phone differs from what
+      // we resolved (e.g. resolvePhoneFromLid's picture-matching heuristic
+      // got it wrong), trust the one recorded at collect time — it came
+      // from Google Places / the scraper and is more reliable than
+      // Evolution's contact endpoint.
+      if (isValidPhone(normalizedPhone)) {
+        if (!lead.phone) {
+          leadUpdates.phone = normalizedPhone;
+        } else if (normalizePhone(lead.phone) !== normalizedPhone) {
+          console.warn(
+            "[webhook:lid-phone-mismatch] place_id=",
+            placeId,
+            "stored=",
+            lead.phone,
+            "incoming=",
+            normalizedPhone,
+          );
+        }
       }
 
-      // Refresh whatsapp_jid when it's missing OR differs from the incoming
-      // form. Evolution migrates contacts between `@s.whatsapp.net` and
-      // `@lid`; without this, a JID seeded from `lookupJidFromPhone` in one
-      // form would never match webhook events arriving in the other form,
-      // and every inbound would fall through to `unknown_*`.
-      if (remoteJid && lead.whatsapp_jid !== remoteJid) {
-        leadUpdates.whatsapp_jid = remoteJid;
-        if (lead.whatsapp_jid) {
+      // JID: use pickCanonicalJid so a canonical `@s.whatsapp.net` is never
+      // downgraded to `@lid` when Evolution temporarily migrates the
+      // contact. Fills NULL and upgrades `@lid` → `@s.whatsapp.net`.
+      if (remoteJid) {
+        const desiredJid = pickCanonicalJid(lead.whatsapp_jid, remoteJid);
+        if (desiredJid && desiredJid !== lead.whatsapp_jid) {
+          leadUpdates.whatsapp_jid = desiredJid;
+          if (lead.whatsapp_jid) {
+            console.log(
+              "[webhook:match] refreshing jid for",
+              placeId,
+              "old:",
+              lead.whatsapp_jid,
+              "new:",
+              desiredJid,
+            );
+          }
+        } else if (lead.whatsapp_jid && lead.whatsapp_jid !== remoteJid) {
           console.log(
-            "[webhook:match] refreshing jid for",
+            "[webhook:match] keeping canonical jid for",
             placeId,
-            "old:",
+            "stored:",
             lead.whatsapp_jid,
-            "new:",
+            "ignored incoming:",
             remoteJid,
           );
         }
@@ -534,12 +691,31 @@ export async function POST(request: Request) {
         return Response.json({ ok: true });
       }
     } else {
-      // Genuine unknown inbound — create the shadow lead.
+      // Genuine unknown inbound. Two branches:
+      //   a) @lid with no resolvable phone (or invalid resolution) →
+      //      quarantine. Creating `unknown_<lid>@lid` here was the source
+      //      of the 65 shadow leads in production that hijacked all
+      //      subsequent messages via match path #1 (jid-exact).
+      //   b) @s.whatsapp.net with a valid normalized phone → create the
+      //      traditional `unknown_<phone>` shadow so the inbox surfaces it
+      //      for manual triage.
+      if (isLid || !isValidPhone(normalizedPhone)) {
+        await quarantineInbound({
+          supabase,
+          providerMessageId,
+          remoteJid,
+          pushName: data.pushName ?? null,
+          messageText: text,
+          instance: webhookInstanceName,
+          fromMe: isFromMe,
+          reason: isLid ? "lid_unresolved" : "no_match",
+          rawPayload: body,
+        });
+        return Response.json({ ok: true });
+      }
+
       const pushName: string = data.pushName ?? "";
-      placeId =
-        normalizedPhone && isValidPhone(normalizedPhone)
-          ? `unknown_${normalizedPhone}`
-          : `unknown_${jidValue}`;
+      placeId = `unknown_${normalizedPhone}`;
 
       console.warn(
         "[webhook:match] creating unknown_ shadow —",
@@ -547,61 +723,65 @@ export async function POST(request: Request) {
         placeId,
         "remoteJid:",
         remoteJid,
-        "isLid:",
-        isLid,
-        "normalizedPhone:",
-        normalizedPhone || "(none)",
         "instance:",
         webhookInstanceName || "(none)",
         "— all 4 match steps failed; investigate match log above",
       );
 
-      const upsertData: Record<string, unknown> = {
-        place_id: placeId,
-        business_name: pushName || normalizedPhone || jidValue,
-        outreach_channel: "whatsapp",
-        evolution_instance: webhookInstanceName,
-        whatsapp_jid: remoteJid || null,
-        status: "replied",
-        niche: "inbound",
-        status_updated_at: new Date().toISOString(),
-        last_inbound_at: sentAt,
-        last_human_reply_at: sentAt,
-        follow_up_paused: true,
-      };
-
-      if (isValidPhone(normalizedPhone)) {
-        upsertData.phone = normalizedPhone;
-      }
-
       await supabase
         .from("leads")
-        .upsert(upsertData, { onConflict: "place_id" });
+        .upsert(
+          {
+            place_id: placeId,
+            business_name: pushName || normalizedPhone,
+            outreach_channel: "whatsapp",
+            evolution_instance: webhookInstanceName,
+            whatsapp_jid: remoteJid,
+            status: "replied",
+            niche: "inbound",
+            status_updated_at: new Date().toISOString(),
+            last_inbound_at: sentAt,
+            last_human_reply_at: sentAt,
+            follow_up_paused: true,
+            phone: normalizedPhone,
+          },
+          { onConflict: "place_id" },
+        );
     }
 
     // ── Outbound echo path ────────────────────────────────────────────────
+    // Dedup is owned by `provider_message_id` (unique index) — the early
+    // check + this insert's UNIQUE constraint together replace the old
+    // ±120s time-window SELECT that used to sit here.
     if (isFromMe) {
-      const { data: existing } = await supabase
+      const { error: outInsertErr } = await supabase
         .from("conversations")
-        .select("id")
-        .eq("place_id", placeId)
-        .eq("direction", "out")
-        .eq("message", text)
-        .gte("sent_at", new Date(Date.now() - 120_000).toISOString())
-        .limit(1);
+        .insert({
+          place_id: placeId,
+          direction: "out",
+          channel: "whatsapp",
+          message: text,
+          sent_at: sentAt,
+          suggested_by_ai: false,
+          provider_message_id: providerMessageId,
+        });
 
-      if (existing && existing.length > 0) {
+      if (outInsertErr) {
+        if (outInsertErr.code === "23505") {
+          console.log(
+            "[webhook:dedup] unique-violation on outbound insert provider_id=",
+            providerMessageId,
+            "place_id=",
+            placeId,
+          );
+          return Response.json({ ok: true });
+        }
+        console.error(
+          "[webhook] outbound insert failed:",
+          outInsertErr.message,
+        );
         return Response.json({ ok: true });
       }
-
-      await supabase.from("conversations").insert({
-        place_id: placeId,
-        direction: "out",
-        channel: "whatsapp",
-        message: text,
-        sent_at: sentAt,
-        suggested_by_ai: false,
-      });
 
       // Mirror dispatch.ts transitions when an outbound originates outside
       // the dashboard (e.g. sales rep replies from their phone directly):
@@ -632,25 +812,7 @@ export async function POST(request: Request) {
     }
 
     // ── Inbound path ─────────────────────────────────────────────────────
-    const { data: inboundDup } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("place_id", placeId)
-      .eq("direction", "in")
-      .eq("message", text)
-      .gte(
-        "sent_at",
-        new Date(new Date(sentAt).getTime() - 5_000).toISOString(),
-      )
-      .lte(
-        "sent_at",
-        new Date(new Date(sentAt).getTime() + 5_000).toISOString(),
-      )
-      .limit(1);
-
-    if (inboundDup && inboundDup.length > 0) {
-      return Response.json({ ok: true });
-    }
+    // No time-window dedup — `provider_message_id` UNIQUE handles replays.
 
     const { data: lastOutbound } = await supabase
       .from("conversations")
@@ -680,15 +842,35 @@ export async function POST(request: Request) {
     const isAutoReplyMessage = autoReplyByContent || autoReplyBySpeed;
 
     if (isAutoReplyMessage) {
-      await supabase.from("conversations").insert({
-        place_id: placeId,
-        direction: "in",
-        channel: "whatsapp",
-        message: text,
-        sent_at: sentAt,
-        suggested_by_ai: false,
-        approved_by: "auto-reply",
-      });
+      const { error: autoInsertErr } = await supabase
+        .from("conversations")
+        .insert({
+          place_id: placeId,
+          direction: "in",
+          channel: "whatsapp",
+          message: text,
+          sent_at: sentAt,
+          suggested_by_ai: false,
+          approved_by: "auto-reply",
+          provider_message_id: providerMessageId,
+        });
+
+      if (autoInsertErr) {
+        if (autoInsertErr.code === "23505") {
+          console.log(
+            "[webhook:dedup] unique-violation on auto-reply insert provider_id=",
+            providerMessageId,
+            "place_id=",
+            placeId,
+          );
+          return Response.json({ ok: true });
+        }
+        console.error(
+          "[webhook] auto-reply insert failed:",
+          autoInsertErr.message,
+        );
+        return Response.json({ ok: true });
+      }
 
       await supabase
         .from("leads")
@@ -704,7 +886,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
-    const { data: conv } = await supabase
+    const { data: conv, error: inInsertErr } = await supabase
       .from("conversations")
       .insert({
         place_id: placeId,
@@ -713,9 +895,24 @@ export async function POST(request: Request) {
         message: text,
         sent_at: sentAt,
         suggested_by_ai: false,
+        provider_message_id: providerMessageId,
       })
       .select("id")
       .single();
+
+    if (inInsertErr) {
+      if (inInsertErr.code === "23505") {
+        console.log(
+          "[webhook:dedup] unique-violation on inbound insert provider_id=",
+          providerMessageId,
+          "place_id=",
+          placeId,
+        );
+        return Response.json({ ok: true });
+      }
+      console.error("[webhook] inbound insert failed:", inInsertErr.message);
+      return Response.json({ ok: true });
+    }
 
     await onInboundLeadMessage(supabase, placeId, sentAt, leadStatus);
 
