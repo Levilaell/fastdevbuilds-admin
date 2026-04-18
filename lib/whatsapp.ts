@@ -300,7 +300,7 @@ export async function resolvePhoneFromLid(
 }
 
 export type SendResult =
-  | { ok: true; remoteJid?: string }
+  | { ok: true; remoteJid?: string; providerMessageId?: string }
   | { ok: false; reason: string; status?: number; body?: string };
 
 /**
@@ -551,11 +551,14 @@ export async function sendWhatsApp(
 
     const body = await res.text();
     const parsedJid = extractRemoteJid(body);
+    const parsedProviderMessageId = extractProviderMessageId(body);
     console.log(
       "[whatsapp:send] status:",
       res.status,
       "parsedJid:",
       parsedJid ?? "(none)",
+      "providerMessageId:",
+      parsedProviderMessageId ?? "(none)",
       "body:",
       body.slice(0, 500),
     );
@@ -587,7 +590,11 @@ export async function sendWhatsApp(
       };
     }
 
-    return { ok: true, remoteJid: parsedJid };
+    return {
+      ok: true,
+      remoteJid: parsedJid,
+      providerMessageId: parsedProviderMessageId,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[whatsapp] fetch error:", message);

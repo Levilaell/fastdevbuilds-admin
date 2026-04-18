@@ -62,6 +62,7 @@ export async function dispatchMessage(
   // ── 1. Send ────────────────────────────────────────────────────────────
 
   let sendRemoteJid: string | undefined;
+  let sendProviderMessageId: string | undefined;
   const dispatchContext: { phone: string | null; instance: string | null } = {
     phone: null,
     instance: null,
@@ -137,6 +138,7 @@ export async function dispatchMessage(
     }
 
     sendRemoteJid = result.remoteJid;
+    sendProviderMessageId = result.providerMessageId;
   } else {
     const email = lead.email?.trim();
     if (!email) {
@@ -212,6 +214,7 @@ export async function dispatchMessage(
     message,
     subject,
     whatsapp_jid: jidToPersist,
+    provider_message_id: sendProviderMessageId ?? null,
     suggested_by_ai: suggestedByAi,
     is_follow_up: opts.isFollowUp,
     excludeSuggestionId,
