@@ -800,10 +800,17 @@ export async function POST(request: Request) {
         outboundPatch.status_updated_at = sentAt;
       }
 
-      await supabase
+      const { error: outboundPatchError } = await supabase
         .from("leads")
         .update(outboundPatch)
         .eq("place_id", placeId);
+      if (outboundPatchError) {
+        console.error(
+          "[webhook] outbound patch update failed:",
+          outboundPatchError.message,
+          { placeId, leadStatus },
+        );
+      }
 
       return Response.json({ ok: true });
     }
