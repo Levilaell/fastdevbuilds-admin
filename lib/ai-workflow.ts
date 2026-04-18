@@ -2,8 +2,6 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project } from '@/lib/types'
 import {
-  getClassifySystemPrompt,
-  buildClassifyUserPrompt,
   getProposalSystemPrompt,
   buildProposalUserPrompt,
   CLAUDE_CODE_SITE_SYSTEM_PROMPT,
@@ -22,28 +20,6 @@ function cleanJson(text: string): string {
     .trim()
 }
 
-/** Validate classify response has required fields with correct types */
-function validateClassifyResponse(obj: unknown): {
-  intent: string
-  confidence: number
-  suggested_reply: string
-} {
-  if (!obj || typeof obj !== 'object') {
-    throw new Error('Claude returned invalid JSON structure')
-  }
-  const o = obj as Record<string, unknown>
-  if (typeof o.intent !== 'string' || !o.intent) {
-    throw new Error('Missing or invalid "intent" in Claude response')
-  }
-  if (typeof o.confidence !== 'number' || o.confidence < 0 || o.confidence > 1) {
-    // Clamp or default if out of range
-    o.confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0.5))
-  }
-  if (typeof o.suggested_reply !== 'string' || !o.suggested_reply) {
-    throw new Error('Missing or invalid "suggested_reply" in Claude response')
-  }
-  return { intent: o.intent as string, confidence: o.confidence as number, suggested_reply: o.suggested_reply as string }
-}
 
 /** Validate proposal response has required fields with correct types */
 function validateProposalResponse(obj: unknown, isUS: boolean): {
