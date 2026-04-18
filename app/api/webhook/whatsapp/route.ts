@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import { getRecentConversations } from "@/lib/supabase/queries";
-import { classifyAndSuggest } from "@/lib/ai-workflow";
 import { isAutoReply, isInstantReply } from "@/lib/auto-reply";
 import {
   normalizePhone,
@@ -11,7 +10,6 @@ import {
   pickCanonicalJid,
   resolvePhoneFromLid,
 } from "@/lib/whatsapp";
-import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
 import { onInboundLeadMessage } from "@/lib/leads/on-inbound";
 import { logWebhook } from "./debug/route";
 import type { Lead } from "@/lib/types";
@@ -869,7 +867,6 @@ export async function POST(request: Request) {
         })
         .eq("place_id", placeId);
 
-      await dismissPendingSuggestions(supabase, placeId);
 
       return Response.json({ ok: true });
     }
@@ -904,18 +901,7 @@ export async function POST(request: Request) {
 
     await onInboundLeadMessage(supabase, placeId, sentAt, leadStatus);
 
-    const fullLead = await supabase
-      .from("leads")
-      .select("*")
-      .eq("place_id", placeId)
-      .single();
 
-    if (fullLead.data) {
-      const history = await getRecentConversations(supabase, placeId, 5);
-      classifyAndSuggest(fullLead.data as Lead, text, history, conv?.id).catch(
-        console.error,
-      );
-    }
 
     return Response.json({ ok: true });
   } catch (err) {

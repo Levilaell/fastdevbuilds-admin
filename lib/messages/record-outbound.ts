@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { dismissPendingSuggestions } from "@/lib/ai-suggestions/dismiss";
 import { pickCanonicalJid } from "@/lib/whatsapp";
 
 export interface RecordOutboundOptions {
@@ -200,7 +199,6 @@ export async function recordOutboundMessage(
     };
   }
 
-  await dismissPendingSuggestions(supabase, place_id, excludeSuggestionId);
 
   const desiredJid = pickCanonicalJid(
     leadCheck.whatsapp_jid ?? null,

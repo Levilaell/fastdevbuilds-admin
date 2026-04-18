@@ -5,8 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
-import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type AiSuggestion, type Project } from '@/lib/types'
-import AiSuggestionCard from '@/components/ai-suggestion-card'
+import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type Project } from '@/lib/types'
 import ProposalCard from '@/components/proposal-card'
 import SharedReplyBox from '@/components/shared/reply-box'
 import WorkflowBar from '@/components/inbox/workflow-bar'
@@ -273,7 +272,6 @@ export default function InboxClient() {
   const [items, setItems] = useState<InboxItem[]>([])
   const [activePlaceId, setActivePlaceId] = useState<string | null>(initialLead)
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [suggestion, setSuggestion] = useState<AiSuggestion | null>(null)
   const [proposal, setProposal] = useState<Project | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
@@ -299,22 +297,16 @@ export default function InboxClient() {
     setLoading(false)
   }, [])
 
-  // Fetch conversation + suggestion + project for active lead
+  // Fetch conversation + project for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
     setConvLoading(true)
-    setSuggestion(null)
     setProposal(null)
     setProject(null)
-    const [convRes, sugRes, projRes] = await Promise.all([
+    const [convRes, projRes] = await Promise.all([
       fetch(`/api/conversations/${encodeURIComponent(placeId)}`),
-      fetch(`/api/ai-suggestions?place_id=${encodeURIComponent(placeId)}`),
       fetch(`/api/projects/${encodeURIComponent(placeId)}/status`).catch(() => null),
     ])
     if (convRes.ok) setConversations(await convRes.json())
-    if (sugRes.ok) {
-      const s = await sugRes.json()
-      setSuggestion(s ?? null)
-    }
     if (projRes && projRes.ok) {
       try {
         const p = await projRes.json()
@@ -451,20 +443,6 @@ export default function InboxClient() {
             } catch {
               // Ignore
             }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'ai_suggestions',
-        },
-        (payload) => {
-          const row = payload.new as AiSuggestion
-          if (row.place_id === activePlaceIdRef.current && row.status === 'pending') {
-            setSuggestion(row)
           }
         }
       )
@@ -719,18 +697,6 @@ export default function InboxClient() {
                   onDismissed={() => setProposal(null)}
                 />
               </div>
-            )}
-
-            {/* AI suggestion */}
-            {suggestion && (
-              <AiSuggestionCard
-                suggestion={suggestion}
-                onDismiss={() => setSuggestion(null)}
-                onSent={(conv) => {
-                  setConversations((prev) => [...prev, conv])
-                  setSuggestion(null)
-                }}
-              />
             )}
 
             {/* Reply box */}

@@ -8,7 +8,6 @@ import {
   STATUS_COLORS,
   type Lead,
   type Conversation,
-  type AiSuggestion,
   type Project,
 } from '@/lib/types'
 import TechAnalysis from '@/components/lead-detail/tech-analysis'
@@ -51,21 +50,13 @@ async function LeadDetailContent({ id }: { id: string }) {
   const supabase = await createClient()
   const svc = createServiceClient()
 
-  const [leadResult, convResult, suggestionResult, projectResult] = await Promise.all([
+  const [leadResult, convResult, projectResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', id).single(),
     svc
       .from('conversations')
       .select('*')
       .eq('place_id', id)
       .order('sent_at', { ascending: true }),
-    supabase
-      .from('ai_suggestions')
-      .select('*')
-      .eq('place_id', id)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
     supabase
       .from('projects')
       .select('*')
@@ -89,7 +80,6 @@ async function LeadDetailContent({ id }: { id: string }) {
 
   const lead = leadResult.data as Lead
   const conversations = (convResult.data ?? []) as Conversation[]
-  const suggestion = (suggestionResult.data as AiSuggestion | null) ?? null
   const project = (projectResult.data as Project | null) ?? null
 
   // Mark inbound unread messages as read
@@ -227,7 +217,6 @@ async function LeadDetailContent({ id }: { id: string }) {
         <ConversationPanel
           placeId={lead.place_id}
           initialConversations={conversations}
-          initialSuggestion={suggestion}
           channel={lead.outreach_channel === 'email' ? 'email' : 'whatsapp'}
         />
       </div>

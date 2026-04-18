@@ -1,6 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { getRecentConversations } from "@/lib/supabase/queries";
-import { classifyAndSuggest } from "@/lib/ai-workflow";
 import { isAutoReply } from "@/lib/auto-reply";
 import { onInboundLeadMessage } from "@/lib/leads/on-inbound";
 import type { Lead } from "@/lib/types";
@@ -194,36 +192,8 @@ export async function POST(request: Request) {
         convError.message,
       );
     }
-
     // Update lead state: inbound tracking + sent → replied
     await onInboundLeadMessage(supabase, placeId, sentAt, leadStatus);
-
-    // Fire and forget — AI classify + suggest
-    const fullLead = await supabase
-      .from("leads")
-      .select("*")
-      .eq("place_id", placeId)
-      .single();
-
-    if (fullLead.data) {
-      const history = await getRecentConversations(supabase, placeId, 5);
-      console.log(
-        "[instantly-webhook] firing classifyAndSuggest for",
-        placeId,
-      );
-      classifyAndSuggest(
-        fullLead.data as Lead,
-        replyText,
-        history,
-        conv?.id,
-      ).catch((err) => {
-        console.error(
-          "[instantly-webhook] classify failed:",
-          err.message,
-        );
-      });
-    }
-
     console.log(
       "[instantly-webhook] saved inbound email for lead",
       placeId,

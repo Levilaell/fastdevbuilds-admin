@@ -8,7 +8,7 @@ const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channe
 async function PipelineBoard() {
   const supabase = await createClient()
 
-  const [leadsRes, projectsRes, unreadsRes, suggestionsRes] = await Promise.all([
+  const [leadsRes, projectsRes, unreadsRes] = await Promise.all([
     supabase
       .from('leads')
       .select(CARD_COLUMNS)
@@ -21,10 +21,6 @@ async function PipelineBoard() {
       .select('place_id')
       .eq('direction', 'in')
       .is('read_at', null),
-    supabase
-      .from('ai_suggestions')
-      .select('place_id')
-      .eq('status', 'pending'),
   ])
 
   if (leadsRes.error) {
@@ -47,7 +43,6 @@ async function PipelineBoard() {
     projectMap.set(p.place_id, p)
   }
   const unreadSet = new Set((unreadsRes.data ?? []).map(r => r.place_id))
-  const suggestionSet = new Set((suggestionsRes.data ?? []).map(r => r.place_id))
 
   const leads: LeadCard[] = (leadsRes.data ?? []).map((lead) => {
     const proj = projectMap.get(lead.place_id)
@@ -55,7 +50,6 @@ async function PipelineBoard() {
       ...lead,
       project_status: (proj?.status as LeadCard['project_status']) ?? null,
       has_unread: unreadSet.has(lead.place_id),
-      has_pending_suggestion: suggestionSet.has(lead.place_id),
       has_proposal: proj?.status === 'scoped' && !!proj?.proposal_message,
     }
   })

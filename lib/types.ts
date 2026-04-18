@@ -155,41 +155,6 @@ export interface BotRun {
   server_run_id: string | null;
 }
 
-// ─── AI Suggestions ───
-
-export interface AiSuggestion {
-  id: string;
-  place_id: string;
-  conversation_id: string | null;
-  intent: string;
-  confidence: number;
-  suggested_reply: string;
-  status: "pending" | "approved" | "rejected" | "sent";
-  created_at: string;
-  approved_at: string | null;
-  sent_at: string | null;
-}
-
-export const INTENT_COLORS: Record<string, string> = {
-  interested: "text-emerald-400 bg-emerald-500/10",
-  asked_price: "text-blue-400 bg-blue-500/10",
-  asked_scope: "text-blue-400 bg-blue-500/10",
-  objection: "text-yellow-400 bg-yellow-500/10",
-  not_interested: "text-red-400 bg-red-500/10",
-  scheduling: "text-purple-400 bg-purple-500/10",
-  other: "text-muted bg-border",
-};
-
-export const INTENT_LABELS: Record<string, string> = {
-  interested: "Interessado",
-  asked_price: "Preço",
-  asked_scope: "Escopo",
-  objection: "Objeção",
-  not_interested: "Não interessado",
-  scheduling: "Agendamento",
-  other: "Outro",
-};
-
 // ─── Projects ───
 
 export interface Project {
@@ -246,6 +211,5 @@ export type LeadCard = Pick<
 > & {
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
-  has_pending_suggestion?: boolean;
   has_proposal?: boolean;
 };

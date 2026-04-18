@@ -108,55 +108,7 @@ function formatHistory(conversations: Conversation[], limit: number): string {
     .map(c => `${c.direction === 'out' ? 'Levi' : 'Lead'}: ${c.message}`)
     .join('\n')
 }
-
-// ─── 1. Classify and Suggest ───
-
-export async function classifyAndSuggest(
-  lead: Lead,
-  message: string,
-  conversationHistory: Conversation[],
-  conversationId?: string,
-): Promise<void> {
-  try {
-    console.log('[classify] starting for', lead.place_id, 'message:', message.slice(0, 50))
-    const anthropic = new Anthropic()
-
-    const reasonsText = translateReasons(lead)
-    const historyText = formatHistory(conversationHistory, 5)
-
-    console.log('[classify] calling Claude API...')
-    const response = await anthropic.messages.create({
-      model: MODEL_FAST,
-      max_tokens: 500,
-      system: getClassifySystemPrompt(lead),
-      messages: [
-        {
-          role: 'user',
-          content: buildClassifyUserPrompt(lead, reasonsText, historyText, message),
-        },
-      ],
-    })
-
-    const text = response.content[0].type === 'text' ? response.content[0].text : ''
-    console.log('[classify] response:', text.slice(0, 100))
-    const parsed = validateClassifyResponse(JSON.parse(cleanJson(text)))
-
-    console.log('[classify] saving suggestion, intent:', parsed.intent)
-    const supabase = serviceClient()
-    await supabase.from('ai_suggestions').insert({
-      place_id: lead.place_id,
-      conversation_id: conversationId ?? null,
-      intent: parsed.intent,
-      confidence: parsed.confidence,
-      suggested_reply: parsed.suggested_reply,
-      status: 'pending',
-    })
-  } catch (err) {
-    console.error('[ai-workflow] classifyAndSuggest failed:', err)
-  }
-}
-
-// ─── 2. Generate Proposal ───
+// ─── 1. Generate Proposal ───
 
 export async function generateProposal(
   lead: Lead,
