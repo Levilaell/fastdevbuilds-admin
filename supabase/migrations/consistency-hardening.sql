@@ -78,13 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_outbound_dedup
 --        SET place_id = :real_place_id
 --        WHERE place_id = :unknown_place_id;
 --
---   2. Reassign any ai_suggestions:
---
---        UPDATE ai_suggestions
---        SET place_id = :real_place_id
---        WHERE place_id = :unknown_place_id;
---
---   3. Copy latest inbound tracking onto the real lead, being careful to
+--   2. Copy latest inbound tracking onto the real lead, being careful to
 --      preserve earlier values when the real lead already advanced:
 --
 --        UPDATE leads r
@@ -94,7 +88,6 @@ CREATE INDEX IF NOT EXISTS idx_conversations_outbound_dedup
 --          last_auto_reply_at  = GREATEST(COALESCE(r.last_auto_reply_at,  'epoch'::timestamptz), u.last_auto_reply_at),
 --          whatsapp_jid        = COALESCE(r.whatsapp_jid, u.whatsapp_jid),
 --          evolution_instance  = COALESCE(r.evolution_instance, u.evolution_instance),
---          follow_up_paused    = r.follow_up_paused OR u.follow_up_paused,
 --          status              = CASE
 --            WHEN r.status = 'sent' AND u.status IN ('replied','negotiating') THEN 'replied'
 --            ELSE r.status
@@ -104,7 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_outbound_dedup
 --        WHERE r.place_id = :real_place_id
 --          AND u.place_id = :unknown_place_id;
 --
---   4. Delete the shadow lead last, and only after conversations / suggestions
+--   3. Delete the shadow lead last, and only after conversations
 --      have moved:
 --
 --        DELETE FROM leads WHERE place_id = :unknown_place_id;

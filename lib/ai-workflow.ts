@@ -84,7 +84,7 @@ function formatHistory(conversations: Conversation[], limit: number): string {
     .map(c => `${c.direction === 'out' ? 'Levi' : 'Lead'}: ${c.message}`)
     .join('\n')
 }
-// ─── 1. Generate Proposal ───
+// ─── Generate Proposal ───
 
 export async function generateProposal(
   lead: Lead,
@@ -161,10 +161,9 @@ export async function generateProposal(
   }
 }
 
-// ─── 3. Generate PIX Message ───
 
 
-// ─── 4. Generate Claude Code Prompt ───
+// ─── Generate Claude Code Prompt ───
 
 export async function generateClaudeCodePrompt(
   lead: Lead,

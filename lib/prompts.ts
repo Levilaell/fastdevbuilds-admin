@@ -79,7 +79,7 @@ function buildLeadContext(lead: Lead, reasonsText: string): string {
   return lines.join('\n')
 }
 
-// ─── 1. Suggestion prompt (reply-box "Sugerir com IA") ───
+// ─── Suggestion prompt (reply-box "Sugerir com IA") ───
 
 export function buildSuggestionSystemPrompt(
   lead: Lead,
@@ -176,7 +176,7 @@ export const SUGGESTION_USER_WITH_HISTORY = (history: string, lead?: Lead): stri
 export const SUGGESTION_USER_NO_HISTORY =
   'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
 
-// ─── 2. Classify & Suggest (webhook auto-analysis) ───
+// ─── Proposal system prompt ───
 
 const PROPOSAL_SYSTEM_PROMPT_PT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
 
@@ -232,7 +232,7 @@ Conversation (last 10 messages):
 ${historyText}`
 }
 
-// ─── 4. Generate Claude Code Site Prompt ───
+// ─── Generate Claude Code Site Prompt ───
 
 export const CLAUDE_CODE_SITE_SYSTEM_PROMPT = `You generate complete, production-ready implementation prompts for Claude Code to build professional websites that look agency-made — not generic templates.
 
@@ -453,5 +453,4 @@ export function buildClaudeCodeUserPrompt(
   return lines.join('\n')
 }
 
-// ─── 5. PIX Message ───
 
