@@ -42,3 +42,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Internal docs / PR drafts (not versioned)
+AUDIT-REPORT.md
+PR-*.md
+PR1-*.md
+PR2-*.md
+RESUMO-*.md
+BACKFILL-*.md
