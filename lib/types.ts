@@ -68,6 +68,8 @@ export interface Lead {
   scrape_failed: boolean | null;
   visual_score: number | null;
   visual_notes: string | null;
+  opportunity_score: number | null;
+  opportunity_reasons: string | null;
   pain_score: number | null;
   score_reasons: string | null;
   message: string | null;

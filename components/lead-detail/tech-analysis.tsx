@@ -100,6 +100,25 @@ export default function TechAnalysis({ lead }: { lead: Lead }) {
         </div>
       )}
 
+      {/* Opportunity score */}
+      {lead.opportunity_score != null && lead.opportunity_score > 0 && (
+        <div>
+          <h3 className="text-[11px] text-muted mb-3 uppercase tracking-wide">Oportunidade comercial</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-2xl font-semibold text-accent">{lead.opportunity_score}</span>
+            <span className="text-xs text-muted">/ 5</span>
+            {lead.opportunity_reasons && (
+              <div className="flex gap-1 flex-wrap ml-2">
+                {lead.opportunity_reasons.split(',').map(r => r.trim()).filter(Boolean).map((reason) => (
+                  <span key={reason} className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent">
+                    {reason.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* PageSpeed scores */}
       <div>
         <h3 className="text-[11px] text-muted mb-3 uppercase tracking-wide">PageSpeed</h3>
