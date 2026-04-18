@@ -45,7 +45,6 @@ function getWorkflowSteps(
     else if (projectStatus === 'client_approved') currentStep = 11
     else if (projectStatus === 'paid') currentStep = 13
   } else if (leadStatus === 'closed') currentStep = 13
-  else if (leadStatus === 'pago') currentStep = 13
 
   const steps = allSteps.map((label, i) => ({
     number: i + 1,

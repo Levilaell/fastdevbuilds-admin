@@ -13,8 +13,6 @@ const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
   negotiating: ['scoped', 'lost', 'disqualified'],
   scoped: ['closed', 'lost', 'disqualified'],
   closed: ['lost', 'disqualified'],
-  finalizado: [],
-  pago: [],
   lost: ['prospected', 'sent', 'replied', 'negotiating'],
   disqualified: [],
 }
