@@ -94,7 +94,7 @@ function ConversationListItem({
           </span>
           {needsFollowUp && (
             <span className="text-[9px] px-1 py-0.5 rounded text-warning bg-warning/10 border border-warning/20">
-              Follow-up
+              Aguardando
             </span>
           )}
           {hasUnread && (

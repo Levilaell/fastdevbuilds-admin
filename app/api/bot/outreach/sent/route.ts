@@ -11,7 +11,6 @@ interface SentPayload {
   evolution_response: unknown;
   evolution_instance: string | null;
   sent_at?: string;
-  is_follow_up: boolean;
   /**
    * Optional override for the Evolution `key.id`. When omitted, it is
    * extracted from `evolution_response`. Callers pass this only when they
@@ -51,9 +50,6 @@ function validatePayload(raw: unknown): ValidationResult {
   if (b.sent_at != null && typeof b.sent_at !== "string") {
     return { ok: false, error: "sent_at must be an ISO 8601 string" };
   }
-  if (b.is_follow_up != null && typeof b.is_follow_up !== "boolean") {
-    return { ok: false, error: "is_follow_up must be boolean" };
-  }
   if (
     b.provider_message_id != null &&
     typeof b.provider_message_id !== "string"
@@ -85,7 +81,6 @@ function validatePayload(raw: unknown): ValidationResult {
       evolution_instance:
         typeof b.evolution_instance === "string" ? b.evolution_instance : null,
       sent_at: typeof b.sent_at === "string" ? b.sent_at : undefined,
-      is_follow_up: b.is_follow_up === true,
       provider_message_id: providerMessageIdOverride,
     },
   };
@@ -141,7 +136,6 @@ export async function POST(request: Request) {
     whatsapp_jid,
     evolution_instance: payload.evolution_instance,
     suggested_by_ai: false,
-    is_follow_up: payload.is_follow_up,
     sent_at: sentAt,
     provider_message_id,
   });

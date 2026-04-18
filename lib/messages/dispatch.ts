@@ -17,8 +17,6 @@ export interface DispatchOptions {
   suggestedByAi?: boolean;
   /** When approving a suggestion, exclude it from bulk rejection */
   excludeSuggestionId?: string;
-  /** Skip follow-up scheduling (used by the follow-up worker itself) */
-  isFollowUp?: boolean;
   lead: {
     phone: string | null;
     email: string | null;
@@ -110,7 +108,6 @@ export async function dispatchMessage(
             status: "disqualified" as const,
             outreach_error: "invalid_whatsapp_number",
             status_updated_at: now,
-            next_follow_up_at: null,
           })
           .eq("place_id", place_id);
 
@@ -216,7 +213,6 @@ export async function dispatchMessage(
     whatsapp_jid: jidToPersist,
     provider_message_id: sendProviderMessageId ?? null,
     suggested_by_ai: suggestedByAi,
-    is_follow_up: opts.isFollowUp,
     excludeSuggestionId,
     sent_at: now,
   });

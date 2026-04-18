@@ -90,9 +90,6 @@ export interface Lead {
   last_inbound_at: string | null;
   last_human_reply_at: string | null;
   last_auto_reply_at: string | null;
-  follow_up_count: number | null;
-  next_follow_up_at: string | null;
-  follow_up_paused: boolean | null;
   outreach_error: string | null;
 }
 

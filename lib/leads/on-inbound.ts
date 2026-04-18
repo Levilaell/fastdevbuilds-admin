@@ -7,7 +7,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Updates:
  *   - last_inbound_at
  *   - last_human_reply_at
- *   - follow_up_paused = true
  *   - status: sent → replied (with status_updated_at)
  *
  * Does NOT insert conversations — caller handles that separately.
@@ -21,7 +20,6 @@ export async function onInboundLeadMessage(
   const update: Record<string, unknown> = {
     last_inbound_at: sentAt,
     last_human_reply_at: sentAt,
-    follow_up_paused: true,
   };
 
   if (currentStatus === "sent") {

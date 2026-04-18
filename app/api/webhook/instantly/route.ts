@@ -167,7 +167,6 @@ export async function POST(request: Request) {
         .update({
           last_inbound_at: sentAt,
           last_auto_reply_at: sentAt,
-          follow_up_paused: true,
         })
         .eq("place_id", placeId);
 

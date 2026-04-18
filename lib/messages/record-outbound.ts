@@ -11,7 +11,6 @@ export interface RecordOutboundOptions {
   whatsapp_jid?: string | null;
   evolution_instance?: string | null;
   suggested_by_ai?: boolean;
-  is_follow_up?: boolean;
   /** When approving a suggestion, exclude it from bulk rejection. */
   excludeSuggestionId?: string;
   /** Defaults to `new Date().toISOString()`. */
@@ -52,7 +51,6 @@ const TEMPORAL_DEDUP_WINDOW_MS = 60_000;
  *     an existing `@lid` to `@s.whatsapp.net`, but never downgrades
  *     canonical phone-JIDs
  *   - evolution_instance updated only when provided
- *   - follow-up +24h scheduled unless `is_follow_up` or `follow_up_paused`
  *
  * Idempotency (owned here, not by callers):
  *   - If `provider_message_id` is given, a prior row with the same id is an
@@ -78,7 +76,6 @@ export async function recordOutboundMessage(
     whatsapp_jid,
     evolution_instance,
     suggested_by_ai,
-    is_follow_up,
     excludeSuggestionId,
     provider_message_id,
   } = opts;
@@ -86,7 +83,7 @@ export async function recordOutboundMessage(
 
   const { data: leadCheck } = await supabase
     .from("leads")
-    .select("status, follow_up_paused, whatsapp_jid")
+    .select("status, whatsapp_jid")
     .eq("place_id", place_id)
     .maybeSingle();
 
@@ -216,22 +213,12 @@ export async function recordOutboundMessage(
 
   const instanceUpdate = evolution_instance ? { evolution_instance } : {};
 
-  const scheduleFollowUp =
-    !is_follow_up && !leadCheck.follow_up_paused
-      ? {
-          follow_up_count: 0,
-          next_follow_up_at: new Date(
-            Date.now() + 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        }
-      : {};
 
   const baseOutboundPatch = {
     last_outbound_at: sentAt,
     outreach_error: null,
     ...jidUpdate,
     ...instanceUpdate,
-    ...scheduleFollowUp,
   };
 
   if (leadCheck.status === "prospected") {
