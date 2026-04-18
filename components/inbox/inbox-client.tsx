@@ -716,15 +716,6 @@ export default function InboxClient() {
                 <ProposalCard
                   project={proposal}
                   placeId={activePlaceId}
-                  onApproved={async () => {
-                    setProposal(null)
-                    // Refresh project state so next pipeline button appears
-                    const res = await fetch(`/api/projects/${encodeURIComponent(activePlaceId)}/status`)
-                    if (res.ok) {
-                      const p = await res.json()
-                      if (p) setProject(p)
-                    }
-                  }}
                   onDismissed={() => setProposal(null)}
                 />
               </div>

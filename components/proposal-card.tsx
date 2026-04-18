@@ -11,11 +11,10 @@ const fmtCurrency = new Intl.NumberFormat('pt-BR', {
 interface Props {
   project: Project
   placeId: string
-  onApproved?: () => void
   onDismissed?: () => void
 }
 
-export default function ProposalCard({ project, placeId, onApproved, onDismissed }: Props) {
+export default function ProposalCard({ project, placeId, onDismissed }: Props) {
   const [price, setPrice] = useState(project.price ?? 0)
   const [message, setMessage] = useState(project.proposal_message ?? '')
   const [loading, setLoading] = useState(false)
@@ -30,28 +29,6 @@ export default function ProposalCard({ project, placeId, onApproved, onDismissed
     if (project.scope) scopeItems = [project.scope]
   }
 
-  async function handleApprove() {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(placeId)}/approve-proposal`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, price }),
-        },
-      )
-      if (res.ok) {
-        onApproved?.()
-      } else {
-        const data = await res.json()
-        setError(data.error ?? 'Erro ao enviar proposta')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function handleDismiss() {
     if (!confirm('Descartar esta proposta? Ela não poderá ser recuperada.')) return
@@ -143,13 +120,6 @@ export default function ProposalCard({ project, placeId, onApproved, onDismissed
           className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-text disabled:opacity-50"
         >
           Descartar
-        </button>
-        <button
-          onClick={handleApprove}
-          disabled={loading || !message}
-          className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-        >
-          {loading ? 'Enviando…' : 'Aprovar e Enviar no WhatsApp'}
         </button>
       </div>
     </div>

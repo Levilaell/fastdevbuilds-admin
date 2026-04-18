@@ -8,7 +8,6 @@ import {
   buildProposalUserPrompt,
   CLAUDE_CODE_SITE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
-  buildPixMessage,
   isUSLead,
 } from '@/lib/prompts'
 
@@ -236,7 +235,6 @@ export async function generateProposal(
 
 // ─── 3. Generate PIX Message ───
 
-export { buildPixMessage as generatePixMessage }
 
 // ─── 4. Generate Claude Code Prompt ───
 

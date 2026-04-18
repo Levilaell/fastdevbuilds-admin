@@ -659,25 +659,3 @@ export function buildClaudeCodeUserPrompt(
 
 // ─── 5. PIX Message ───
 
-export function buildPixMessage(
-  lead: Lead,
-  project: Project,
-  pixKey: string,
-): string {
-  const fmtPrice = new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(project.price ?? 0)
-
-  return `${lead.business_name ?? 'Olá'}, que bom que curtiu o resultado!
-
-Pra finalizar, segue o PIX:
-
-Chave: ${pixKey}
-Valor: ${fmtPrice}
-Nome: Levi Laell
-
-Assim que confirmar, te passo as instruções finais.
-
-Levi`
-}

@@ -206,7 +206,6 @@ export interface Project {
   pending_info: string | null;
   info_request_message: string | null;
   prompt_updated_at: string | null;
-  pix_key: string | null;
   client_approved_at: string | null;
 }
 

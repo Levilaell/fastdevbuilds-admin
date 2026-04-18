@@ -45,6 +45,7 @@ next-env.d.ts
 
 # Internal docs / PR drafts (not versioned)
 AUDIT-REPORT.md
+AUDIT-REPORT-CLEANUP.md
 PR-*.md
 PR1-*.md
 PR2-*.md
