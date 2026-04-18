@@ -160,13 +160,20 @@ export async function POST(request: Request) {
         approved_by: "auto-reply",
       });
 
-      await supabase
+      const { error: autoReplyUpdateError } = await supabase
         .from("leads")
         .update({
           last_inbound_at: sentAt,
           last_auto_reply_at: sentAt,
         })
         .eq("place_id", placeId);
+      if (autoReplyUpdateError) {
+        console.error(
+          "[instantly-webhook] auto-reply lead timestamps update failed:",
+          autoReplyUpdateError.message,
+          { placeId },
+        );
+      }
 
       return Response.json({ ok: true });
     }
@@ -200,7 +207,13 @@ export async function POST(request: Request) {
     );
     return Response.json({ ok: true });
   } catch (err) {
-    console.error("[instantly-webhook] error:", err);
+    console.error(
+      "[instantly-webhook] catch-all —",
+      "error:",
+      err instanceof Error ? err.message : String(err),
+      "stack:",
+      err instanceof Error ? err.stack?.split("\n").slice(0, 3).join(" | ") : "(none)",
+    );
     return Response.json({ ok: true });
   }
 }
