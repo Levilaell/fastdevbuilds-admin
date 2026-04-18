@@ -1,18 +1,13 @@
 /**
  * Detects if a message is an automatic/bot reply.
  *
- * Two-tier design:
- *   1. STRONG patterns — a single match marks the message as bot,
- *      regardless of length. These are phrases only an auto-responder uses.
- *   2. Weak signals — each adds to a score; threshold >= 3 marks as bot.
- *      Kept conservative so short human replies never trip the heuristics.
- *
- * Length gate: short messages (< 20 chars) only bypass STRONG-pattern
- * matching — weak-signal scoring is skipped for them so normal "oi" /
- * "quem é" style replies never get flagged.
+ * Strategy: a single regex match against a curated list of patterns that
+ * only auto-responders use. If any pattern fires, the message is flagged.
+ * Kept conservative — prefers false negatives (human tagged as human) over
+ * false positives (human tagged as bot) because the cost asymmetry favors
+ * letting a bot through than stalling a real lead.
  */
 
-// ── Tier 1: strong patterns (single match = bot) ───────────────────────────
 const STRONG_PATTERNS: RegExp[] = [
   // Greeting + "we'll get back" — requires both halves to avoid flagging
   // genuine short replies like "Obrigado pelo contato"
@@ -83,108 +78,15 @@ const STRONG_PATTERNS: RegExp[] = [
   /currently\s+closed/i,
 ];
 
-// ── Tier 2: weak signals (combined score) ──────────────────────────────────
-const MENU_PHRASES: RegExp[] = [
-  /digite\s+[0-9]/i,
-  /digite\s+(a\s+)?op[çc][ãa]o/i,
-  /escolha\s+(uma|a)\s+op[çc][ãa]o/i,
-  /selecione\s+(uma|a|o)\s+(op[çc][ãa]o|n[úu]mero)/i,
-  /responda\s+com\s+[0-9]/i,
-  /press\s+[0-9]/i,
-  /reply\s+with\s+[0-9]/i,
-  /choose\s+an\s+option/i,
-];
-
-const GENERIC_WELCOME: RegExp[] = [
-  /bem[\s-]?vind[oa]\s+(à|ao|a|ao\s+nosso)/i,
-  /ol[áa]!\s*(tudo\s+bem|seja\s+bem)/i,
-  /welcome\s+to\s+\w+/i,
-];
-
-const SOCIAL_CTA: RegExp[] = [
-  /instagram\.com\/[\w.]+/i,
-  /siga[\s-]?nos\s+(no|em|@)/i,
-  /nos\s+siga\s+(no|em)\s+(instagram|insta|@)/i,
-  /follow\s+us\s+on\s+(instagram|facebook)/i,
-];
-
-/** Menu-style lines: "1 -", "1)", "1.", "1️⃣" on 2+ separate lines. */
-function hasMenuStructure(msg: string): boolean {
-  const lines = msg.split(/\r?\n/);
-  const menuLines = lines.filter((l) =>
-    /^[\s*>_\-•·]*(?:[0-9]{1,2}[\s.)\-–—:]|[1-9]\uFE0F?\u20E3)/.test(l.trim()),
-  );
-  return menuLines.length >= 2;
-}
-
-/** Long message with many line breaks → templated format. */
-function looksStructured(msg: string): boolean {
-  const newlines = (msg.match(/\n/g) ?? []).length;
-  return newlines >= 3 && msg.length > 200;
-}
-
-/** Multiple WhatsApp-bold spans (*text*) — common in Business templates. */
-function hasHeavyFormatting(msg: string): boolean {
-  const bold = (msg.match(/\*[^*\n]{2,}\*/g) ?? []).length;
-  const italic = (msg.match(/(^|\s)_[^_\n]{2,}_($|\s)/g) ?? []).length;
-  return bold + italic >= 2;
-}
-
-/** Business intro + explicit CTA in the same message. */
-function hasBusinessIntroAndCTA(msg: string): boolean {
-  const intro =
-    /(somos\s+(a|o)|aqui\s+(é|e)\s+(a|o|da|do)|bem[\s-]?vind[oa])/i.test(msg) ||
-    /(we\s+are|this\s+is\s+the\s+team|welcome\s+to)/i.test(msg);
-  const cta =
-    /(clique|acesse|agende|confira|saiba\s+mais|fale\s+conosco|veja\s+mais)/i.test(
-      msg,
-    ) || /(click\s+here|book\s+now|schedule|learn\s+more|visit\s+our)/i.test(msg);
-  return intro && cta;
-}
-
-export interface AutoReplyContext {
-  /** Seconds between our last outbound and this inbound. */
-  secondsSinceOutbound?: number;
-}
-
-export function isAutoReply(message: string, ctx?: AutoReplyContext): boolean {
+export function isAutoReply(message: string): boolean {
   const msg = message.trim();
-
   if (!msg) return false;
-
-  // Tier 1: single strong match. Runs first so short unambiguous auto-reply
-  // phrases ("Deixe sua mensagem", "Como podemos ajudar?") are caught.
-  if (STRONG_PATTERNS.some((p) => p.test(msg))) return true;
-
-  // Tier 2 is noisier, so short messages bypass it entirely.
-  if (msg.length < 20) return false;
-
-  let score = 0;
-
-  if (MENU_PHRASES.some((p) => p.test(msg))) score += 2;
-  if (hasMenuStructure(msg)) score += 2;
-  if (GENERIC_WELCOME.some((p) => p.test(msg))) score += 1;
-  if (SOCIAL_CTA.some((p) => p.test(msg)) && msg.length > 150) score += 1;
-  if (looksStructured(msg)) score += 1;
-  if (hasHeavyFormatting(msg) && msg.length > 100) score += 1;
-  if (hasBusinessIntroAndCTA(msg) && msg.length > 150) score += 1;
-
-  // Speed signal only combines with content — never triggers on its own
-  if (
-    ctx?.secondsSinceOutbound !== undefined &&
-    ctx.secondsSinceOutbound >= 0 &&
-    ctx.secondsSinceOutbound < 5
-  ) {
-    score += 2;
-  }
-
-  return score >= 3;
+  return STRONG_PATTERNS.some((p) => p.test(msg));
 }
 
 /**
  * Reply within 3 seconds of our outbound → almost certainly automated.
- * Kept as a hard standalone signal; the softer 5s window is folded into
- * the scoring inside isAutoReply.
+ * Standalone hard signal; useful when content alone isn't conclusive.
  */
 export function isInstantReply(
   replyTimestamp: string | number,

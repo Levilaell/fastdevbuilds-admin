@@ -823,18 +823,8 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    const replyMs = timestamp
-      ? Number(timestamp) * 1000
-      : new Date(sentAt).getTime();
-    const outboundMs = lastOutbound?.sent_at
-      ? new Date(lastOutbound.sent_at).getTime()
-      : null;
-    const secondsSinceOutbound =
-      outboundMs !== null && replyMs >= outboundMs
-        ? (replyMs - outboundMs) / 1000
-        : undefined;
 
-    const autoReplyByContent = isAutoReply(text, { secondsSinceOutbound });
+    const autoReplyByContent = isAutoReply(text);
     const autoReplyBySpeed = isInstantReply(
       timestamp ? Number(timestamp) : sentAt,
       lastOutbound?.sent_at ?? null,
