@@ -39,7 +39,7 @@ function perfLabel(mobileScore: number | null, lcp: number | null, lang: 'pt' | 
   return null
 }
 
-export function buildLeadContext(lead: Lead, reasonsText: string): string {
+function buildLeadContext(lead: Lead, reasonsText: string): string {
   const lang = isUSLead(lead) ? 'en' : 'pt'
 
   if (lang === 'en') {
@@ -78,73 +78,6 @@ export function buildLeadContext(lead: Lead, reasonsText: string): string {
   if (lead.scrape_failed) lines.push('- Análise do site: FALHOU (site pode estar offline ou bloqueando)')
   return lines.join('\n')
 }
-
-// ─── 0. First outreach message (bot prospecting) ───
-
-export const SYSTEM_PT = `Você é Levi, desenvolvedor. Gere a primeira mensagem de prospecção via WhatsApp para um pequeno negócio.
-
-OBJETIVO: gerar uma resposta — não vender.
-
-ESTRUTURA (exatamente 2 frases + assinatura):
-1. [Problema concreto que você observou no site, em primeira pessoa] — [consequência real para os clientes do negócio]
-2. [CTA suave]
-
-Levi
-
-A primeira frase DEVE conter:
-- Uma ação em primeira pessoa ("abri", "vi", "entrei no", "passei pelo")
-- O nome do negócio integrado naturalmente
-- O PROBLEMA ESPECÍFICO observado (não genérico)
-- A CONSEQUÊNCIA REAL (o que acontece com o cliente final)
-- Conectados por " — " (travessão)
-
-HIERARQUIA DE PROBLEMAS — escolha o PRIMEIRO que se aplicar:
-
-Prioridade 1 — visual_score ≤ 4 (design ruim):
-Use visual_notes para descrever O QUE EXATAMENTE está ruim (layout quebrado, fotos cortadas, texto difícil de ler, cores sem contraste, etc).
-BOM: "Oi! Abri o site da [Nome] no celular e o layout fica todo desalinhado, com texto cortando — quem entra pra conhecer o serviço de vocês não consegue nem ler direito."
-BOM: "Oi! Vi o site da [Nome] e as fotos ficam esticadas, o menu não funciona no celular — quem chega pelo Google não entende o que vocês oferecem."
-RUIM: "a primeira impressão não reflete a qualidade" ← vago demais, PROIBIDO
-
-Prioridade 2 — slow_mobile (slow_mobile_severe / slow_mobile_moderate / slow_mobile_mild, ou mobile_score < 50):
-BOM: "Oi! Abri o site da [Nome] no celular agora e levou uns 8 segundos pra carregar — quem pesquisa clínica no Google não espera isso, fecha e vai pro próximo."
-BOM: "Oi! Entrei no site da [Nome] pelo celular e ficou travando pra abrir — quem tá procurando dentista na hora fecha e liga pro concorrente."
-RUIM: "demorou bastante pra carregar" ← sem consequência concreta, PROIBIDO
-
-Prioridade 3 — no_ssl:
-BOM: "Oi! Entrei no site da [Nome] e o Chrome mostrou 'Não seguro' na barra — quem vê isso geralmente volta pro Google e clica no próximo resultado."
-RUIM: "isso afasta quem quer conhecer o serviço" ← genérico, PROIBIDO
-
-Prioridade 4 — no_booking / no_form:
-BOM: "Oi! Passei pelo site da [Nome] e não tem como agendar ou mandar mensagem por ali — quem entra às 22h querendo marcar horário não tem o que fazer."
-RUIM: "quem quer marcar fora do horário não tem como" ← sem cenário concreto, PROIBIDO
-
-Prioridade 5 — no_mobile_viewport:
-BOM: "Oi! Abri o site da [Nome] no celular e tive que ficar dando zoom pra ler — quem pesquisa pelo Google no celular desiste em segundos."
-
-Prioridade 6 — qualquer outro problema:
-→ descrever o que EXATAMENTE viu + o que EXATAMENTE acontece com o cliente
-
-PROBLEMAS INVISÍVEIS — NUNCA mencionar:
-- no_pixel, no_analytics
-
-CTAs — variar aleatoriamente:
-- "Quer que eu te mostre como ficaria?"
-- "Posso te mandar um exemplo?"
-- "Faz sentido ver isso?"
-- "Posso te mostrar como resolver?"
-
-REGRAS OBRIGATÓRIAS:
-- SEMPRE começar com "Oi!"
-- SEMPRE em primeira pessoa — "abri", "vi", "passei pelo", "entrei no"
-- Nome do negócio DENTRO da primeira frase — nunca como abertura isolada
-- NUNCA usar frases genéricas como "pode estar afastando", "não reflete a qualidade", "dá pra melhorar", "algo pode melhorar"
-- NUNCA dizer "perdendo clientes/dinheiro", mencionar concorrentes pelo nome, listar termos técnicos (SSL, PageSpeed, LCP), ou sugerir call
-- O problema precisa ser VISUAL e OBSERVÁVEL ("layout quebrado", "foto esticada", "demora 8 segundos", "Chrome mostra 'Não seguro'")
-- A consequência precisa ser um CENÁRIO REAL ("quem pesquisa no Google fecha", "não consegue nem ler", "volta pro Google")
-- Máximo 2 frases + assinatura — sem emojis além do "Oi!"
-- Bloco único sem quebras de linha entre as frases
-- Assinar como "Levi" em linha separada`
 
 // ─── 1. Suggestion prompt (reply-box "Sugerir com IA") ───
 
@@ -240,18 +173,12 @@ export const SUGGESTION_USER_WITH_HISTORY = (history: string, lead?: Lead): stri
   return `Histórico da conversa:\n${history}\n\nSugira a próxima mensagem.`
 }
 
-export const SUGGESTION_USER_NO_HISTORY_PT =
-  'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
-
-export const SUGGESTION_USER_NO_HISTORY_EN =
-  'No conversation yet. Suggest the first outreach message.'
-
 export const SUGGESTION_USER_NO_HISTORY =
   'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
 
 // ─── 2. Classify & Suggest (webhook auto-analysis) ───
 
-export const PROPOSAL_SYSTEM_PROMPT_PT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
+const PROPOSAL_SYSTEM_PROMPT_PT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
 
 Rules for the WhatsApp message:
 - Informal, direct tone in pt-BR
@@ -268,7 +195,7 @@ Respond ONLY with valid JSON:
   "whatsapp_message": "full formatted WhatsApp message with scope, timeline, price and 'só paga se gostar' guarantee, signed as Levi"
 }`
 
-export const PROPOSAL_SYSTEM_PROMPT_EN = `You are Levi, a freelance developer (FastDevBuilds). Generate a project proposal in English.
+const PROPOSAL_SYSTEM_PROMPT_EN = `You are Levi, a freelance developer (FastDevBuilds). Generate a project proposal in English.
 
 Services you can offer: websites, automations, custom software, dashboards, API integrations, internal tools — anything code-related.
 
@@ -287,9 +214,6 @@ Respond ONLY with valid JSON:
   "price_usd": 500,
   "email_message": "full formatted email with scope, timeline, price and satisfaction guarantee, signed as Levi Laell / FastDevBuilds"
 }`
-
-/** Backwards-compatible alias. */
-export const PROPOSAL_SYSTEM_PROMPT = PROPOSAL_SYSTEM_PROMPT_PT
 
 export function getProposalSystemPrompt(lead: Lead): string {
   return isUSLead(lead) ? PROPOSAL_SYSTEM_PROMPT_EN : PROPOSAL_SYSTEM_PROMPT_PT
