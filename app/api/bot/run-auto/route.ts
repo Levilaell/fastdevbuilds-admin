@@ -30,12 +30,6 @@ export async function POST(request: NextRequest) {
   const { data: run } = await supabase
     .from('bot_runs')
     .insert({
-      niche: '__auto__',
-      city: '__auto__',
-      limit_count: params.limit,
-      min_score: params.min_score,
-      dry_run: params.dry_run,
-      send: params.send,
       status: 'running',
     })
     .select('id')

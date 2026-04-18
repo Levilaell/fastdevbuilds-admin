@@ -47,14 +47,6 @@ export async function POST(request: NextRequest) {
   const { data: run } = await supabase
     .from('bot_runs')
     .insert({
-      niche: params.niche,
-      city: params.city,
-      limit_count: params.limit,
-      min_score: params.min_score,
-      lang,
-      export_target: exportTarget,
-      dry_run: params.dry_run,
-      send: params.send,
       status: 'running',
     })
     .select('id')
@@ -198,17 +190,14 @@ export async function POST(request: NextRequest) {
 
           // Finalize run
           if (runId) {
-            const durationSeconds = Math.round((Date.now() - runStartedAt) / 1000)
             await supabase
               .from('bot_runs')
               .update({
                 status: 'completed',
                 finished_at: new Date().toISOString(),
-                duration_seconds: durationSeconds,
                 collected,
                 qualified,
                 sent,
-                log: logLines.join('\n'),
               })
               .eq('id', runId)
           }

@@ -47,11 +47,9 @@ export async function GET(request: Request) {
         .update({
           status: data.status === 'cancelled' ? 'failed' : data.status,
           finished_at: new Date().toISOString(),
-          duration_seconds: data.durationSeconds ?? null,
           collected: data.stats?.collected ?? null,
           qualified: data.stats?.qualified ?? null,
           sent: data.stats?.sent ?? null,
-          log: data.logs?.join?.('\n') ?? null,
         })
         .eq('id', botRunId)
 

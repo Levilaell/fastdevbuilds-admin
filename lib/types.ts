@@ -139,19 +139,12 @@ export interface InboxItem {
 
 export interface BotRun {
   id: string;
-  niche: string | null;
-  city: string | null;
-  limit_count: number | null;
-  min_score: number | null;
-  dry_run: boolean | null;
-  send: boolean | null;
   collected: number | null;
   qualified: number | null;
   sent: number | null;
   status: "running" | "completed" | "failed";
   started_at: string;
-  duration_seconds: number | null;
-  log: string | null;
+  finished_at: string | null;
   server_run_id: string | null;
 }
 
