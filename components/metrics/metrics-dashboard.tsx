@@ -16,7 +16,6 @@ const FUNNEL_COLORS: Record<string, { bar: string; text: string }> = {
   sent: { bar: 'bg-blue-500', text: 'text-blue-400' },
   replied: { bar: 'bg-yellow-500', text: 'text-yellow-400' },
   negotiating: { bar: 'bg-orange-500', text: 'text-orange-400' },
-  scoped: { bar: 'bg-purple-500', text: 'text-purple-400' },
   closed: { bar: 'bg-green-500', text: 'text-green-400' },
 }
 

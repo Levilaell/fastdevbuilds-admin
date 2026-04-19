@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
 import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type Project } from '@/lib/types'
-import ProposalCard from '@/components/proposal-card'
 import SharedReplyBox from '@/components/shared/reply-box'
 import WorkflowBar from '@/components/inbox/workflow-bar'
 
@@ -182,27 +181,7 @@ function InboxPipelineAction({
     return null
   }
 
-  if (!projectStatus && leadStatus !== 'scoped') {
-    // No project yet — offer to generate scope
-    label = 'Gerar Escopo'
-    color = 'bg-purple-500/15 border-purple-500/30 text-purple-400 hover:bg-purple-500/25'
-    action = async (pid) => {
-      await fetch(`/api/leads/${encodeURIComponent(pid)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'scoped' }),
-      })
-      // Poll for proposal
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 2000))
-        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/status`)
-        if (res.ok) {
-          const p = await res.json()
-          if (p?.proposal_message) break
-        }
-      }
-    }
-  } else if (projectStatus === 'approved') {
+  if (projectStatus === 'approved') {
     label = 'Marcar em progresso →'
     action = async (pid) => {
       await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
@@ -221,16 +200,7 @@ function InboxPipelineAction({
       })
     }
   } else if (projectStatus === 'delivered') {
-    label = 'Cliente aprovou →'
-    action = async (pid) => {
-      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'client_approved' }),
-      })
-    }
-  } else if (projectStatus === 'client_approved') {
-    label = 'Marcar pago →'
+    label = 'Cliente aprovou e pagou →'
     color = 'bg-success/15 border-success/30 text-success hover:bg-success/25'
     action = async (pid) => {
       await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
@@ -246,7 +216,6 @@ function InboxPipelineAction({
       </span>
     )
   }
-  // scoped without proposal = waiting, with proposal = shown via ProposalCard
 
   if (!label || !action) return null
 
@@ -272,7 +241,6 @@ export default function InboxClient() {
   const [items, setItems] = useState<InboxItem[]>([])
   const [activePlaceId, setActivePlaceId] = useState<string | null>(initialLead)
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [proposal, setProposal] = useState<Project | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -300,7 +268,6 @@ export default function InboxClient() {
   // Fetch conversation + project for active lead
   const fetchConversation = useCallback(async (placeId: string) => {
     setConvLoading(true)
-    setProposal(null)
     setProject(null)
     const [convRes, projRes] = await Promise.all([
       fetch(`/api/conversations/${encodeURIComponent(placeId)}`),
@@ -310,12 +277,7 @@ export default function InboxClient() {
     if (projRes && projRes.ok) {
       try {
         const p = await projRes.json()
-        if (p) {
-          setProject(p)
-          if (p.status === 'scoped' && p.proposal_message) {
-            setProposal(p)
-          }
-        }
+        if (p) setProject(p)
       } catch { /* no project */ }
     }
     setConvLoading(false)
@@ -633,11 +595,7 @@ export default function InboxClient() {
                       ])
                       if (projRes.ok) {
                         const p = await projRes.json()
-                        if (p) {
-                          setProject(p)
-                          if (p.status === 'scoped' && p.proposal_message) setProposal(p)
-                          else setProposal(null)
-                        }
+                        if (p) setProject(p)
                       }
                     } finally {
                       setActionLoading(false)
@@ -687,17 +645,6 @@ export default function InboxClient() {
               )}
               <div ref={messagesEndRef} />
             </div>
-
-            {/* Proposal card */}
-            {proposal && activePlaceId && (
-              <div className="px-4 pb-3">
-                <ProposalCard
-                  project={proposal}
-                  placeId={activePlaceId}
-                  onDismissed={() => setProposal(null)}
-                />
-              </div>
-            )}
 
             {/* Reply box */}
             <SharedReplyBox

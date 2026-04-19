@@ -40,9 +40,6 @@ function PendingIndicator({ lead }: { lead: LeadCard }) {
   if (lead.has_unread) {
     indicators.push({ label: 'Nova msg', color: 'text-accent bg-accent/10 border-accent/20' })
   }
-  if (lead.has_proposal) {
-    indicators.push({ label: 'Proposta', color: 'text-warning bg-warning/10 border-warning/20' })
-  }
 
   if (indicators.length === 0) return null
 

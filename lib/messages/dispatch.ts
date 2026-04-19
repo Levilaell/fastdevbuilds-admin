@@ -15,8 +15,6 @@ export interface DispatchOptions {
   channel: "whatsapp" | "email";
   subject?: string;
   suggestedByAi?: boolean;
-  /** When approving a suggestion, exclude it from bulk rejection */
-  excludeSuggestionId?: string;
   lead: {
     phone: string | null;
     email: string | null;
@@ -33,7 +31,7 @@ export type DispatchResult =
  * Single outbound message path for both WhatsApp and email.
  *
  * Handles: recipient resolution, sending, conversation insert,
- * suggestion dismissal, and lead status transitions.
+ * and lead status transitions.
  *
  * Invariants enforced here:
  *   - Every successful send results in exactly one "out" conversation row.
@@ -52,7 +50,6 @@ export async function dispatchMessage(
     channel,
     subject,
     suggestedByAi,
-    excludeSuggestionId,
     lead,
   } = opts;
   const now = new Date().toISOString();
@@ -213,7 +210,6 @@ export async function dispatchMessage(
     whatsapp_jid: jidToPersist,
     provider_message_id: sendProviderMessageId ?? null,
     suggested_by_ai: suggestedByAi,
-    excludeSuggestionId,
     sent_at: now,
   });
 

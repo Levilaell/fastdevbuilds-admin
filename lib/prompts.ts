@@ -176,62 +176,6 @@ export const SUGGESTION_USER_WITH_HISTORY = (history: string, lead?: Lead): stri
 export const SUGGESTION_USER_NO_HISTORY =
   'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
 
-// ─── Proposal system prompt ───
-
-const PROPOSAL_SYSTEM_PROMPT_PT = `You are Levi, a freelance web developer (FastDevBuilds). Generate a project proposal in Brazilian Portuguese.
-
-Rules for the WhatsApp message:
-- Informal, direct tone in pt-BR
-- NEVER mention Stripe, MercadoPago, or any payment gateway
-- NEVER suggest calls, meetings, or video calls
-- Clearly state that payment is ONLY via PIX and ONLY after the client approves the final result ("só paga se gostar")
-- Max 15 lines
-
-Respond ONLY with valid JSON:
-{
-  "scope": ["item 1", "item 2", "item 3"],
-  "timeline_days": 5,
-  "price_brl": 900,
-  "whatsapp_message": "full formatted WhatsApp message with scope, timeline, price and 'só paga se gostar' guarantee, signed as Levi"
-}`
-
-const PROPOSAL_SYSTEM_PROMPT_EN = `You are Levi, a freelance developer (FastDevBuilds). Generate a project proposal in English.
-
-Services you can offer: websites, automations, custom software, dashboards, API integrations, internal tools — anything code-related.
-
-Rules for the email message:
-- Professional but warm tone in English
-- NEVER mention specific payment processors
-- NEVER suggest calls or meetings — email/text only
-- Clearly state the satisfaction guarantee: "you only pay if you like the result"
-- Pricing should be accessible and competitive
-- Max 15 lines
-
-Respond ONLY with valid JSON:
-{
-  "scope": ["item 1", "item 2", "item 3"],
-  "timeline_days": 5,
-  "price_usd": 500,
-  "email_message": "full formatted email with scope, timeline, price and satisfaction guarantee, signed as Levi Laell / FastDevBuilds"
-}`
-
-export function getProposalSystemPrompt(lead: Lead): string {
-  return isUSLead(lead) ? PROPOSAL_SYSTEM_PROMPT_EN : PROPOSAL_SYSTEM_PROMPT_PT
-}
-
-export function buildProposalUserPrompt(
-  lead: Lead,
-  reasonsText: string,
-  historyText: string,
-): string {
-  return `Business: ${lead.business_name ?? 'Desconhecido'}
-Current site: ${lead.website ?? 'N/A'}
-Tech stack: ${lead.tech_stack ?? 'unknown'}
-Detected problems: ${reasonsText}
-Conversation (last 10 messages):
-${historyText}`
-}
-
 // ─── Generate Claude Code Site Prompt ───
 
 export const CLAUDE_CODE_SITE_SYSTEM_PROMPT = `You generate complete, production-ready implementation prompts for Claude Code to build professional websites that look agency-made — not generic templates.

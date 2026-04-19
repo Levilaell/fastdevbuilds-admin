@@ -18,11 +18,9 @@ interface Props {
 }
 
 const FLOW: ProjectStatus[] = [
-  "scoped",
   "approved",
   "in_progress",
   "delivered",
-  "client_approved",
   "paid",
 ];
 
@@ -376,17 +374,6 @@ export default function ProjectStatusSection({
 
       {error && <p className="text-xs text-danger">{error}</p>}
 
-      {/* Contextual actions */}
-      {status === "scoped" && (
-        <button
-          onClick={() => advanceStatus("approved")}
-          disabled={loading}
-          className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-        >
-          {loading ? "Atualizando…" : "Cliente autorizou →"}
-        </button>
-      )}
-
       {/* Prompt section — visible from 'approved' onwards */}
       {showPromptSection && (
         <PromptSection
@@ -428,21 +415,11 @@ export default function ProjectStatusSection({
 
       {status === "delivered" && (
         <button
-          onClick={() => advanceStatus("client_approved")}
-          disabled={loading}
-          className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-        >
-          {loading ? "Atualizando…" : "Cliente aprovou →"}
-        </button>
-      )}
-
-      {status === "client_approved" && (
-        <button
           onClick={() => advanceStatus("paid")}
           disabled={loading}
           className="w-full py-2 text-xs font-medium rounded-lg bg-success hover:bg-success/80 text-white disabled:opacity-50"
         >
-          {loading ? "Atualizando…" : "Marcar como pago →"}
+          {loading ? "Atualizando…" : "Cliente aprovou e pagou →"}
         </button>
       )}
 

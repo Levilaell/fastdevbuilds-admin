@@ -10,8 +10,6 @@ export interface RecordOutboundOptions {
   whatsapp_jid?: string | null;
   evolution_instance?: string | null;
   suggested_by_ai?: boolean;
-  /** When approving a suggestion, exclude it from bulk rejection. */
-  excludeSuggestionId?: string;
   /** Defaults to `new Date().toISOString()`. */
   sent_at?: string;
   /**
@@ -44,7 +42,6 @@ const TEMPORAL_DEDUP_WINDOW_MS = 60_000;
  *
  *   - exactly one conversations row (direction="out") per logical send
  *   - last_outbound_at = sent_at, outreach_error = null
- *   - pending AI suggestions dismissed (respecting excludeSuggestionId)
  *   - status transitions: prospected → sent, replied → negotiating
  *   - whatsapp_jid resolved via `pickCanonicalJid` — fills NULL and upgrades
  *     an existing `@lid` to `@s.whatsapp.net`, but never downgrades
@@ -75,7 +72,6 @@ export async function recordOutboundMessage(
     whatsapp_jid,
     evolution_instance,
     suggested_by_ai,
-    excludeSuggestionId,
     provider_message_id,
   } = opts;
   const sentAt = opts.sent_at ?? new Date().toISOString();

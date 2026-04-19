@@ -3,7 +3,6 @@ export const LEAD_STATUSES = [
   "sent",
   "replied",
   "negotiating",
-  "scoped",
   "closed",
   "lost",
   "disqualified",
@@ -15,7 +14,6 @@ export const PIPELINE_STATUSES: LeadStatus[] = [
   "sent",
   "replied",
   "negotiating",
-  "scoped",
   "closed",
 ];
 
@@ -26,7 +24,6 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   sent: "Enviado",
   replied: "Respondeu",
   negotiating: "Negociando",
-  scoped: "Escopo",
   closed: "Fechado",
   lost: "Perdido",
   disqualified: "Desqualificado",
@@ -37,7 +34,6 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
   sent: "bg-blue-500/20 text-blue-400",
   replied: "bg-yellow-500/20 text-yellow-400",
   negotiating: "bg-orange-500/20 text-orange-400",
-  scoped: "bg-purple-500/20 text-purple-400",
   closed: "bg-green-500/20 text-green-400",
   lost: "bg-red-500/20 text-red-400",
   disqualified: "bg-zinc-500/20 text-zinc-500",
@@ -158,20 +154,16 @@ export interface Project {
   currency: string | null;
   status: ProjectStatus;
   created_at: string;
-  proposal_message: string | null;
   claude_code_prompt: string | null;
   pending_info: string | null;
   info_request_message: string | null;
   prompt_updated_at: string | null;
-  client_approved_at: string | null;
 }
 
 export const PROJECT_STATUSES = [
-  "scoped",
   "approved",
   "in_progress",
   "delivered",
-  "client_approved",
   "paid",
   "cancelled",
 ] as const;
@@ -179,11 +171,9 @@ export const PROJECT_STATUSES = [
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  scoped: "Escopo",
   approved: "Aprovado",
   in_progress: "Em progresso",
   delivered: "Entregue",
-  client_approved: "Aprovado pelo cliente",
   paid: "Pago",
   cancelled: "Cancelado",
 };
@@ -204,5 +194,4 @@ export type LeadCard = Pick<
 > & {
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
-  has_proposal?: boolean;
 };

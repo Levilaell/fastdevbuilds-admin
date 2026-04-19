@@ -15,7 +15,7 @@ async function PipelineBoard() {
       .order('status_updated_at', { ascending: false, nullsFirst: false }),
     supabase
       .from('projects')
-      .select('place_id, status, proposal_message'),
+      .select('place_id, status'),
     supabase
       .from('conversations')
       .select('place_id')
@@ -38,7 +38,7 @@ async function PipelineBoard() {
   }
 
   // Build lookup maps
-  const projectMap = new Map<string, { status: string; proposal_message: string | null }>()
+  const projectMap = new Map<string, { status: string }>()
   for (const p of projectsRes.data ?? []) {
     projectMap.set(p.place_id, p)
   }
@@ -50,7 +50,6 @@ async function PipelineBoard() {
       ...lead,
       project_status: (proj?.status as LeadCard['project_status']) ?? null,
       has_unread: unreadSet.has(lead.place_id),
-      has_proposal: proj?.status === 'scoped' && !!proj?.proposal_message,
     }
   })
 

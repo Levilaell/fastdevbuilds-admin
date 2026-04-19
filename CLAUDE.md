@@ -48,7 +48,6 @@ Every WhatsApp/email send for a known lead goes through `dispatchMessage()` in `
 - `last_outbound_at` set, `outreach_error` cleared
 - status transitions `prospected → sent` and `replied → negotiating`
 - `whatsapp_jid` backfilled from the send response, falling back to `lookupJidFromPhone` (Evolution's `/chat/whatsappNumbers/<instance>`) so future inbound webhooks match by JID
-- pending AI suggestions for the lead are dismissed
 - a 24h follow-up is scheduled unless `isFollowUp: true` or `follow_up_paused`
 
 The webhook (`app/api/webhook/whatsapp/route.ts`) replicates the status-transition + outbound-tracking logic for echoes from sends that originated **outside** the dashboard (sales rep typing on their phone, or the prospect-bot writing leads + calling Evolution directly without dispatcher visibility). Keep these two paths in sync.
@@ -72,17 +71,16 @@ Configure via `EVOLUTION_INSTANCES_JSON` (preferred, hot-swappable) or numbered 
 
 ### Auto-reply detection
 
-`lib/auto-reply.ts` — two-tier classifier (strong patterns trigger immediately; weak signals require composite score ≥ 3) plus `isInstantReply` (< 3s after our outbound = auto). When triggered, the inbound is recorded with `approved_by: 'auto-reply'`, `last_auto_reply_at` is set, `follow_up_paused = true`, and pending suggestions are dismissed — but no AI suggestion is generated.
+`lib/auto-reply.ts` — two-tier classifier (strong patterns trigger immediately; weak signals require composite score ≥ 3) plus `isInstantReply` (< 3s after our outbound = auto). When triggered, the inbound is recorded with `approved_by: 'auto-reply'`, `last_auto_reply_at` is set, and `follow_up_paused = true`.
 
 ### AI workflow
 
-`lib/ai-workflow.ts` runs three stages with explicit model choices:
+Two Claude entry points:
 
-- `classifyAndSuggest` (Haiku 4.5) — on every real inbound, writes to `ai_suggestions`
-- `generateProposal` (Sonnet 4) — on demand, writes to `projects`; if a previously-dismissed proposal exists (`proposal_message IS NULL`), it skips regeneration
-- `generateClaudeCodePrompt` (Sonnet 4) — generates the build prompt + placeholder list once a project is scoped
+- `generateClaudeCodePrompt` (Sonnet, in `lib/ai-workflow.ts`) — fires from `PATCH /api/projects/[place_id]/status` when a project moves to `approved`. Writes `claude_code_prompt`, `pending_info`, and `info_request_message` on the project row.
+- `POST /api/conversations/suggest` (Haiku 4.5) — on-demand inline reply suggestion invoked by the reply-box "Sugerir com IA" button. Not persisted.
 
-System/user prompts and the model-version constants live in `lib/prompts.ts` and `lib/ai-workflow.ts`. Country routing (`isUSLead`) controls language, currency, and channel (BR → WhatsApp/PT/BRL, US → email/EN/USD).
+System/user prompts live in `lib/prompts.ts`. Country routing (`isUSLead`) controls language and channel (BR → WhatsApp/PT, US → email/EN).
 
 ### Bot integration
 
@@ -103,14 +101,23 @@ Both require `Authorization: Bearer $BOT_TO_CRM_SECRET` (fail-closed when unset)
 
 ## Schema essentials
 
-Three primary tables (full column list in `lib/types.ts`): `leads` (PK `place_id`), `conversations` (`direction in|out`, `channel whatsapp|email`), `projects` (one per closed lead). `ai_suggestions` carries Claude reply suggestions (status `pending|approved|rejected|sent`).
+Two primary tables (full column list in `lib/types.ts`): `leads` (PK `place_id`) and `conversations` (`direction in|out`, `channel whatsapp|email`). A `projects` row is attached once a lead is being built for (linked by `place_id`).
 
-Lead status enum and pipeline order:
+Lead status flow — `PIPELINE_STATUSES` controls kanban columns; `lost`/`disqualified` are hidden:
 ```
-prospected → sent → replied → negotiating → scoped → closed → finalizado → pago
-                                                            ↘ lost / disqualified
+prospected → sent → replied → negotiating → closed
+                                          ↘ lost / disqualified
 ```
-`PIPELINE_STATUSES` in `lib/types.ts` controls which columns render on the kanban; `lost`/`disqualified`/`finalizado`/`pago` are intentionally hidden there.
+
+Project status flow — `paid` auto-moves the lead to `closed`, `cancelled` auto-moves it to `lost` (both in `app/api/projects/[place_id]/status/route.ts`):
+```
+approved → in_progress → delivered → paid
+       ↘ cancelled (terminal)
+```
+
+Projects are meant to be created manually by the user once the lead is negotiating. The "Criar projeto" button is **planned but not yet implemented** — no UI or endpoint inserts a project row today; `generateClaudeCodePrompt` fires on the status PATCH to `approved` once the row exists.
+
+The inbox renders an 8-step progress bar (`components/inbox/workflow-bar.tsx`) that merges lead + project state into one view.
 
 Migrations are split across `migrations/` (legacy, hand-applied) and `supabase/migrations/` (newer). The schema definitions in `lib/types.ts` are authoritative — if a column there isn't in the DB, run the matching migration.
 

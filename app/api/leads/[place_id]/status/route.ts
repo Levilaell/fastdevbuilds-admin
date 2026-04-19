@@ -1,17 +1,14 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
-import { LEAD_STATUSES, type LeadStatus, type Lead, type Conversation } from '@/lib/types'
-import { getRecentConversations } from '@/lib/supabase/queries'
-import { generateProposal } from '@/lib/ai-workflow'
+import { LEAD_STATUSES, type LeadStatus } from '@/lib/types'
 
 /** Allowed forward transitions — any status can also move to 'lost' or 'disqualified'. */
 const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
   prospected: ['sent', 'lost', 'disqualified'],
   sent: ['replied', 'lost', 'disqualified'],
-  replied: ['negotiating', 'scoped', 'lost', 'disqualified'],
-  negotiating: ['scoped', 'lost', 'disqualified'],
-  scoped: ['closed', 'lost', 'disqualified'],
+  replied: ['negotiating', 'lost', 'disqualified'],
+  negotiating: ['closed', 'lost', 'disqualified'],
   closed: ['lost', 'disqualified'],
   lost: ['prospected', 'sent', 'replied', 'negotiating'],
   disqualified: [],
@@ -71,12 +68,6 @@ export async function PATCH(
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
-  }
-
-  // Fire and forget: generate proposal when moving to 'scoped'
-  if (newStatus === 'scoped') {
-    const conversations = await getRecentConversations(supabase, place_id, 10)
-    generateProposal(data as Lead, conversations as Conversation[]).catch(console.error)
   }
 
   return Response.json(data)

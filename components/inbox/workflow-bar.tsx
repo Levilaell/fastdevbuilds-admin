@@ -1,6 +1,6 @@
 'use client'
 
-import type { LeadStatus, Project, ProjectStatus } from '@/lib/types'
+import type { LeadStatus, ProjectStatus } from '@/lib/types'
 
 interface WorkflowStep {
   number: number
@@ -13,38 +13,28 @@ function getWorkflowSteps(
   leadStatus: LeadStatus,
   projectStatus: ProjectStatus | null,
 ): { steps: WorkflowStep[]; currentStep: number; nextAction: string | null } {
-  // Map the 13-step flow to current state
   const allSteps = [
     'Prospectado',
     'Enviado',
     'Respondeu',
-    'IA sugeriu',
     'Negociando',
-    'Escopo gerado',
-    'Proposta enviada',
-    'Cliente autorizou',
     'Em progresso',
     'Preview enviado',
-    'Cliente aprovou',
-    'PIX enviado',
-    'Pago',
+    'Cliente aprovou e pagou',
+    'Entregue',
   ]
 
   let currentStep = 1
 
-  // Determine current step based on lead + project status
-  if (leadStatus === 'prospected') currentStep = 1
-  else if (leadStatus === 'sent') currentStep = 2
+  if (leadStatus === 'closed') currentStep = 8
+  else if (projectStatus === 'paid') currentStep = 7
+  else if (projectStatus === 'delivered') currentStep = 6
+  else if (projectStatus === 'in_progress') currentStep = 5
+  else if (projectStatus === 'approved') currentStep = 5
+  else if (leadStatus === 'negotiating') currentStep = 4
   else if (leadStatus === 'replied') currentStep = 3
-  else if (leadStatus === 'negotiating') currentStep = 5
-  else if (leadStatus === 'scoped') {
-    if (!projectStatus || projectStatus === 'scoped') currentStep = 6
-    else if (projectStatus === 'approved') currentStep = 8
-    else if (projectStatus === 'in_progress') currentStep = 9
-    else if (projectStatus === 'delivered') currentStep = 10
-    else if (projectStatus === 'client_approved') currentStep = 11
-    else if (projectStatus === 'paid') currentStep = 13
-  } else if (leadStatus === 'closed') currentStep = 13
+  else if (leadStatus === 'sent') currentStep = 2
+  else if (leadStatus === 'prospected') currentStep = 1
 
   const steps = allSteps.map((label, i) => ({
     number: i + 1,
@@ -53,21 +43,16 @@ function getWorkflowSteps(
     done: i + 1 < currentStep,
   }))
 
-  // Determine next action
   let nextAction: string | null = null
   switch (currentStep) {
     case 1: nextAction = 'Enviar mensagem de prospecção'; break
     case 2: nextAction = 'Aguardando resposta do lead'; break
-    case 3: nextAction = 'Responder ao lead (sugestão IA disponível)'; break
-    case 5: nextAction = 'Continuar conversa ou gerar escopo'; break
-    case 6: nextAction = 'Revisar e enviar proposta'; break
-    case 7: nextAction = 'Aguardando autorização do cliente'; break
-    case 8: nextAction = 'Iniciar projeto (prompt gerado)'; break
-    case 9: nextAction = 'Enviar link de preview'; break
-    case 10: nextAction = 'Aguardando aprovação do cliente'; break
-    case 11: nextAction = 'Enviar cobrança PIX'; break
-    case 12: nextAction = 'Aguardando pagamento'; break
-    case 13: nextAction = null; break
+    case 3: nextAction = 'Responder ao lead'; break
+    case 4: nextAction = 'Negociar e criar projeto'; break
+    case 5: nextAction = 'Executar prompt e enviar preview'; break
+    case 6: nextAction = 'Aguardando aprovação e pagamento'; break
+    case 7: nextAction = 'Entregar projeto'; break
+    case 8: nextAction = null; break
   }
 
   return { steps, currentStep, nextAction }
@@ -111,7 +96,7 @@ export default function WorkflowBar({ leadStatus, projectStatus }: Props) {
       {/* Current step + next action */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] text-muted">
-          Etapa {currentStep}/13: <span className="text-text/80">{steps[currentStep - 1]?.label}</span>
+          Etapa {currentStep}/8: <span className="text-text/80">{steps[currentStep - 1]?.label}</span>
         </span>
         {nextAction && (
           <span className="text-[10px] text-accent font-medium truncate">

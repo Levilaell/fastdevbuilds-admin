@@ -45,17 +45,9 @@ export async function PATCH(
 
   const supabase = createServiceClient()
 
-  // Update project status
-  const projectUpdates: Record<string, unknown> = {
-    status: newStatus,
-  }
-  if (newStatus === 'client_approved') {
-    projectUpdates.client_approved_at = new Date().toISOString()
-  }
-
   const { data: project, error } = await supabase
     .from('projects')
-    .update(projectUpdates)
+    .update({ status: newStatus })
     .eq('place_id', place_id)
     .select()
     .single()

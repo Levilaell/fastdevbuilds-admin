@@ -74,19 +74,21 @@ npm run build
 
 ## Database Schema
 
-The app expects these tables in your Supabase project. See `CLAUDE.md` for full column definitions.
+The app expects these tables in your Supabase project. See `CLAUDE.md` for full column definitions and the status flows.
 
 - `leads` — all prospected businesses (PK: `place_id`)
 - `conversations` — message history per lead
-- `projects` — closed deals
+- `projects` — one row per build (linked by `place_id`)
 
 The `lead_status` enum must exist:
 
 ```sql
 CREATE TYPE lead_status AS ENUM (
-  'prospected', 'sent', 'replied', 'negotiating', 'scoped', 'closed', 'lost'
+  'prospected', 'sent', 'replied', 'negotiating', 'closed', 'lost', 'disqualified'
 );
 ```
+
+Project status values are enforced in code (`PROJECT_STATUSES` in `lib/types.ts`): `approved`, `in_progress`, `delivered`, `paid`, `cancelled`.
 
 ## Deploy to Vercel
 

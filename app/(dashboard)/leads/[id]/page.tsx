@@ -15,7 +15,6 @@ import PainScoreCard from '@/components/lead-detail/pain-score-card'
 import OutreachCard from '@/components/lead-detail/outreach-card'
 import StatusSelect from '@/components/lead-detail/status-select'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
-import ProposalCard from '@/components/proposal-card'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
 
 function LeadDetailSkeleton() {
@@ -190,14 +189,6 @@ async function LeadDetailContent({ id }: { id: string }) {
             <h2 className="text-xs font-semibold text-text uppercase tracking-wide mb-3">Pipeline</h2>
             <StatusSelect placeId={lead.place_id} initialStatus={lead.status} />
           </div>
-
-          {/* Proposal card (when project is scoped) */}
-          {project && project.status === 'scoped' && project.proposal_message && (
-            <ProposalCard
-              project={project}
-              placeId={lead.place_id}
-            />
-          )}
 
           {/* Project status (when project exists) */}
           {project && (

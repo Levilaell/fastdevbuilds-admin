@@ -50,7 +50,6 @@ const FUNNEL_ORDER = [
   "sent",
   "replied",
   "negotiating",
-  "scoped",
   "closed",
 ] as const;
 
@@ -109,7 +108,7 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
   const totalLeads = leads.length;
   const sentCount = leads.filter((l) => l.outreach_sent).length;
   const respondedCount = leads.filter((l) =>
-    ["replied", "negotiating", "scoped", "closed"].includes(l.status),
+    ["replied", "negotiating", "closed"].includes(l.status),
   ).length;
   const responseRate = sentCount > 0 ? respondedCount / sentCount : 0;
   const negotiating = leads.filter((l) => l.status === "negotiating").length;
