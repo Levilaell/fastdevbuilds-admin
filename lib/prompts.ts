@@ -1,82 +1,95 @@
-import type { Lead, Project } from '@/lib/types'
+import type { Lead, Project } from "@/lib/types";
 
 // ─── Helpers used by prompt builders ───
 
 /** Detect if a lead is from the US market. */
 export function isUSLead(lead: Lead): boolean {
-  return lead.country === 'US' || lead.outreach_channel === 'email'
+  return lead.country === "US" || lead.outreach_channel === "email";
 }
 
 /** Classify PageSpeed performance into qualitative levels. */
-function perfLabel(mobileScore: number | null, lcp: number | null, lang: 'pt' | 'en' = 'pt'): string | null {
-  if (lang === 'en') {
+function perfLabel(
+  mobileScore: number | null,
+  lcp: number | null,
+  lang: "pt" | "en" = "pt",
+): string | null {
+  if (lang === "en") {
     if (mobileScore != null) {
-      if (mobileScore < 30) return 'very poor performance'
-      if (mobileScore < 50) return 'poor performance'
-      if (mobileScore < 70) return 'average performance'
-      return 'good performance'
+      if (mobileScore < 30) return "very poor performance";
+      if (mobileScore < 50) return "poor performance";
+      if (mobileScore < 70) return "average performance";
+      return "good performance";
     }
     if (lcp != null) {
-      if (lcp > 6000) return 'very slow loading'
-      if (lcp > 4000) return 'slow loading'
-      if (lcp > 2500) return 'average loading'
-      return 'fast loading'
+      if (lcp > 6000) return "very slow loading";
+      if (lcp > 4000) return "slow loading";
+      if (lcp > 2500) return "average loading";
+      return "fast loading";
     }
-    return null
+    return null;
   }
   if (mobileScore != null) {
-    if (mobileScore < 30) return 'desempenho muito ruim'
-    if (mobileScore < 50) return 'desempenho ruim'
-    if (mobileScore < 70) return 'desempenho mediano'
-    return 'desempenho bom'
+    if (mobileScore < 30) return "desempenho muito ruim";
+    if (mobileScore < 50) return "desempenho ruim";
+    if (mobileScore < 70) return "desempenho mediano";
+    return "desempenho bom";
   }
   if (lcp != null) {
-    if (lcp > 6000) return 'carregamento muito lento'
-    if (lcp > 4000) return 'carregamento lento'
-    if (lcp > 2500) return 'carregamento mediano'
-    return 'carregamento rápido'
+    if (lcp > 6000) return "carregamento muito lento";
+    if (lcp > 4000) return "carregamento lento";
+    if (lcp > 2500) return "carregamento mediano";
+    return "carregamento rápido";
   }
-  return null
+  return null;
 }
 
 function buildLeadContext(lead: Lead, reasonsText: string): string {
-  const lang = isUSLead(lead) ? 'en' : 'pt'
+  const lang = isUSLead(lead) ? "en" : "pt";
 
-  if (lang === 'en') {
+  if (lang === "en") {
     const lines = [
-      `- Business: ${lead.business_name ?? 'Unknown'}`,
-      `- City: ${lead.city ?? '—'}`,
-      `- Website: ${lead.website ?? 'no website'}`,
-      `- Tech stack: ${lead.tech_stack ?? '—'}`,
-      `- Pain score: ${lead.pain_score ?? '—'}/10`,
-      `- Detected problems: ${reasonsText || 'None'}`,
-    ]
-    const perf = perfLabel(lead.mobile_score, lead.lcp, 'en')
-    if (perf) lines.push(`- PageSpeed (tested by Google): ${perf}`)
-    if (lead.has_ssl === false) lines.push('- SSL: NO certificate (insecure site)')
-    if (lead.is_mobile_friendly === false) lines.push('- Mobile: NOT optimized for mobile screens')
-    if (lead.visual_score != null) lines.push(`- Visual score: ${lead.visual_score}/10`)
-    if (lead.visual_notes) lines.push(`- Visual notes: ${lead.visual_notes}`)
-    if (lead.scrape_failed) lines.push('- Site analysis: FAILED (site may be offline or blocking)')
-    return lines.join('\n')
+      `- Business: ${lead.business_name ?? "Unknown"}`,
+      `- City: ${lead.city ?? "—"}`,
+      `- Website: ${lead.website ?? "no website"}`,
+      `- Tech stack: ${lead.tech_stack ?? "—"}`,
+      `- Pain score: ${lead.pain_score ?? "—"}/10`,
+      `- Detected problems: ${reasonsText || "None"}`,
+    ];
+    const perf = perfLabel(lead.mobile_score, lead.lcp, "en");
+    if (perf) lines.push(`- PageSpeed (tested by Google): ${perf}`);
+    if (lead.has_ssl === false)
+      lines.push("- SSL: NO certificate (insecure site)");
+    if (lead.is_mobile_friendly === false)
+      lines.push("- Mobile: NOT optimized for mobile screens");
+    if (lead.visual_score != null)
+      lines.push(`- Visual score: ${lead.visual_score}/10`);
+    if (lead.visual_notes) lines.push(`- Visual notes: ${lead.visual_notes}`);
+    if (lead.scrape_failed)
+      lines.push("- Site analysis: FAILED (site may be offline or blocking)");
+    return lines.join("\n");
   }
 
   const lines = [
-    `- Negócio: ${lead.business_name ?? 'Desconhecido'}`,
-    `- Cidade: ${lead.city ?? '—'}`,
-    `- Site: ${lead.website ?? 'sem site'}`,
-    `- Tech stack: ${lead.tech_stack ?? '—'}`,
-    `- Score de dor: ${lead.pain_score ?? '—'}/10`,
-    `- Problemas detectados: ${reasonsText || 'Nenhum'}`,
-  ]
-  const perf = perfLabel(lead.mobile_score, lead.lcp)
-  if (perf) lines.push(`- PageSpeed (testado pelo Google): ${perf}`)
-  if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
-  if (lead.is_mobile_friendly === false) lines.push('- Mobile: NÃO é otimizado para celular')
-  if (lead.visual_score != null) lines.push(`- Visual score: ${lead.visual_score}/10`)
-  if (lead.visual_notes) lines.push(`- Visual notes: ${lead.visual_notes}`)
-  if (lead.scrape_failed) lines.push('- Análise do site: FALHOU (site pode estar offline ou bloqueando)')
-  return lines.join('\n')
+    `- Negócio: ${lead.business_name ?? "Desconhecido"}`,
+    `- Cidade: ${lead.city ?? "—"}`,
+    `- Site: ${lead.website ?? "sem site"}`,
+    `- Tech stack: ${lead.tech_stack ?? "—"}`,
+    `- Score de dor: ${lead.pain_score ?? "—"}/10`,
+    `- Problemas detectados: ${reasonsText || "Nenhum"}`,
+  ];
+  const perf = perfLabel(lead.mobile_score, lead.lcp);
+  if (perf) lines.push(`- PageSpeed (testado pelo Google): ${perf}`);
+  if (lead.has_ssl === false) lines.push("- SSL: NÃO tem (site inseguro)");
+  if (lead.is_mobile_friendly === false)
+    lines.push("- Mobile: NÃO é otimizado para celular");
+  if (lead.visual_score != null)
+    lines.push(`- Visual score: ${lead.visual_score}/10`);
+  if (lead.visual_notes) lines.push(`- Visual notes: ${lead.visual_notes}`);
+  if (lead.scrape_failed)
+    lines.push(
+      "- Análise do site: FALHOU (site pode estar offline ou bloqueando)",
+    );
+  return lines.join("\n");
 }
 
 // ─── Suggestion prompt (reply-box "Sugerir com IA") ───
@@ -124,7 +137,7 @@ Rules:
 - If price comes up: affordable pricing + "you only pay if you like the result"
 - If NO technical data exists, ask what the lead needs — be curious, not salesy
 - Services: websites, automations, custom software, internal tools, API integrations
-- Sign as Levi`
+- Sign as Levi`;
   }
 
   return `Você é Levi, desenvolvedor freelancer da FastDevBuilds. Você faz sites, automações e software custom para pequenos negócios.
@@ -161,20 +174,23 @@ Regras:
 - Tom: informal, direto, pt-BR — como mensagem real, não script de vendas
 - SEMPRE referência UM problema real detectado (quando existir)
 - NÃO sugira calls, ligações, reuniões ou videochamadas
-- Se falar de preço: "só paga se gostar" — vê o resultado antes de pagar, via PIX
+- Se falar de preço: "só paga se gostar" — vê o resultado antes de pagar
 - Se NÃO há dados técnicos, pergunte o que o lead precisa — seja curioso, não vendedor
-- Assine como Levi`
+- Assine como Levi`;
 }
 
-export const SUGGESTION_USER_WITH_HISTORY = (history: string, lead?: Lead): string => {
+export const SUGGESTION_USER_WITH_HISTORY = (
+  history: string,
+  lead?: Lead,
+): string => {
   if (lead && isUSLead(lead)) {
-    return `Conversation history:\n${history}\n\nSuggest the next message.`
+    return `Conversation history:\n${history}\n\nSuggest the next message.`;
   }
-  return `Histórico da conversa:\n${history}\n\nSugira a próxima mensagem.`
-}
+  return `Histórico da conversa:\n${history}\n\nSugira a próxima mensagem.`;
+};
 
 export const SUGGESTION_USER_NO_HISTORY =
-  'Ainda não houve conversa. Sugira a primeira mensagem de abordagem.'
+  "Ainda não houve conversa. Sugira a primeira mensagem de abordagem.";
 
 // ─── Generate Claude Code Site Prompt ───
 
@@ -334,7 +350,7 @@ Pode me mandar isso? Assim que receber já começo.
 
 Levi
 
-If there are NO placeholders (all info is available), set placeholders to [] and info_request_message to null.`
+If there are NO placeholders (all info is available), set placeholders to [] and info_request_message to null.`;
 
 export function buildClaudeCodeUserPrompt(
   lead: Lead,
@@ -343,65 +359,83 @@ export function buildClaudeCodeUserPrompt(
   scopeText: string,
   conversationHistory: string,
 ): string {
-  const hasWebsite = Boolean(lead.website)
-  const phoneDigits = (lead.phone ?? '').replace(/\D/g, '')
+  const hasWebsite = Boolean(lead.website);
+  const phoneDigits = (lead.phone ?? "").replace(/\D/g, "");
 
   const lines: string[] = [
-    'DADOS DO CLIENTE:',
-    `- Nome do negócio: ${lead.business_name ?? 'Desconhecido'}`,
-    `- Nicho: ${lead.niche ?? 'não informado'}`,
-    `- Cidade: ${lead.city ?? '—'}`,
-    `- Endereço: ${lead.address ?? '—'}`,
-    `- Telefone: ${lead.phone ?? 'não disponível'} (dígitos: ${phoneDigits})`,
-    `- Google Rating: ${lead.rating ?? '—'} (${lead.review_count ?? 0} avaliações)`,
-    `- Site atual: ${hasWebsite ? lead.website! : 'SEM SITE — criar o primeiro site do negócio'}`,
-    `- País: ${lead.country ?? 'BR'}`,
-    '',
-  ]
+    "DADOS DO CLIENTE:",
+    `- Nome do negócio: ${lead.business_name ?? "Desconhecido"}`,
+    `- Nicho: ${lead.niche ?? "não informado"}`,
+    `- Cidade: ${lead.city ?? "—"}`,
+    `- Endereço: ${lead.address ?? "—"}`,
+    `- Telefone: ${lead.phone ?? "não disponível"} (dígitos: ${phoneDigits})`,
+    `- Google Rating: ${lead.rating ?? "—"} (${lead.review_count ?? 0} avaliações)`,
+    `- Site atual: ${hasWebsite ? lead.website! : "SEM SITE — criar o primeiro site do negócio"}`,
+    `- País: ${lead.country ?? "BR"}`,
+    "",
+  ];
 
-  lines.push('ANÁLISE TÉCNICA DO SITE ATUAL:')
+  lines.push("ANÁLISE TÉCNICA DO SITE ATUAL:");
   if (hasWebsite) {
-    lines.push(`- Tech stack atual: ${lead.tech_stack ?? 'desconhecido'} (NÃO replicar — o novo site será Next.js 15)`)
-    lines.push(`- Pain score: ${lead.pain_score ?? '—'}/10`)
-    lines.push(`- Problemas detectados: ${reasonsText || 'Nenhum'}`)
-    if (lead.visual_score != null) lines.push(`- Visual score: ${lead.visual_score}/10`)
+    lines.push(
+      `- Tech stack atual: ${lead.tech_stack ?? "desconhecido"} (NÃO replicar — o novo site será Next.js 15)`,
+    );
+    lines.push(`- Pain score: ${lead.pain_score ?? "—"}/10`);
+    lines.push(`- Problemas detectados: ${reasonsText || "Nenhum"}`);
+    if (lead.visual_score != null)
+      lines.push(`- Visual score: ${lead.visual_score}/10`);
     if (lead.visual_notes?.length) {
-      const notes = Array.isArray(lead.visual_notes) ? lead.visual_notes.join('; ') : lead.visual_notes
-      lines.push(`- Notas visuais da IA: ${notes}`)
+      const notes = Array.isArray(lead.visual_notes)
+        ? lead.visual_notes.join("; ")
+        : lead.visual_notes;
+      lines.push(`- Notas visuais da IA: ${notes}`);
     }
-    const perf = perfLabel(lead.mobile_score, lead.lcp)
-    if (perf) lines.push(`- Performance mobile: ${perf}`)
-    if (lead.mobile_score != null) lines.push(`- Mobile score: ${lead.mobile_score}/100`)
-    if (lead.lcp != null) lines.push(`- LCP: ${lead.lcp}ms`)
-    if (lead.has_ssl === false) lines.push('- SSL: NÃO tem (site inseguro)')
-    if (lead.is_mobile_friendly === false) lines.push('- Mobile-friendly: NÃO')
+    const perf = perfLabel(lead.mobile_score, lead.lcp);
+    if (perf) lines.push(`- Performance mobile: ${perf}`);
+    if (lead.mobile_score != null)
+      lines.push(`- Mobile score: ${lead.mobile_score}/100`);
+    if (lead.lcp != null) lines.push(`- LCP: ${lead.lcp}ms`);
+    if (lead.has_ssl === false) lines.push("- SSL: NÃO tem (site inseguro)");
+    if (lead.is_mobile_friendly === false) lines.push("- Mobile-friendly: NÃO");
   } else {
-    lines.push('- Cliente sem site — não há análise técnica. Criar o primeiro site do zero.')
+    lines.push(
+      "- Cliente sem site — não há análise técnica. Criar o primeiro site do zero.",
+    );
   }
-  lines.push('')
+  lines.push("");
 
-  lines.push('HISTÓRICO DE CONVERSA (usar para entender o que o cliente quer):')
-  lines.push(conversationHistory || 'Nenhuma conversa registrada.')
-  lines.push('')
+  lines.push(
+    "HISTÓRICO DE CONVERSA (usar para entender o que o cliente quer):",
+  );
+  lines.push(conversationHistory || "Nenhuma conversa registrada.");
+  lines.push("");
 
   if (project.notes && project.notes.trim()) {
-    lines.push('## Observações do Levi')
-    lines.push('Observações e preferências manuais do Levi (tratar como prioridade alta, sobrepõe inferências):')
-    lines.push(project.notes.trim())
-    lines.push('')
+    lines.push("## Observações do Levi");
+    lines.push(
+      "Observações e preferências manuais do Levi (tratar como prioridade alta, sobrepõe inferências):",
+    );
+    lines.push(project.notes.trim());
+    lines.push("");
   }
 
-  lines.push('ESCOPO APROVADO (cada item é OBRIGATÓRIO):')
-  lines.push(`- ${scopeText}`)
-  lines.push('')
+  lines.push("ESCOPO APROVADO (cada item é OBRIGATÓRIO):");
+  lines.push(`- ${scopeText}`);
+  lines.push("");
 
-  lines.push('INSTRUÇÕES FINAIS:')
-  lines.push('- Gere o prompt completo seguindo TODAS as seções do system prompt.')
-  lines.push('- Se o cliente mencionou serviços, cores ou preferências na conversa → PRIORIDADE sobre inferência por nicho.')
-  lines.push('- Se informação estiver faltando para executar, liste como placeholder e gere a info_request_message.')
-  lines.push('- O prompt final deve ser colável diretamente no Claude Code sem edição.')
+  lines.push("INSTRUÇÕES FINAIS:");
+  lines.push(
+    "- Gere o prompt completo seguindo TODAS as seções do system prompt.",
+  );
+  lines.push(
+    "- Se o cliente mencionou serviços, cores ou preferências na conversa → PRIORIDADE sobre inferência por nicho.",
+  );
+  lines.push(
+    "- Se informação estiver faltando para executar, liste como placeholder e gere a info_request_message.",
+  );
+  lines.push(
+    "- O prompt final deve ser colável diretamente no Claude Code sem edição.",
+  );
 
-  return lines.join('\n')
+  return lines.join("\n");
 }
-
-
