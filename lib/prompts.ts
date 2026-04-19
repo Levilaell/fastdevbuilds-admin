@@ -384,6 +384,13 @@ export function buildClaudeCodeUserPrompt(
   lines.push(conversationHistory || 'Nenhuma conversa registrada.')
   lines.push('')
 
+  if (project.notes && project.notes.trim()) {
+    lines.push('## Observações do Levi')
+    lines.push('Observações e preferências manuais do Levi (tratar como prioridade alta, sobrepõe inferências):')
+    lines.push(project.notes.trim())
+    lines.push('')
+  }
+
   lines.push('ESCOPO APROVADO (cada item é OBRIGATÓRIO):')
   lines.push(`- ${scopeText}`)
   lines.push('')

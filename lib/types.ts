@@ -150,6 +150,7 @@ export interface Project {
   id: string;
   place_id: string;
   scope: string | null;
+  notes: string | null;
   price: number | null;
   currency: string | null;
   status: ProjectStatus;

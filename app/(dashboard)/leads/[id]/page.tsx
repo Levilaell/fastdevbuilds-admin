@@ -16,6 +16,7 @@ import OutreachCard from '@/components/lead-detail/outreach-card'
 import StatusSelect from '@/components/lead-detail/status-select'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
+import CreateProjectButton from '@/components/lead-detail/create-project-button'
 
 function LeadDetailSkeleton() {
   return (
@@ -190,11 +191,16 @@ async function LeadDetailContent({ id }: { id: string }) {
             <StatusSelect placeId={lead.place_id} initialStatus={lead.status} />
           </div>
 
-          {/* Project status (when project exists) */}
-          {project && (
+          {/* Project — create button when none exists, status section otherwise */}
+          {project ? (
             <ProjectStatusSection
               project={project}
               placeId={lead.place_id}
+            />
+          ) : (
+            <CreateProjectButton
+              placeId={lead.place_id}
+              businessName={lead.business_name ?? 'lead'}
             />
           )}
         </div>
