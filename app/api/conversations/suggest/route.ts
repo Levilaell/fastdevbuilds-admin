@@ -45,12 +45,14 @@ export async function POST(request: NextRequest) {
     .map((c) => `[${c.direction === 'out' ? 'Levi' : 'Lead'}] ${c.message}`)
     .join('\n')
 
-  const systemPrompt = buildSuggestionSystemPrompt(lead, reasons, STATUS_LABELS[lead.status])
+  const inboundCount = conversations.filter((c) => c.direction === 'in').length
+  const phase: 'inicial' | 'engajado' = inboundCount >= 3 ? 'engajado' : 'inicial'
+  const systemPrompt = buildSuggestionSystemPrompt(lead, reasons, STATUS_LABELS[lead.status], phase)
 
   const anthropic = new Anthropic()
 
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-sonnet-4-6',
     max_tokens: 300,
     system: systemPrompt,
     messages: [

@@ -6,7 +6,7 @@ import {
   buildClaudeCodeUserPrompt,
 } from '@/lib/prompts'
 
-const MODEL_SMART = 'claude-sonnet-4-20250514'
+const MODEL_SMART = 'claude-opus-4-7'
 
 function cleanJson(text: string): string {
   return text
