@@ -1,3 +1,107 @@
+# Changelog
+
+## Session 2026-04-20 — Applied fixes + live validation
+
+Sessão de teste end-to-end do fluxo de entrega, com validação real do
+sistema (suggestion prompt + claude-code generation) contra lead sintético
+Barbearia Corte Fino. Resultados aplicados diretamente no código.
+
+### Fixes aplicados (commit 68d0bbe)
+
+**Fix #2 — Remove "48h prototype": DONE**
+Removido de buildSuggestionSystemPrompt e substituído por "ainda hoje" /
+"em algumas horas". Testado em conversa real — sugestão não mais
+promete 48h arbitrário.
+
+**Fix #3 — Remove depoimentos fictícios: DONE**
+Seção "Avaliações" inteira removida do CLAUDE_CODE_SITE_SYSTEM_PROMPT.
+Badge Google (rating + review count real) agora aparece no Hero e no
+CTA final, apontando para busca real no Google Maps. Zero conteúdo
+fabricado nos sites gerados.
+
+**Fix #4 — Remove URLs Unsplash inventadas: DONE**
+Proibição explícita de qualquer banco de imagens no prompt. Galeria e
+hero agora usam gradientes CSS + SVG placeholders com comentário JSX
+{/*PLACEHOLDER: substituir por foto real*/}. Testado: Claude Code gerou
+galeria com 6 placeholders elegantes sem nenhuma URL externa.
+
+**Fix #5 — Expandir paleta de cores: DONE (parcial)**
+Adicionados 4 nichos novos: contabilidade/advocacia (azul-marinho),
+imobiliária/construção (terracota), psicologia/terapia (lilás pastel),
+pilates/estúdio (verde claro). Paleta agora cobre 10 segmentos vs 6
+originais. Ainda não cobre todos os 20 nichos do bot — resto cai em
+"Outros" por ora.
+
+**Fix #8 — Não repetir problema já mencionado: MITIGATED**
+Reescrita do suggestion prompt em princípios (não branches) incluiu
+princípio P2 "NÃO ECOAR". Testado em 4 cenários — modelo parou de
+repetir lista que cliente acabou de falar.
+
+**Fix #10 — Regra prazo/preço específico: DONE**
+Implementado via nova arquitetura: endpoint calcula phase
+('inicial' ou 'engajado') baseado em count de mensagens inbound.
+Phase injetada como contexto flat no system prompt. Regra de preço
+virou lookup direto em vez de conditional interpretativo. Accuracy:
+0% antes do fix (modelo sempre escolhia 'inicial'), 100% depois.
+
+### Novos achados (validados em teste real)
+
+**Novo fix A — Anti-promessa operacional: APPLIED**
+Modelo tendia a gerar "sem fila de espera" como diferencial — promessa
+que depende da operação do cliente. Regra nova proíbe este tipo de
+linguagem. Trocar por "horário respeitado" ou "agendamento com hora
+marcada" (processo, não garantia de resultado).
+
+**Novo fix B — Contraste em fundo de destaque: APPLIED**
+CTA final com fundo dourado estava gerando botão dourado+preto (baixo
+contraste). Regra nova força botão sólido escuro (#1A1A1A) com texto
+branco em qualquer seção de fundo destaque. Melhora conversão do CTA
+mais importante do site.
+
+### Aprendizado arquitetural
+
+Condicionais interpretativas em system prompts falham independente do
+modelo (testado Haiku 4.5 e Sonnet 4.6 — ambos ignoraram). Solução:
+calcular a decisão fora do LLM (código), injetar resultado flat no
+contexto, modelo só executa lookup. Padrão reusável para outras regras
+complexas futuras.
+
+### Models atualizados
+
+- app/api/conversations/suggest: claude-haiku-4-5 → claude-sonnet-4-6
+- lib/ai-workflow (generateClaudeCodePrompt):
+  claude-sonnet-4-20250514 → claude-opus-4-7
+
+Custo adicional estimado no volume atual: ~R$ 15/mês. Ganho:
+consistência de output + qualidade superior de site gerado.
+
+### Validação end-to-end
+
+Fluxo testado: lead BR sem website → outreach (histórico) → 6 turnos de
+Sugerir com IA → criar projeto com observações → gerar prompt Claude
+Code → rodar em pasta local → site Next.js funcional em ~15min.
+
+Qualidade do site gerado: acima da média do mercado BR SMB local
+(R$ 800-1.500 range). Compete com agência local de R$ 2.5-4k em
+qualidade visual, entregando em 20 minutos.
+
+### Pendentes
+
+**Ainda não aplicados (aguardando primeiro cliente real):**
+
+- Fix #7 expandido — adicionar todos os 20 nichos do bot
+- Fix #9 — Reescrever CLAUDE_CODE_SITE_SYSTEM_PROMPT em PT (hoje
+  instruções em EN, output em PT — refactor de ~1-2h, impacto médio)
+- Reforma inputs de criação de projeto — substituir textarea único por
+  campos estruturados (Instagram URL, site antigo, site referência,
+  observações). Abre possibilidade de Claude Code extrair paleta real
+  do Instagram do cliente antes de gerar.
+
+**Rejected / deferred para fase futura:**
+
+- Substituir VISUAL_SYSTEM por scorer determinístico — decisão mantida:
+  aguardar 3+ clientes fechados antes de investir 3-4h nessa troca.
+
 # Auditoria FastDevBuilds — 2026-04-19
 
 Contexto: auditoria completa dos prompts de IA + arquitetura do sistema,
