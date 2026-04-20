@@ -9,6 +9,7 @@ interface RawRow {
   message: string
   sent_at: string
   read_at: string | null
+  approved_by: string | null
 }
 
 interface LeadInfo {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
   // conversations table which can exceed PostgREST URL length limits.
   const { data: convData, error: convError } = await supabase
     .from('conversations')
-    .select('place_id, direction, message, sent_at, read_at')
+    .select('place_id, direction, message, sent_at, read_at, approved_by')
     .order('sent_at', { ascending: false })
     .range(0, 9999)
 
@@ -56,6 +57,12 @@ export async function GET(request: NextRequest) {
   }>()
 
   for (const row of rows) {
+    // Skip auto-replies entirely: they shouldn't define last_message or count
+    // as unread. Real conversations (humans who also triggered an auto-reply
+    // before) continue working because the regular messages come through.
+    const isAutoReply = row.approved_by === 'auto-reply'
+    if (isAutoReply) continue
+
     const existing = convMap.get(row.place_id)
     const isUnread = row.direction === 'in' && !row.read_at
 
