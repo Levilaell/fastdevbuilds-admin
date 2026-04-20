@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
-import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project } from '@/lib/types'
+import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project, type GeneratedImages } from '@/lib/types'
 import {
   CLAUDE_CODE_SITE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
 } from '@/lib/prompts'
+import { generateSiteImages } from '@/lib/image-generator'
 
 const MODEL_SMART = 'claude-opus-4-7'
 
@@ -76,6 +77,8 @@ export async function generateClaudeCodePrompt(
   let prompt: string
   let pendingInfo: string | null = null
   let infoRequestMessage: string | null = null
+  let services: string[] = []
+  let palette: string | null = null
 
   try {
     const parsed = JSON.parse(cleanJson(text))
@@ -85,9 +88,47 @@ export async function generateClaudeCodePrompt(
       pendingInfo = JSON.stringify(placeholders)
     }
     infoRequestMessage = parsed.info_request_message ?? null
+    if (Array.isArray(parsed.services)) {
+      services = parsed.services.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+    }
+    if (typeof parsed.palette === 'string' && parsed.palette.trim()) {
+      palette = parsed.palette.trim()
+    }
   } catch {
     // Fallback: if Claude didn't return valid JSON, use raw text as prompt
     prompt = text
+  }
+
+  // Best-effort image generation — fail silently so the prompt still reaches the user.
+  let images: GeneratedImages | null = null
+  if (palette && services.length > 0) {
+    try {
+      images = await generateSiteImages({
+        niche: lead.niche ?? 'business',
+        palette,
+        services,
+        projectId: project.id,
+      })
+    } catch (err) {
+      console.error('[ai-workflow] generateSiteImages threw', err)
+    }
+  }
+
+  if (images) {
+    const lines = [
+      '',
+      '## Imagens disponíveis',
+      `Hero: ${images.hero}`,
+    ]
+    if (images.services.length > 0) {
+      lines.push('Serviços:')
+      for (const s of images.services) {
+        lines.push(`- ${s.name}: ${s.url}`)
+      }
+    }
+    lines.push('')
+    lines.push('Use essas URLs diretamente em <img src>. NÃO use placeholders coloridos ou gradientes onde houver imagem disponível.')
+    prompt = `${prompt}\n${lines.join('\n')}`
   }
 
   const supabase = serviceClient()
@@ -98,6 +139,7 @@ export async function generateClaudeCodePrompt(
       pending_info: pendingInfo,
       info_request_message: infoRequestMessage,
       prompt_updated_at: new Date().toISOString(),
+      generated_images: images,
     })
     .eq('place_id', lead.place_id)
 

@@ -146,6 +146,11 @@ export interface BotRun {
 
 // ─── Projects ───
 
+export interface GeneratedImages {
+  hero: string;
+  services: Array<{ name: string; url: string }>;
+}
+
 export interface Project {
   id: string;
   place_id: string;
@@ -159,6 +164,7 @@ export interface Project {
   pending_info: string | null;
   info_request_message: string | null;
   prompt_updated_at: string | null;
+  generated_images: GeneratedImages | null;
 }
 
 export const PROJECT_STATUSES = [

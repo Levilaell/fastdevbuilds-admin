@@ -253,12 +253,31 @@ Your output will be pasted DIRECTLY into Claude Code and executed without any ma
 
 CRITICAL: Write everything in Portuguese (pt-BR).
 
-Respond ONLY with valid JSON (no markdown, no explanation):
+CRITICAL OUTPUT REQUIREMENT — READ THIS FIRST:
+You MUST return a JSON object with EXACTLY these 5 keys. Missing "services" or "palette" causes the image generation pipeline to fail silently, leaving the site without any visual assets. This is NOT optional — every response must include all 5 keys.
+
+Required keys:
+1. "prompt" (string) — the complete Claude Code prompt
+2. "placeholders" (array of strings) — list of missing info items (empty array if none)
+3. "info_request_message" (string or null) — WhatsApp message asking for missing info, or null
+4. "services" (array of 4-6 strings) — exact service names used in the prompt's "Serviços" section
+5. "palette" (string) — plain English color description for image generation (NOT hex codes)
+
+Example of a valid complete response:
 {
-  "prompt": "the complete Claude Code prompt following the exact structure below",
-  "placeholders": ["item faltando 1", "item faltando 2"],
-  "info_request_message": "WhatsApp message asking the client for missing info, or null if nothing is missing"
+  "prompt": "## Briefing...",
+  "placeholders": ["endereço completo", "horário de sábado"],
+  "info_request_message": "Oi! Pra finalizar seu site, me confirma 2 coisas rápidas: endereço completo e horário de sábado. Valeu!",
+  "services": ["Psicoterapia Adulto", "Psicoterapia Infantil", "Avaliação Neuropsicológica", "Orientação Parental"],
+  "palette": "soft lilac with warm cream background, subtle sage green accents"
 }
+
+Respond ONLY with valid JSON (no markdown, no explanation).
+
+ADDITIONAL NOTES on "services" and "palette":
+- "services" MUST match the exact service names from the "Serviços" section of the prompt — 4 to 6 items.
+- "palette" must be a short natural English phrase describing the chosen colors — used downstream by an image generation API that speaks English only.
+- Always return both fields, even when the client has a site (infer palette description from the hex values you extracted).
 
 THE "prompt" FIELD MUST FOLLOW THIS EXACT STRUCTURE (include ALL sections, in this order):
 
@@ -339,7 +358,7 @@ Write the exact hex values chosen.]
    - Headline: focada em BENEFÍCIO para o cliente, NÃO no nome do negócio (ex: "Seu sorriso merece o melhor cuidado" em vez de "Bem-vindo à Clínica X")
    - Subtítulo: 1-2 linhas reforçando o diferencial
    - 2 botões: primário (WhatsApp, cor de destaque, grande) + secundário (scroll para serviços, outline)
-   - Background: gradiente CSS puro usando 2-3 cores da paleta (nunca usar URL de imagem do Unsplash ou qualquer banco de imagens — essas URLs falham)
+   - Background: se houver URL de hero na seção "Imagens disponíveis" do briefing, usar como background-image com overlay suave nas cores da paleta. Caso contrário, gradiente CSS puro usando 2-3 cores da paleta.
    - O botão WhatsApp é o elemento MAIS VISÍVEL da seção
 
 3. **Serviços (py-20)**
@@ -384,7 +403,7 @@ Write the exact hex values chosen.]
 - Espaçamento generoso entre seções: py-20 mínimo
 - Tipografia: títulos em font-bold com tracking-tight, corpo em text-gray-600 ou equivalente na paleta
 - Ícones SVG inline — NÃO usar bibliotecas de ícones externas
-- NUNCA usar URLs do Unsplash, Pexels, ou qualquer banco de imagens — muitas URLs falham e destroem o preview. Em vez disso: usar gradientes CSS, divs estilizadas com ícones SVG, ou placeholders coloridos com comentário {/* PLACEHOLDER: substituir por foto real do cliente */}
+- Use APENAS as URLs fornecidas na seção "Imagens disponíveis" do briefing (quando existir) — hero e imagens por serviço. NÃO invente URLs externas (Unsplash, Pexels, bancos de imagens) — elas falham e destroem o preview. Se a seção "Imagens disponíveis" estiver ausente, ou se faltar URL para alguma seção específica, aí sim usar gradiente CSS + ícones SVG + divs coloridas com {/* PLACEHOLDER: substituir por foto real do cliente */}
 - NUNCA prometer comportamento que dependa da operação do cliente (ex: "sem fila", "atendimento imediato", "resposta em 5 minutos") — em vez disso usar frases sobre o processo, não garantia de resultado (ex: "horário respeitado", "agendamento pelo WhatsApp", "atendimento com hora marcada")
 - Em seções com fundo em cor de destaque (ex: CTA final com fundo dourado), botões devem ter contraste alto — preferir botão preto sólido (#1A1A1A) com texto branco (#F5F5F5), nunca botão com fundo da mesma família de cor do fundo da seção
 
