@@ -47,9 +47,9 @@ function SkeletonCard() {
 
 export function KanbanSkeleton() {
   return (
-    <div className="grid grid-cols-6 gap-2 pb-4 px-6 pt-4">
+    <div className="flex gap-2 pb-4 px-3 sm:px-6 pt-4 overflow-x-auto">
       {PIPELINE_STATUSES.map((status) => (
-        <div key={status} className="min-w-0">
+        <div key={status} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink">
           <div className="flex items-center gap-2 mb-3 px-3 pt-3">
             <div className="h-4 bg-border rounded w-20" />
             <div className="h-5 bg-border rounded w-7" />
@@ -197,7 +197,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
 
   return (
     <>
-      <div className="px-6 pt-4">
+      <div className="px-3 sm:px-6 pt-4">
         <PipelineFilters
           search={search}
           onSearchChange={setSearch}
@@ -212,11 +212,11 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-6 gap-2 pb-4 px-6">
+        <div className="flex gap-2 pb-4 px-3 sm:px-6 overflow-x-auto">
           {PIPELINE_STATUSES.map((status) => {
             const cards = grouped[status] ?? []
             return (
-              <div key={status} className="min-w-0 bg-sidebar border border-border rounded-xl">
+              <div key={status} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink bg-sidebar border border-border rounded-xl">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
                     {STATUS_LABELS[status]}

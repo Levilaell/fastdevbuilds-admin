@@ -4,7 +4,7 @@ import InboxClient from '@/components/inbox/inbox-client'
 function InboxSkeleton() {
   return (
     <div className="flex h-[calc(100vh-56px)] animate-pulse">
-      <div className="w-[360px] flex-none border-r border-border">
+      <div className="w-full lg:w-[360px] flex-none border-r border-border">
         <div className="px-4 py-3 border-b border-border space-y-3">
           <div className="h-5 bg-border rounded w-16" />
           <div className="h-8 bg-border rounded" />
@@ -21,7 +21,7 @@ function InboxSkeleton() {
           ))}
         </div>
       </div>
-      <div className="flex-1 flex items-center justify-center text-muted">
+      <div className="hidden lg:flex flex-1 items-center justify-center text-muted">
         <p className="text-sm">Carregando…</p>
       </div>
     </div>

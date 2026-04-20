@@ -90,6 +90,9 @@ export default function BotClient() {
   );
   const terminalRef = useRef<HTMLDivElement>(null);
 
+  // Mobile tab (ignored on lg+)
+  const [mobileTab, setMobileTab] = useState<"controls" | "terminal">("controls");
+
   // History
   const [runs, setRuns] = useState<BotRun[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -279,6 +282,7 @@ export default function BotClient() {
   async function handleRunAuto() {
     if (running) return;
     setStatus("running");
+    setMobileTab("terminal");
     lineOffsetRef.current = 0;
     setLines([
       {
@@ -341,9 +345,40 @@ export default function BotClient() {
   // ─── Render ───
 
   return (
-    <div className="flex h-[calc(100vh-56px)]">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-56px)]">
+      {/* Mobile tabs */}
+      <div className="lg:hidden flex border-b border-border shrink-0">
+        <button
+          onClick={() => setMobileTab("controls")}
+          className={`flex-1 py-2.5 text-xs font-medium uppercase tracking-wide ${
+            mobileTab === "controls"
+              ? "text-accent border-b-2 border-accent -mb-px"
+              : "text-muted hover:text-text"
+          }`}
+        >
+          Controles
+        </button>
+        <button
+          onClick={() => setMobileTab("terminal")}
+          className={`flex-1 py-2.5 text-xs font-medium uppercase tracking-wide ${
+            mobileTab === "terminal"
+              ? "text-accent border-b-2 border-accent -mb-px"
+              : "text-muted hover:text-text"
+          }`}
+        >
+          Terminal
+          {running && (
+            <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          )}
+        </button>
+      </div>
+
       {/* ─── Left Panel ─── */}
-      <div className="w-[380px] flex-none border-r border-border overflow-y-auto p-5 space-y-5">
+      <div
+        className={`w-full lg:w-[380px] flex-none border-b lg:border-b-0 lg:border-r border-border overflow-y-auto p-5 space-y-5 ${
+          mobileTab === "controls" ? "block" : "hidden"
+        } lg:block`}
+      >
         <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
           Modo Automático
         </h2>
@@ -462,7 +497,7 @@ export default function BotClient() {
           )}
 
           {/* Auto params */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-muted mb-1.5">
                 Limite/item
@@ -646,7 +681,11 @@ export default function BotClient() {
       </div>
 
       {/* ─── Terminal (right panel) ─── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div
+        className={`flex-1 flex-col min-w-0 ${
+          mobileTab === "terminal" ? "flex" : "hidden"
+        } lg:flex`}
+      >
         {/* Terminal header */}
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-[#0a0a0a] shrink-0">
           <div className="flex gap-1.5">

@@ -74,7 +74,7 @@ export default function MetricsDashboard({ initialData }: Props) {
 
   if (!hasData && !loading) {
     return (
-      <div className="px-6 pt-6">
+      <div className="px-3 sm:px-6 pt-6">
         <h1 className="text-2xl font-semibold text-text mb-6">Métricas</h1>
         <div className="flex flex-col items-center justify-center py-24 text-muted">
           <svg
@@ -100,12 +100,12 @@ export default function MetricsDashboard({ initialData }: Props) {
 
   return (
     <div
-      className={`px-6 pt-6 pb-10 space-y-6 ${loading ? 'opacity-60 pointer-events-none' : ''}`}
+      className={`px-3 sm:px-6 pt-6 pb-10 space-y-6 ${loading ? 'opacity-60 pointer-events-none' : ''}`}
     >
       {/* Header + Period Toggle */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-semibold text-text">Métricas</h1>
-        <div className="flex gap-1 bg-card border border-border rounded-lg p-1">
+        <div className="flex gap-1 bg-card border border-border rounded-lg p-1 self-start sm:self-auto">
           {PERIODS.map(p => (
             <button
               key={p.key}
@@ -123,7 +123,7 @@ export default function MetricsDashboard({ initialData }: Props) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SummaryCard
           label="Total Leads"
           value={fmtNumber.format(summary.totalLeads)}
@@ -143,7 +143,7 @@ export default function MetricsDashboard({ initialData }: Props) {
       </div>
 
       {/* Funnel + Revenue */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Conversion Funnel */}
         <div className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-sm font-semibold text-text mb-4">
@@ -255,7 +255,7 @@ export default function MetricsDashboard({ initialData }: Props) {
       </div>
 
       {/* Niches + Cities */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BarChartCard
           title="Leads por Nicho"
           items={topNiches}
@@ -324,12 +324,12 @@ function BarChartCard({
 
 export function MetricsSkeleton() {
   return (
-    <div className="px-6 pt-6 pb-10 space-y-6 animate-pulse">
-      <div className="flex items-center justify-between">
+    <div className="px-3 sm:px-6 pt-6 pb-10 space-y-6 animate-pulse">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="h-8 bg-border rounded w-32" />
         <div className="h-9 bg-border rounded w-56" />
       </div>
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="bg-card border border-border rounded-xl p-4">
             <div className="h-3 bg-border rounded w-20 mb-2" />
@@ -337,7 +337,7 @@ export function MetricsSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="h-4 bg-border rounded w-36 mb-4" />
           <div className="space-y-3">
@@ -364,7 +364,7 @@ export function MetricsSkeleton() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="bg-card border border-border rounded-xl p-5">
             <div className="h-4 bg-border rounded w-28 mb-4" />

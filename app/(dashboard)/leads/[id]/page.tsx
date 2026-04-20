@@ -17,11 +17,12 @@ import LeadStatusControls from '@/components/lead-detail/lead-status-controls'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
 import CreateProjectButton from '@/components/lead-detail/create-project-button'
+import LeadDetailShell from '@/components/lead-detail/lead-detail-shell'
 
 function LeadDetailSkeleton() {
   return (
-    <div className="flex h-full animate-pulse">
-      <div className="w-[400px] flex-none p-6 space-y-4 border-r border-border overflow-y-auto">
+    <div className="flex flex-col lg:flex-row h-full animate-pulse">
+      <div className="w-full lg:w-[400px] flex-none p-6 space-y-4 border-b lg:border-b-0 lg:border-r border-border overflow-y-auto">
         <div className="h-6 bg-border rounded w-48" />
         <div className="h-4 bg-border rounded w-32" />
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
@@ -34,7 +35,7 @@ function LeadDetailSkeleton() {
           <div className="h-2 bg-border rounded-full" />
         </div>
       </div>
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 hidden lg:block">
         <div className="h-8 bg-border rounded w-40 mb-4" />
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -96,10 +97,9 @@ async function LeadDetailContent({ id }: { id: string }) {
 
 
   return (
-    <div className="flex h-[calc(100vh-56px)]">
-      {/* Left column — 400px fixed */}
-      <div className="w-[400px] flex-none border-r border-border overflow-y-auto">
-        <div className="p-6 space-y-5">
+    <LeadDetailShell
+      info={
+        <div className="p-4 sm:p-6 space-y-5">
           {/* Breadcrumb + back */}
           <div className="flex items-center gap-2 text-xs text-muted">
             <Link href="/pipeline" className="hover:text-text">
@@ -209,20 +209,20 @@ async function LeadDetailContent({ id }: { id: string }) {
             />
           )}
         </div>
-      </div>
-
-      {/* Right column — conversations */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-xs font-semibold text-text uppercase tracking-wide">Conversa</h2>
-        </div>
-        <ConversationPanel
-          placeId={lead.place_id}
-          initialConversations={conversations}
-          channel={lead.outreach_channel === 'email' ? 'email' : 'whatsapp'}
-        />
-      </div>
-    </div>
+      }
+      conversation={
+        <>
+          <div className="px-4 py-3 border-b border-border shrink-0">
+            <h2 className="text-xs font-semibold text-text uppercase tracking-wide">Conversa</h2>
+          </div>
+          <ConversationPanel
+            placeId={lead.place_id}
+            initialConversations={conversations}
+            channel={lead.outreach_channel === 'email' ? 'email' : 'whatsapp'}
+          />
+        </>
+      }
+    />
   )
 }
 

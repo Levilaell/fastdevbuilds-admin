@@ -24,9 +24,9 @@ export default function PipelineFilters({
   niches,
 }: PipelineFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 mb-4">
+    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 mb-4">
       {/* Search */}
-      <div className="relative">
+      <div className="relative w-full sm:w-48">
         <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -36,48 +36,50 @@ export default function PipelineFilters({
           placeholder="Buscar negócio…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="h-8 pl-8 pr-3 text-xs rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent w-48"
+          className="h-8 pl-8 pr-3 text-xs rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent w-full"
         />
       </div>
 
-      {/* Channel */}
-      <select
-        value={channel}
-        onChange={(e) => onChannelChange(e.target.value)}
-        className="h-8 px-2.5 text-xs rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent"
-      >
-        <option value="">Todos canais</option>
-        <option value="whatsapp">WhatsApp</option>
-        <option value="email">Email</option>
-      </select>
-
-      {/* Min score */}
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted whitespace-nowrap">Dor min:</label>
-        <input
-          type="range"
-          min={0}
-          max={10}
-          value={minScore}
-          onChange={(e) => onMinScoreChange(Number(e.target.value))}
-          className="w-20 accent-accent"
-        />
-        <span className="text-xs text-muted tabular-nums w-4">{minScore}</span>
-      </div>
-
-      {/* Niche */}
-      {niches.length > 0 && (
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {/* Channel */}
         <select
-          value={niche}
-          onChange={(e) => onNicheChange(e.target.value)}
-          className="h-8 px-2.5 text-xs rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent max-w-[180px]"
+          value={channel}
+          onChange={(e) => onChannelChange(e.target.value)}
+          className="h-8 px-2.5 text-xs rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent"
         >
-          <option value="">Todos nichos</option>
-          {niches.map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
+          <option value="">Todos canais</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="email">Email</option>
         </select>
-      )}
+
+        {/* Min score */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted whitespace-nowrap">Dor min:</label>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            value={minScore}
+            onChange={(e) => onMinScoreChange(Number(e.target.value))}
+            className="w-20 accent-accent"
+          />
+          <span className="text-xs text-muted tabular-nums w-4">{minScore}</span>
+        </div>
+
+        {/* Niche */}
+        {niches.length > 0 && (
+          <select
+            value={niche}
+            onChange={(e) => onNicheChange(e.target.value)}
+            className="h-8 px-2.5 text-xs rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent max-w-[180px]"
+          >
+            <option value="">Todos nichos</option>
+            {niches.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        )}
+      </div>
     </div>
   )
 }
