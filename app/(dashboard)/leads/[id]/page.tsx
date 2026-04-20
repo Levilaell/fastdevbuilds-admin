@@ -13,7 +13,7 @@ import {
 import TechAnalysis from '@/components/lead-detail/tech-analysis'
 import PainScoreCard from '@/components/lead-detail/pain-score-card'
 import OutreachCard from '@/components/lead-detail/outreach-card'
-import StatusSelect from '@/components/lead-detail/status-select'
+import LeadStatusControls from '@/components/lead-detail/lead-status-controls'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
 import CreateProjectButton from '@/components/lead-detail/create-project-button'
@@ -188,7 +188,11 @@ async function LeadDetailContent({ id }: { id: string }) {
           {/* Pipeline actions */}
           <div className="bg-card border border-border rounded-xl p-4">
             <h2 className="text-xs font-semibold text-text uppercase tracking-wide mb-3">Pipeline</h2>
-            <StatusSelect placeId={lead.place_id} initialStatus={lead.status} />
+            <LeadStatusControls
+              placeId={lead.place_id}
+              businessName={lead.business_name ?? ""}
+              initialStatus={lead.status}
+            />
           </div>
 
           {/* Project — create button when none exists, status section otherwise */}
