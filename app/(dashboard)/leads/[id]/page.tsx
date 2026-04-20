@@ -196,6 +196,7 @@ async function LeadDetailContent({ id }: { id: string }) {
             <ProjectStatusSection
               project={project}
               placeId={lead.place_id}
+              businessName={lead.business_name ?? ""}
             />
           ) : (
             <CreateProjectButton

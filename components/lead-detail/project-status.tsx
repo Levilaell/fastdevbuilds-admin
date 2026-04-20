@@ -6,6 +6,7 @@ import {
   type Project,
   type ProjectStatus,
 } from "@/lib/types";
+import SendPreviewModal from "./send-preview-modal";
 
 const fmtCurrency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -15,6 +16,7 @@ const fmtCurrency = new Intl.NumberFormat("pt-BR", {
 interface Props {
   project: Project;
   placeId: string;
+  businessName: string;
 }
 
 const FLOW: ProjectStatus[] = [
@@ -268,6 +270,7 @@ function PromptSection({
 export default function ProjectStatusSection({
   project: initial,
   placeId,
+  businessName,
 }: Props) {
   const [project, setProject] = useState(initial);
   const [loading, setLoading] = useState(false);
@@ -282,6 +285,8 @@ export default function ProjectStatusSection({
     currentIdx >= FLOW.indexOf("approved") &&
     status !== "paid" &&
     status !== "cancelled";
+
+  const [showSendModal, setShowSendModal] = useState(false);
 
   async function advanceStatus(newStatus: ProjectStatus) {
     const label = PROJECT_STATUS_LABELS[newStatus];
@@ -311,23 +316,14 @@ export default function ProjectStatusSection({
     }
   }
 
-  async function handleSendPreview() {
+  function handleOpenPreviewModal() {
     if (!previewUrl.trim()) return;
-    setLoading(true);
-    try {
-      await fetch("/api/conversations/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          place_id: placeId,
-          message: `Olá! Aqui está o preview do seu novo site: ${previewUrl}`,
-          channel: "whatsapp",
-        }),
-      });
-      await advanceStatus("delivered");
-    } finally {
-      setLoading(false);
-    }
+    setShowSendModal(true);
+  }
+
+  async function handlePreviewSent() {
+    setShowSendModal(false);
+    await advanceStatus("delivered");
   }
 
   return (
@@ -404,13 +400,23 @@ export default function ProjectStatusSection({
             className="w-full h-8 px-3 text-xs rounded-lg bg-sidebar border border-border text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <button
-            onClick={handleSendPreview}
+            onClick={handleOpenPreviewModal}
             disabled={loading || !previewUrl.trim()}
             className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
           >
             {loading ? "Enviando…" : "Enviar link de preview →"}
           </button>
         </div>
+      )}
+
+      {showSendModal && previewUrl.trim() && (
+        <SendPreviewModal
+          placeId={placeId}
+          businessName={businessName}
+          previewUrl={previewUrl.trim()}
+          onClose={() => setShowSendModal(false)}
+          onSent={handlePreviewSent}
+        />
       )}
 
       {status === "delivered" && (
