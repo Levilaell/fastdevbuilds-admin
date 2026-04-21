@@ -146,6 +146,8 @@ export interface BotRun {
 
 // ─── Projects ───
 
+export type ModelTier = "fast" | "balanced" | "premium";
+
 export interface GeneratedImages {
   hero: string;
   services: Array<{ name: string; url: string }>;

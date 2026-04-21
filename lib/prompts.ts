@@ -254,30 +254,71 @@ Your output will be pasted DIRECTLY into Claude Code and executed without any ma
 CRITICAL: Write everything in Portuguese (pt-BR).
 
 CRITICAL OUTPUT REQUIREMENT — READ THIS FIRST:
-You MUST return a JSON object with EXACTLY these 5 keys. Missing "services" or "palette" causes the image generation pipeline to fail silently, leaving the site without any visual assets. This is NOT optional — every response must include all 5 keys.
+You MUST return a JSON object with EXACTLY these 6 keys. Missing "hero_image_prompt", "hero_model_tier", or "services" causes the image generation pipeline to fail silently, leaving the site without any visual assets. This is NOT optional — every response must include all 6 keys.
 
 Required keys:
 1. "prompt" (string) — the complete Claude Code prompt
 2. "placeholders" (array of strings) — list of missing info items (empty array if none)
 3. "info_request_message" (string or null) — WhatsApp message asking for missing info, or null
-4. "services" (array of 4-6 strings) — exact service names used in the prompt's "Serviços" section
-5. "palette" (string) — plain English color description for image generation (NOT hex codes)
+4. "hero_image_prompt" (string) — English prompt for Getimg describing the hero image
+5. "hero_model_tier" ("fast" | "balanced" | "premium") — image-model complexity tier for the hero
+6. "services" (array of 4-6 objects) — each with { "name": string, "image_prompt": string, "model_tier": "fast" | "balanced" | "premium" }
+   - "name" MUST match the exact service names from the "Serviços" section of the prompt
+   - "image_prompt" and "model_tier" follow the IMAGE-PROMPT rules below
 
-Example of a valid complete response:
+Example of a valid complete response (pediatric dentistry, warm pastel direction):
 {
   "prompt": "## Briefing...",
-  "placeholders": ["endereço completo", "horário de sábado"],
-  "info_request_message": "Oi! Pra finalizar seu site, me confirma 2 coisas rápidas: endereço completo e horário de sábado. Valeu!",
-  "services": ["Psicoterapia Adulto", "Psicoterapia Infantil", "Avaliação Neuropsicológica", "Orientação Parental"],
-  "palette": "soft lilac with warm cream background, subtle sage green accents"
+  "placeholders": ["horário de sábado"],
+  "info_request_message": "Oi! Pra finalizar seu site me confirma só o horário de sábado. Valeu!",
+  "hero_image_prompt": "Editorial cinematic interior photograph of a warm, welcoming pediatric dental office, pastel mint and soft butter-yellow accents, child-sized wooden furniture with rounded corners, large window casting soft morning light, plush animal toys on a low shelf, wide composition with generous negative space near the top for overlay text, no faces, premium commercial photography, shallow depth of field",
+  "hero_model_tier": "premium",
+  "services": [
+    {
+      "name": "Primeira Consulta Infantil",
+      "image_prompt": "Editorial macro photograph of a small child's hand holding a pastel-colored toothbrush, soft diffused morning light, mint and cream background, flat-lay minimal composition, premium commercial style, no faces",
+      "model_tier": "balanced"
+    },
+    {
+      "name": "Profilaxia e Flúor",
+      "image_prompt": "Overhead editorial still life of pristine pediatric dental instruments arranged on natural linen cloth, soft morning light, pastel mint accents, minimalist composition with ample negative space, premium commercial photography, no faces",
+      "model_tier": "balanced"
+    },
+    {
+      "name": "Selante para Prevenção de Cárie",
+      "image_prompt": "Abstract minimal still life of a white ceramic tooth-shaped object resting on a pastel butter-yellow linen surface, soft diffused studio light, generous negative space, editorial minimalism, no faces",
+      "model_tier": "fast"
+    },
+    {
+      "name": "Odontopediatria Lúdica",
+      "image_prompt": "Editorial photograph of a plush teddy bear seated in a small pediatric dental chair inside a sunlit treatment room, pastel mint and butter-yellow palette, wide composition, warm and welcoming atmosphere, premium commercial photography, no faces",
+      "model_tier": "premium"
+    }
+  ]
 }
 
 Respond ONLY with valid JSON (no markdown, no explanation).
 
-ADDITIONAL NOTES on "services" and "palette":
-- "services" MUST match the exact service names from the "Serviços" section of the prompt — 4 to 6 items.
-- "palette" must be a short natural English phrase describing the chosen colors — used downstream by an image generation API that speaks English only.
-- Always return both fields, even when the client has a site (infer palette description from the hex values you extracted).
+WRITING hero_image_prompt / image_prompt (mandatory rules):
+- Write every image prompt in ENGLISH — Getimg only handles English well.
+- Brief each prompt as if directing an editorial photographer on a paid commercial shoot, not a stock-photo search.
+- AVOID human faces in close-up. AI still fails at realistic Brazilian faces — prefer hands, objects, environments, textures, silhouettes, backs, side-profile details. Always include the phrase "no faces" in the prompt as a safety net.
+- Style reference: cinematic editorial photography, premium commercial work, natural light, shallow depth of field. Never generic stock.
+- Every image must evoke the niche CONCRETELY, never abstractly. Examples:
+  • Dentista → dentes, instrumentos, consultório, detalhe de sorriso de lado
+  • Advocacia → livros jurídicos, documentos, escritório elegante, balança
+  • Padaria / confeitaria → pão, massa, forno, textura, fornada
+  • Psicologia → poltrona, planta, luz natural, ambiente calmo
+  • Salão / estética → ferramentas, detalhe de cabelo, ambiente
+  • Nutrição → alimentos frescos, composição flat-lay
+  Extrapolate the same pattern for any other niche.
+- Adapt to the SPECIFIC client, never the generic niche. Weigh the briefing, the detected tone (luxury vs popular vs edgy), and the segment (pediatric vs aesthetic vs geriatric) — visual language must reflect these.
+- Reuse the palette you chose in the "## Paleta de cores" section inside every image_prompt (as plain English color words, not hex) so the images feel like they belong to the same site.
+
+CHOOSING hero_model_tier / model_tier (mandatory rules):
+- "fast" — simple, abstract imagery: textures, background patterns, decorative ornaments, a single isolated object with no realism demand. Cheapest tier; only for low-fidelity needs.
+- "balanced" — scenes with isolated objects, simple environments, product macros without people. DEFAULT for most service cards.
+- "premium" — complex scenes with human context (hands in action, silhouette in a space), or anything where realism must carry weight (professional food, precise technical objects, interiors with real texture). Use sparingly — only when real detail matters.
 
 THE "prompt" FIELD MUST FOLLOW THIS EXACT STRUCTURE (include ALL sections, in this order):
 

@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
-import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project, type GeneratedImages } from '@/lib/types'
+import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project, type GeneratedImages, type ModelTier } from '@/lib/types'
 import {
   CLAUDE_CODE_SITE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
@@ -15,6 +15,11 @@ function cleanJson(text: string): string {
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim()
+}
+
+function normalizeTier(v: unknown): ModelTier {
+  if (v === 'fast' || v === 'balanced' || v === 'premium') return v
+  return 'balanced'
 }
 
 function serviceClient() {
@@ -77,8 +82,9 @@ export async function generateClaudeCodePrompt(
   let prompt: string
   let pendingInfo: string | null = null
   let infoRequestMessage: string | null = null
-  let services: string[] = []
-  let palette: string | null = null
+  let heroPrompt: string | null = null
+  let heroModelTier: ModelTier = 'balanced'
+  let services: Array<{ name: string; imagePrompt: string; modelTier: ModelTier }> = []
 
   try {
     const parsed = JSON.parse(cleanJson(text))
@@ -88,11 +94,21 @@ export async function generateClaudeCodePrompt(
       pendingInfo = JSON.stringify(placeholders)
     }
     infoRequestMessage = parsed.info_request_message ?? null
-    if (Array.isArray(parsed.services)) {
-      services = parsed.services.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+    if (typeof parsed.hero_image_prompt === 'string' && parsed.hero_image_prompt.trim()) {
+      heroPrompt = parsed.hero_image_prompt.trim()
     }
-    if (typeof parsed.palette === 'string' && parsed.palette.trim()) {
-      palette = parsed.palette.trim()
+    heroModelTier = normalizeTier(parsed.hero_model_tier)
+    if (Array.isArray(parsed.services)) {
+      services = parsed.services
+        .map((s: unknown) => {
+          if (!s || typeof s !== 'object') return null
+          const obj = s as Record<string, unknown>
+          const name = typeof obj.name === 'string' ? obj.name.trim() : ''
+          const imagePrompt = typeof obj.image_prompt === 'string' ? obj.image_prompt.trim() : ''
+          if (!name || !imagePrompt) return null
+          return { name, imagePrompt, modelTier: normalizeTier(obj.model_tier) }
+        })
+        .filter((s: { name: string; imagePrompt: string; modelTier: ModelTier } | null): s is { name: string; imagePrompt: string; modelTier: ModelTier } => s !== null)
     }
   } catch {
     // Fallback: if Claude didn't return valid JSON, use raw text as prompt
@@ -101,13 +117,13 @@ export async function generateClaudeCodePrompt(
 
   // Best-effort image generation — fail silently so the prompt still reaches the user.
   let images: GeneratedImages | null = null
-  if (palette && services.length > 0) {
+  if (heroPrompt && services.length > 0) {
     try {
       images = await generateSiteImages({
-        niche: lead.niche ?? 'business',
-        palette,
-        services,
         projectId: project.id,
+        heroPrompt,
+        heroModelTier,
+        services,
       })
     } catch (err) {
       console.error('[ai-workflow] generateSiteImages threw', err)
