@@ -67,7 +67,7 @@ export async function generateClaudeCodePrompt(
 
   const response = await anthropic.messages.create({
     model: MODEL_SMART,
-    max_tokens: 4500,
+    max_tokens: 16000,
     system: CLAUDE_CODE_SITE_SYSTEM_PROMPT,
     messages: [
       {
