@@ -134,29 +134,36 @@ export async function generateSiteImages(params: {
     return null;
   }
 
-  const heroTask = generateOne(
-    heroPrompt,
-    "16:9",
-    resolveModel(heroModelTier),
-    `${projectId}/hero.webp`,
-  );
+  // Getimg limita concurrent requests (HTTP 429 quando >3 em paralelo).
+  // Processa em chunks de 3 — hero + 2 serviços, depois próximos serviços.
+  const CONCURRENCY = 3;
 
-  const serviceTasks = services.map((svc, idx) => {
-    if (!svc.imagePrompt?.trim() || !svc.name?.trim()) {
-      return Promise.resolve(null);
-    }
-    return generateOne(
-      svc.imagePrompt,
-      "1:1",
-      resolveModel(svc.modelTier),
-      `${projectId}/service-${idx + 1}.webp`,
-    ).then((url) => (url ? { name: svc.name, url } : null));
+  const allTasks: Array<() => Promise<{ name: string; url: string } | string | null>> = [
+    () => generateOne(heroPrompt, "16:9", resolveModel(heroModelTier), `${projectId}/hero.webp`),
+  ];
+
+  services.forEach((svc, idx) => {
+    if (!svc.imagePrompt?.trim() || !svc.name?.trim()) return;
+    allTasks.push(async () => {
+      const url = await generateOne(
+        svc.imagePrompt,
+        "1:1",
+        resolveModel(svc.modelTier),
+        `${projectId}/service-${idx + 1}.webp`,
+      );
+      return url ? { name: svc.name, url } : null;
+    });
   });
 
-  const [heroUrl, ...serviceResults] = await Promise.all([
-    heroTask,
-    ...serviceTasks,
-  ]);
+  const results: Array<{ name: string; url: string } | string | null> = [];
+  for (let i = 0; i < allTasks.length; i += CONCURRENCY) {
+    const chunk = allTasks.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(chunk.map((fn) => fn()));
+    results.push(...chunkResults);
+  }
+
+  const heroUrl = results[0] as string | null;
+  const serviceResults = results.slice(1) as Array<{ name: string; url: string } | null>;
 
   if (!heroUrl) {
     console.warn(
