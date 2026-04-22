@@ -21,11 +21,6 @@ function ConversationListItem({
   onClick: () => void
 }) {
   const hasUnread = item.unread_count > 0
-  const isWaiting = item.last_direction === 'out' && !hasUnread
-  const waitingHours = item.waiting_since
-    ? (Date.now() - new Date(item.waiting_since).getTime()) / 3_600_000
-    : 0
-  const needsFollowUp = isWaiting && waitingHours > 24
 
   const preview = item.last_message
     ? item.last_message.length > 40
@@ -41,17 +36,13 @@ function ConversationListItem({
           ? 'bg-card-hover border-l-2 border-accent'
           : hasUnread
             ? 'bg-card/50 hover:bg-card-hover'
-            : needsFollowUp
-              ? 'bg-warning/5 hover:bg-card-hover'
-              : 'hover:bg-card-hover'
+            : 'hover:bg-card-hover'
       }`}
     >
       {/* Status dot */}
       <div className="w-2 pt-1.5 shrink-0">
         {hasUnread ? (
           <div className="w-2 h-2 rounded-full bg-accent" />
-        ) : needsFollowUp ? (
-          <div className="w-2 h-2 rounded-full bg-warning" />
         ) : null}
       </div>
 
@@ -90,11 +81,6 @@ function ConversationListItem({
           <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[item.status]}`}>
             {STATUS_LABELS[item.status]}
           </span>
-          {needsFollowUp && (
-            <span className="text-[9px] px-1 py-0.5 rounded text-warning bg-warning/10 border border-warning/20">
-              Aguardando
-            </span>
-          )}
           {hasUnread && (
             <span className="text-[9px] font-semibold text-accent ml-auto">
               {item.unread_count}
@@ -371,7 +357,6 @@ export default function InboxClient() {
                       unread_count: isInbound && currentActive !== newConv.place_id
                         ? i.unread_count + 1
                         : i.unread_count,
-                      waiting_since: newConv.direction === 'out' ? newConv.sent_at : null,
                     }
                   : i
               )

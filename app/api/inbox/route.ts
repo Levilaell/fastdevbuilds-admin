@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
     last_message_at: string
     last_direction: string
     unread_count: number
-    waiting_since: string | null
   }>()
 
   for (const row of rows) {
@@ -72,7 +71,6 @@ export async function GET(request: NextRequest) {
         last_message_at: row.sent_at,
         last_direction: row.direction,
         unread_count: isUnread ? 1 : 0,
-        waiting_since: row.direction === 'out' ? row.sent_at : null,
       })
     } else {
       if (isUnread) existing.unread_count++
@@ -127,7 +125,6 @@ export async function GET(request: NextRequest) {
         last_direction: conv.last_direction,
         unread_count: conv.unread_count,
         archived: !!lead.inbox_archived_at,
-        waiting_since: conv.waiting_since,
       }
     })
     .sort((a, b) => {

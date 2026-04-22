@@ -146,7 +146,6 @@ export interface InboxItem {
   last_direction: string | null;
   unread_count: number;
   archived: boolean;
-  waiting_since: string | null;
 }
 
 export interface BotRun {
