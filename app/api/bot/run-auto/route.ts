@@ -11,6 +11,13 @@ interface AutoParams {
   send: boolean
   market: string
   max_send?: number
+  /**
+   * Per-instance send cap for this run. Keys are Evolution instance names,
+   * values are non-negative integers. When set, the bot stops sending on
+   * each instance once its count is reached. Unknown names or negative
+   * values are rejected with 400 to avoid silently no-op runs.
+   */
+  per_instance_send?: Record<string, number>
 }
 
 export async function POST(request: NextRequest) {
@@ -35,8 +42,52 @@ export async function POST(request: NextRequest) {
     .select('id')
     .single()
 
+  // Validate per_instance_send — defense in depth. UI already validates,
+  // but other callers (cron, curl, future scripts) hit the same endpoint.
+  const instances = getInstances()
+  const knownNames = new Set(instances.map(i => i.name))
+  if (params.per_instance_send) {
+    for (const [name, val] of Object.entries(params.per_instance_send)) {
+      if (!knownNames.has(name)) {
+        if (run?.id) {
+          await supabase
+            .from('bot_runs')
+            .update({ status: 'failed', finished_at: new Date().toISOString() })
+            .eq('id', run.id)
+        }
+        return Response.json(
+          { error: `per_instance_send: unknown instance '${name}'` },
+          { status: 400 },
+        )
+      }
+      if (!Number.isInteger(val) || val < 0) {
+        if (run?.id) {
+          await supabase
+            .from('bot_runs')
+            .update({ status: 'failed', finished_at: new Date().toISOString() })
+            .eq('id', run.id)
+        }
+        return Response.json(
+          {
+            error: `per_instance_send: '${name}' must be a non-negative integer (got ${val})`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
   try {
     const cc = getCountry(params.market)
+    // Enrich each instance with its per-run cap (undefined means no cap).
+    const evolutionInstances = instances.map(i => ({
+      name: i.name,
+      apiKey: i.apiKey,
+      ...(params.per_instance_send && params.per_instance_send[i.name] !== undefined
+        ? { maxThisRun: params.per_instance_send[i.name] }
+        : {}),
+    }))
+
     const botResponse = await fetch(`${botUrl}/run-auto`, {
       method: 'POST',
       headers: {
@@ -50,10 +101,7 @@ export async function POST(request: NextRequest) {
           cities: [...cc.cities],
           lang: cc.lang,
         } : {}),
-        evolutionInstances: getInstances().map(i => ({
-          name: i.name,
-          apiKey: i.apiKey,
-        })),
+        evolutionInstances,
         evolutionApiUrl: process.env.EVOLUTION_API_URL,
       }),
     })

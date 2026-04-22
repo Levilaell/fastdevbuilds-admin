@@ -18,9 +18,12 @@ interface AutoQueueItem {
   searchCity: string;
 }
 
-interface InstanceSendCount {
+interface InstanceUsage {
   name: string;
-  sent24h: number;
+  daily_cap: number;
+  sent_today: number;
+  remaining: number;
+  configured: boolean;
 }
 
 interface AutoQueueData {
@@ -28,8 +31,6 @@ interface AutoQueueData {
     total: number;
     prospected: number;
     remaining: number;
-    whatsappSentToday: number;
-    instanceCounts: InstanceSendCount[];
   };
   queue: AutoQueueItem[];
 }
@@ -81,7 +82,17 @@ export default function BotClient() {
   const [autoMinScore, setAutoMinScore] = useState(4);
   const [autoSend, setAutoSend] = useState(false);
   const [autoDryRun, setAutoDryRun] = useState(false);
-  const [autoMaxSend, setAutoMaxSend] = useState<number | "">("");
+  // Daily usage + cap per Evolution instance (fetched from /api/bot/instance-usage)
+  const [instanceUsage, setInstanceUsage] = useState<InstanceUsage[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  // "How many to send this run" per instance — key = instance name.
+  // Required: must be filled (integer >= 0) for all known instances before Run.
+  const [runInputs, setRunInputs] = useState<Record<string, string>>({});
+
+  // Inline cap edit state — key = instance name, value = pending edit string
+  const [capEdits, setCapEdits] = useState<Record<string, string>>({});
+  const [capSaving, setCapSaving] = useState<string | null>(null);
 
   // Terminal
   const [lines, setLines] = useState<TermLine[]>([]);
@@ -122,6 +133,29 @@ export default function BotClient() {
     }
   }, [country]);
 
+  const fetchInstanceUsage = useCallback(async () => {
+    setUsageLoading(true);
+    try {
+      const res = await fetch("/api/bot/instance-usage");
+      if (res.ok) {
+        const data = await res.json();
+        const items: InstanceUsage[] = data.instances ?? [];
+        setInstanceUsage(items);
+        setRunInputs((prev) => {
+          const next = { ...prev };
+          for (const inst of items) {
+            if (next[inst.name] === undefined) next[inst.name] = "";
+          }
+          return next;
+        });
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchRuns();
   }, [fetchRuns]);
@@ -129,6 +163,10 @@ export default function BotClient() {
   useEffect(() => {
     fetchAutoQueue();
   }, [country, fetchAutoQueue]);
+
+  useEffect(() => {
+    if (countryConfig.channel === "whatsapp") fetchInstanceUsage();
+  }, [country, countryConfig.channel, fetchInstanceUsage]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -208,6 +246,7 @@ export default function BotClient() {
         botRunIdRef.current = null;
         fetchRuns();
         fetchAutoQueue();
+        if (countryConfig.channel === "whatsapp") fetchInstanceUsage();
       }
     } catch {
       /* ignore network hiccups during polling */
@@ -281,16 +320,60 @@ export default function BotClient() {
 
   async function handleRunAuto() {
     if (running) return;
+
+    const willSend = autoSend && !autoDryRun;
+    let perInstanceSend: Record<string, number> | undefined;
+    if (willSend && countryConfig.channel === "whatsapp") {
+      if (instanceUsage.length === 0) {
+        alert("Nenhuma instância carregada — aguarde o carregamento das métricas.");
+        return;
+      }
+      const totals: Record<string, number> = {};
+      for (const inst of instanceUsage) {
+        const raw = runInputs[inst.name] ?? "";
+        if (raw === "") {
+          alert(`Preencha quantos enviar na instância '${inst.name}' (pode ser 0).`);
+          return;
+        }
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0) {
+          alert(`Valor inválido para '${inst.name}': deve ser inteiro >= 0.`);
+          return;
+        }
+        if (n > inst.remaining) {
+          alert(
+            `'${inst.name}' — ${n} excede o disponível hoje (${inst.remaining}).`,
+          );
+          return;
+        }
+        totals[inst.name] = n;
+      }
+      const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+      if (sum === 0) {
+        alert("Total a enviar é 0. Preencha ao menos uma instância com valor > 0.");
+        return;
+      }
+      perInstanceSend = totals;
+    }
+
     setStatus("running");
     setMobileTab("terminal");
     lineOffsetRef.current = 0;
+
+    const perInstancePreview = perInstanceSend
+      ? " " +
+        Object.entries(perInstanceSend)
+          .map(([n, v]) => `${n}=${v}`)
+          .join(",")
+      : "";
+
     setLines([
       {
         text: `━━━ Modo Automático — ${countryConfig.flag} ${country} ━━━`,
         type: "accent",
       },
       {
-        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? " --dry" : ""}${autoSend && !autoDryRun ? " --send" : ""}${autoMaxSend !== "" ? ` --max-send ${autoMaxSend}` : ""}`,
+        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? " --dry" : ""}${willSend ? " --send" : ""}${perInstancePreview ? ` --per-instance${perInstancePreview}` : ""}`,
         type: "info",
       },
     ]);
@@ -303,9 +386,9 @@ export default function BotClient() {
           limit: autoLimit,
           min_score: autoMinScore,
           dry_run: autoDryRun,
-          send: autoSend && !autoDryRun,
+          send: willSend,
           market: country,
-          ...(autoMaxSend !== "" && { max_send: autoMaxSend }),
+          ...(perInstanceSend && { per_instance_send: perInstanceSend }),
         }),
       });
 
@@ -445,20 +528,135 @@ export default function BotClient() {
                 </div>
               </div>
 
-              {/* WhatsApp send counts per instance */}
-              {countryConfig.channel === "whatsapp" && autoQueue.stats.instanceCounts.length > 0 && (
+              {/* Per-instance daily cap + "send this run" input */}
+              {countryConfig.channel === "whatsapp" && instanceUsage.length > 0 && (
                 <div className="bg-sidebar border border-border rounded-lg p-2.5">
-                  <p className="text-[10px] text-muted uppercase mb-2">Envios 24h</p>
-                  <div className="space-y-1.5">
-                    {autoQueue.stats.instanceCounts.map((inst) => (
-                      <div key={inst.name} className="flex items-center justify-between">
-                        <span className="text-xs text-text/70 truncate">{inst.name}</span>
-                        <span className="text-xs font-medium text-text tabular-nums">{inst.sent24h}</span>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] text-muted uppercase">Envios hoje</p>
+                    {usageLoading && (
+                      <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {instanceUsage.map((inst) => {
+                      const editing = capEdits[inst.name] !== undefined;
+                      const runVal = runInputs[inst.name] ?? "";
+                      const runNum = runVal === "" ? null : Number(runVal);
+                      const overLimit =
+                        runNum !== null && runNum > inst.remaining;
+                      return (
+                        <div
+                          key={inst.name}
+                          className="flex items-center gap-2 text-xs"
+                        >
+                          <span className="text-text/70 truncate flex-1 min-w-0">
+                            {inst.name}
+                          </span>
+                          {editing ? (
+                            <span className="flex items-center gap-1">
+                              <span className="text-text tabular-nums">
+                                {inst.sent_today}/
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={500}
+                                value={capEdits[inst.name]}
+                                onChange={(e) =>
+                                  setCapEdits({
+                                    ...capEdits,
+                                    [inst.name]: e.target.value,
+                                  })
+                                }
+                                disabled={capSaving === inst.name}
+                                className="w-12 h-6 px-1 text-xs rounded bg-background border border-border text-text tabular-nums focus:outline-none focus:ring-1 focus:ring-accent"
+                              />
+                              <button
+                                onClick={async () => {
+                                  const raw = capEdits[inst.name];
+                                  const n = Number(raw);
+                                  if (!Number.isInteger(n) || n < 0 || n > 500) return;
+                                  setCapSaving(inst.name);
+                                  try {
+                                    await fetch("/api/bot/instance-cap", {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        instance_name: inst.name,
+                                        daily_cap: n,
+                                      }),
+                                    });
+                                    await fetchInstanceUsage();
+                                    const next = { ...capEdits };
+                                    delete next[inst.name];
+                                    setCapEdits(next);
+                                  } finally {
+                                    setCapSaving(null);
+                                  }
+                                }}
+                                disabled={capSaving === inst.name}
+                                className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40 px-1"
+                                title="Salvar"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const next = { ...capEdits };
+                                  delete next[inst.name];
+                                  setCapEdits(next);
+                                }}
+                                disabled={capSaving === inst.name}
+                                className="text-muted hover:text-text disabled:opacity-40 px-1"
+                                title="Cancelar"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                setCapEdits({
+                                  ...capEdits,
+                                  [inst.name]: String(inst.daily_cap),
+                                })
+                              }
+                              className="text-text/80 hover:text-accent tabular-nums"
+                              title="Editar cap diário"
+                            >
+                              {inst.sent_today}/{inst.daily_cap}
+                            </button>
+                          )}
+                          <input
+                            type="number"
+                            min={0}
+                            max={inst.remaining}
+                            placeholder="0"
+                            value={runVal}
+                            onChange={(e) =>
+                              setRunInputs({
+                                ...runInputs,
+                                [inst.name]: e.target.value,
+                              })
+                            }
+                            className={`w-14 h-7 px-2 text-xs rounded border text-text tabular-nums focus:outline-none focus:ring-1 focus:ring-accent ${
+                              overLimit
+                                ? "border-red-500 bg-red-500/5"
+                                : "border-border bg-background"
+                            }`}
+                            title={`Máx: ${inst.remaining}`}
+                          />
+                        </div>
+                      );
+                    })}
                     <div className="flex items-center justify-between pt-1.5 border-t border-border">
-                      <span className="text-xs font-medium text-text">Total</span>
-                      <span className="text-xs font-semibold text-text tabular-nums">{autoQueue.stats.whatsappSentToday}</span>
+                      <span className="text-xs text-muted">Total a enviar</span>
+                      <span className="text-xs font-semibold text-text tabular-nums">
+                        {Object.values(runInputs).reduce(
+                          (acc, v) => acc + (Number(v) || 0),
+                          0,
+                        )}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -497,7 +695,7 @@ export default function BotClient() {
           )}
 
           {/* Auto params */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-muted mb-1.5">
                 Limite/item
@@ -522,25 +720,6 @@ export default function BotClient() {
                 value={autoMinScore}
                 onChange={(e) => setAutoMinScore(Number(e.target.value) || 4)}
                 className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1.5">
-                Máx. envios
-              </label>
-              <input
-                type="number"
-                min={1}
-                placeholder="Sem limite"
-                value={autoMaxSend}
-                onChange={(e) =>
-                  setAutoMaxSend(
-                    e.target.value === ""
-                      ? ""
-                      : Math.max(1, Number(e.target.value)),
-                  )
-                }
-                className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
               />
             </div>
           </div>
@@ -599,7 +778,25 @@ export default function BotClient() {
           ) : (
             <button
               onClick={handleRunAuto}
-              disabled={!autoQueue || autoQueue.stats.remaining === 0}
+              disabled={
+                !autoQueue ||
+                autoQueue.stats.remaining === 0 ||
+                (autoSend &&
+                  !autoDryRun &&
+                  countryConfig.channel === "whatsapp" &&
+                  (instanceUsage.length === 0 ||
+                    instanceUsage.some(
+                      (i) =>
+                        runInputs[i.name] === undefined ||
+                        runInputs[i.name] === "" ||
+                        Number(runInputs[i.name]) > i.remaining ||
+                        Number.isNaN(Number(runInputs[i.name])),
+                    ) ||
+                    Object.values(runInputs).reduce(
+                      (a, v) => a + (Number(v) || 0),
+                      0,
+                    ) === 0))
+              }
               className="w-full py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40 flex items-center justify-center gap-2"
             >
               <svg
