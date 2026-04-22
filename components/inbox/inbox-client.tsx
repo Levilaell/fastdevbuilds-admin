@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
 import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type Project } from '@/lib/types'
 import SharedReplyBox from '@/components/shared/reply-box'
+import MarkLostModal from '@/components/lead-detail/mark-lost-modal'
 import WorkflowBar from '@/components/inbox/workflow-bar'
 
 // ─── Conversation list item ───
@@ -229,6 +230,7 @@ export default function InboxClient() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [project, setProject] = useState<Project | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [showLostModal, setShowLostModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -609,6 +611,15 @@ export default function InboxClient() {
                     }
                   }}
                 />
+                {activeItem && activeItem.status !== 'lost' && activeItem.status !== 'closed' && (
+                  <button
+                    onClick={() => setShowLostModal(true)}
+                    disabled={actionLoading}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    Marcar lost
+                  </button>
+                )}
                 <Link
                   href={`/leads/${encodeURIComponent(activePlaceId)}`}
                   className="text-xs text-accent hover:underline"
@@ -665,6 +676,19 @@ export default function InboxClient() {
       </div>
 
       {/* Toast notification */}
+      {showLostModal && activePlaceId && activeItem && (
+        <MarkLostModal
+          placeId={activePlaceId}
+          businessName={activeItem.business_name ?? 'Lead'}
+          onClose={() => setShowLostModal(false)}
+          onMarked={() => {
+            setShowLostModal(false)
+            fetchInbox()
+            showToast('Lead marcado como perdido', 'success')
+          }}
+        />
+      )}
+
       {toast && (
         <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-white text-sm shadow-lg ${
           toast.type === 'error' ? 'bg-danger/90' : 'bg-success/90'
