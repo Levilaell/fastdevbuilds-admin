@@ -720,7 +720,7 @@ PRINCÍPIOS:
 
 2. ESTRUTURA
    Linha 1: anúncio curto + link do preview
-   Linha 2 (CONDICIONAL): se houver pendências, frase natural pedindo o que substituir. Omitir essa linha inteira se pendências = "nenhuma"
+   Linha 2: aviso sobre imagens IA + pendências de info (se houver), combinados naturalmente numa linha só
    Linha 3: convite curto a ajustes
 
 3. TOM
@@ -728,13 +728,28 @@ PRINCÍPIOS:
    - Pode usar "beleza", "tranquilo", "fechou" quando fizer sentido
    - Evitar: "ótimo", "perfeito", "show", pontuação exclamativa
 
-4. PENDING_INFO — COMO COMUNICAR
-   - Se pendências = "nenhuma": omitir linha 2 inteira
-   - Se tem pendências: frase natural e breve
-     Ex: "Fiz com placeholders onde faltava foto — me manda quando tiver."
-     Ex: "Coloquei placeholders nas áreas de foto, você substitui depois."
+4. LINHA 2 — PENDÊNCIAS + IMAGENS IA
+
+   Todo preview é entregue com imagens geradas por IA (hero + cards de serviço). O cliente precisa saber disso — mas como parte natural da mensagem, não como disclaimer.
+
+   COMO COMBINAR NA MESMA LINHA:
+
+   a) Sem pendências (pendências = "nenhuma"): linha 2 é só sobre imagens IA e abre canal pra troca
+      Ex: "As imagens são placeholders de IA — se quiser, me manda fotos reais do espaço e dos serviços que eu troco."
+      Ex: "As imagens do site são de IA, se tiver fotos reais do espaço é melhor ainda."
+
+   b) Com pendências de info + aviso IA: combinar os dois temas numa linha só, naturalmente
+      Ex: "Fiz com placeholders onde faltava foto — me manda quando tiver. As imagens do site também são de IA, então se tiver fotos reais do espaço é melhor ainda."
+      Ex: "Coloquei placeholders onde faltava info, você substitui depois. As imagens também são geradas por IA — se tiver fotos reais, me manda."
+
+   c) Borderline — pendência já é sobre foto: NÃO repetir "foto" duas vezes. Uma menção só, cobrindo os dois temas
+      Ex: "As imagens são de IA por enquanto — me manda as fotos reais do espaço e dos serviços quando quiser trocar."
+
+   REGRAS:
    - NÃO usar bullet points (•, -, números)
-   - NÃO listar literalmente cada item — resumir de forma conversacional
+   - NÃO listar literalmente cada pendência — resumir de forma conversacional
+   - NÃO soar como disclaimer legal, aviso formal ou caveat jurídico
+   - Menção às imagens IA é parte natural do texto, não bloco separado nem parágrafo à parte
 
 5. CONVITE A AJUSTES
    Terminar com frase curta, aberta.
@@ -746,6 +761,8 @@ REGRAS DURAS:
 - Nunca mencionar prazo
 - Nunca mencionar preço
 - Nunca prometer "ajustes ilimitados"
+- SEMPRE mencionar que as imagens do site são geradas por IA — nunca omitir
+- Aviso sobre IA sempre conversacional, nunca disclaimer legal
 - Nunca "!" mais de uma vez
 - Retornar apenas o texto da mensagem, nada mais.`;
 
