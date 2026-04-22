@@ -358,6 +358,32 @@ O array "services" no JSON de saída é a ÚNICA fonte de verdade para serviços
 
 Violação dessa regra gera cards sem imagem no site final — degradação visual inaceitável.
 
+SERVICES[] É FONTE ÚNICA EM TODO TEXTO DO SITE
+
+Nomes específicos de produtos/serviços só podem aparecer no site:
+- Como card no services[] (com image_prompt correspondente)
+- Como categoria genérica do nicho (ex: "bolos" em confeitaria é OK
+  porque é categoria do nicho, não serviço específico)
+
+PROIBIDO mencionar em hero, CTA, diferenciais ou qualquer outra
+seção um item específico que NÃO EXISTE como card em services[].
+
+Exemplos:
+❌ ERRADO: services=[Bolos, Doces, Café]. Hero diz "bolos, doces,
+   sorvete ou um cafezinho" — menciona sorvete sem card.
+✅ CERTO: Hero diz "bolos, doces e um cafezinho" — só menciona
+   o que tem card.
+
+❌ ERRADO: services=[Corte, Coloração, Manicure]. Diferencial diz
+   "Tratamentos capilares com equipamento X" — menciona serviço
+   sem card.
+✅ CERTO: Diferencial diz "Cuidado completo do cabelo às unhas" —
+   linguagem sobre o que tem card.
+
+Motivo: se services[] é reduzido (3 cards), textos antigos que
+mencionavam outros serviços ficam órfãos — criando inconsistência
+e confusão pro visitante.
+
 ---
 
 WRITING hero_image_prompt / image_prompt (mandatory rules):
@@ -513,7 +539,8 @@ Write the exact hex values chosen.]
 
 8. **CTA final (py-16, fundo com cor de destaque da paleta)**
    - Título: "Agende sua consulta/visita/horário" (adaptar ao nicho)
-   - Horários de funcionamento: se o briefing fornecer lead.hours.weekday_text (ou bloco equivalente com os dias da semana), listar os dias reais formatados (ex: "Segunda: 9h-18h, Terça: 9h-18h, ..."). Se NÃO existir, OMITIR a linha de horário inteira e adicionar "horário de funcionamento" a placeholders[].
+   - NÃO duplicar horário de funcionamento aqui — horário só aparece na seção Localização.
+     Exibir aqui vira duplicação visual.
    - Badge do Google (pequeno): ícone Google + rating real + "X avaliações no Google" apontando pra busca do Google Maps do negócio
    - Botão WhatsApp grande e visível — mesmo estilo do hero
    - Texto de reforço: "Atendemos pelo WhatsApp" ou similar
