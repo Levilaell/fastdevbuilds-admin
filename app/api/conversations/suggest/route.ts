@@ -49,6 +49,13 @@ export async function POST(request: NextRequest) {
   const phase: 'inicial' | 'engajado' = inboundCount >= 3 ? 'engajado' : 'inicial'
   const systemPrompt = buildSuggestionSystemPrompt(lead, reasons, STATUS_LABELS[lead.status], phase)
 
+  // DEBUG TEMPORÁRIO — remover após diagnóstico
+  console.log('[suggest:debug] place_id=', place_id)
+  console.log('[suggest:debug] country=', lead.country, 'isUSLead path=', systemPrompt.startsWith('You are'))
+  console.log('[suggest:debug] phase=', phase, 'inbound_count=', inboundCount)
+  console.log('[suggest:debug] history_chars=', historyText.length)
+  console.log('[suggest:debug] system_prompt_first_200_chars=', systemPrompt.slice(0, 200))
+
   const anthropic = new Anthropic()
 
   const response = await anthropic.messages.create({
