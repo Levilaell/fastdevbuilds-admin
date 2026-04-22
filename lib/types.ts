@@ -39,6 +39,19 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
   disqualified: "bg-zinc-500/20 text-zinc-500",
 };
 
+export interface LeadHours {
+  weekday_text: string[];
+  open_now: boolean;
+}
+
+export interface LeadReview {
+  author_name: string;
+  rating: number;
+  text: string;
+  relative_time_description: string;
+  time: number;
+}
+
 export interface Lead {
   place_id: string;
   business_name: string | null;
@@ -48,6 +61,9 @@ export interface Lead {
   website: string | null;
   rating: number | null;
   review_count: number | null;
+  hours: LeadHours | null;
+  reviews: LeadReview[] | null;
+  photos_urls: string[] | null;
   perf_score: number | null;
   mobile_score: number | null;
   fcp: number | null;

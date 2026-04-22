@@ -262,7 +262,7 @@ Required keys:
 3. "info_request_message" (string or null) — WhatsApp message asking for missing info, or null
 4. "hero_image_prompt" (string) — English prompt for Getimg describing the hero image
 5. "hero_model_tier" ("fast" | "balanced" | "premium") — image-model complexity tier for the hero
-6. "services" (array of 4-6 objects) — each with { "name": string, "image_prompt": string, "model_tier": "fast" | "balanced" | "premium" }
+6. "services" (array of 3-6 objects) — each with { "name": string, "image_prompt": string, "model_tier": "fast" | "balanced" | "premium" }
    - "name" MUST match the exact service names from the "Serviços" section of the prompt
    - "image_prompt" and "model_tier" follow the IMAGE-PROMPT rules below
 
@@ -298,6 +298,61 @@ Example of a valid complete response (pediatric dentistry, warm pastel direction
 }
 
 Respond ONLY with valid JSON (no markdown, no explanation).
+
+---
+
+ANTI-INVENÇÃO — REGRA INVIOLÁVEL
+
+Você NUNCA pode afirmar fato sobre o cliente que não esteja literalmente no briefing. Esta regra é absoluta e não admite exceções.
+
+PROIBIDO:
+- Inventar horário de funcionamento (se não está em "HORÁRIO DE FUNCIONAMENTO:" no briefing, omita o horário do site)
+- Inventar nome específico de abordagem terapêutica, metodologia, técnica
+- Inventar nome de profissional, equipe, fundador
+- Inventar formação acadêmica, credencial, anos de experiência
+- Inventar ano de fundação, número de clientes atendidos, prêmios
+- Inventar depoimento, review, frase de cliente (exceção: reviews passados LITERALMENTE em "REVIEWS REAIS DO GOOGLE:" no briefing)
+- Inventar slogan, missão, valores textuais
+- Usar linguagem "universal do nicho" como se fosse do cliente (ex: "equipe qualificada", "ambiente acolhedor", "atendimento humanizado", "escuta ética", "cuidado especializado") — esse tipo de texto genérico é considerado INVENÇÃO e PROIBIDO
+
+COMO TRATAR INFORMAÇÃO AUSENTE:
+
+Estratégia A — Omitir seção inteira (PREFERIDA)
+  Simplesmente não inclua a seção no site.
+  Melhor 5 seções honestas que 8 com invenção.
+
+Estratégia B — Usar linguagem sobre o processo geral da profissão, não sobre o cliente específico
+  Permitido apenas em FAQ e introduções genéricas.
+  Ex: "Como funciona a primeira sessão de psicoterapia" é FATO GERAL do processo, não afirmação sobre esta clínica.
+
+EM AMBAS:
+- Adicionar item descritivo ao array "placeholders"
+- Se informação é crítica, incluir pergunta em "info_request_message"
+- NUNCA renderizar texto como "PLACEHOLDER:" ou "CONFIRMAR:" visível no site final. Comentários HTML são apenas referência interna.
+
+PERMITIDO:
+- Dados literalmente do briefing
+- Categorias de serviço óbvias do nicho (ex: "psicoterapia adulto" em clínica de psicologia — todo psicólogo oferece, não é invenção sobre o cliente específico)
+- Conteúdo educacional útil ao visitante sem afirmar nada específico (ex: FAQ "O que esperar da primeira sessão")
+- Reviews reais copiados exatamente como vieram em "REVIEWS REAIS DO GOOGLE:"
+
+Resultado esperado: sites mais curtos e 100% verdadeiros.
+
+---
+
+REGRA DE CONSISTÊNCIA SERVIÇOS↔IMAGENS (OBRIGATÓRIA):
+
+O array "services" no JSON de saída é a ÚNICA fonte de verdade para serviços renderizados no site.
+
+- Todo serviço listado na seção "Serviços" do campo "prompt" DEVE ter entrada correspondente em "services" com "name" e "image_prompt"
+- Recíproco: todo item em "services" DEVE aparecer como card no "prompt"
+- Mínimo 3 serviços, máximo 6. Nunca menos, nunca mais.
+- Se o nicho tem mais de 6 serviços plausíveis, escolha os 6 mais relevantes. NÃO crie cards extras no "prompt" sem image_prompt correspondente.
+- Se o nicho tem menos de 3 plausíveis, inclua categorias relacionadas pra chegar em 3.
+
+Violação dessa regra gera cards sem imagem no site final — degradação visual inaceitável.
+
+---
 
 WRITING hero_image_prompt / image_prompt (mandatory rules):
 - Write every image prompt in ENGLISH — Getimg only handles English well.
@@ -403,7 +458,7 @@ Write the exact hex values chosen.]
    - O botão WhatsApp é o elemento MAIS VISÍVEL da seção
 
 3. **Serviços (py-20)**
-   - 4 a 6 cards em grid responsivo (1 col mobile, 2 col tablet, 3 col desktop)
+   - 3 a 6 cards em grid responsivo (1 col mobile, 2 col tablet, 3 col desktop)
    - Cada card: ícone SVG inline relevante + título do serviço + descrição de 1-2 linhas
    - Se o cliente listou serviços na conversa: usar EXATAMENTE esses
    - Se não listou: inferir os mais comuns do nicho
@@ -414,14 +469,48 @@ Write the exact hex values chosen.]
    - Cada item: ícone SVG + título curto + descrição de 1-2 linhas
    - Inferir pelo nicho (ex: clínica → "Equipe Especializada", "Ambiente Acolhedor", "Tecnologia de Ponta")
 
-5. **CTA final (py-16, fundo com cor de destaque da paleta)**
+5. **Depoimentos (py-20, id="depoimentos", fundo #F4F0EB)**
+   SÓ INCLUIR SE houver bloco "REVIEWS REAIS DO GOOGLE" no briefing. Se não houver, OMITIR a seção inteira.
+   - Título: "O que dizem os clientes" (text-center, font-bold text-4xl)
+   - Subtítulo: "Avaliações reais no Google"
+   - Grid responsivo (1 col mobile, 2 col tablet, 3 col desktop) com um card para cada review do briefing
+   - Cada card: bg-white, rounded-xl, p-6, shadow-sm, border subtle (1px na cor accent da paleta com opacidade baixa)
+     - Aspas de abertura grandes (SVG inline) no topo, na cor accent da paleta
+     - Texto do review em itálico (truncar se >200 caracteres com "..." no final)
+     - Autor em font-semibold
+     - Estrelas (SVG inline) na cor accent da paleta
+     - "no Google" pequeno (text-xs, text-gray-500) ao lado do autor
+   - NÃO inventar reviews. Use SOMENTE os fornecidos no briefing.
+
+6. **FAQ (py-20, id="faq", fundo alternado)**
+   INCLUIR SEMPRE — é conteúdo sobre o processo geral da profissão.
+   - Título: "Perguntas frequentes"
+   - Subtítulo curto: "Tire suas dúvidas antes de agendar"
+   - 4-6 perguntas (accordion ou cards expansíveis) com respostas GENÉRICAS sobre o processo da profissão, NÃO sobre o cliente específico
+   - Exemplos do tipo de pergunta permitido:
+     * "Como funciona a primeira sessão?" (resposta genérica sobre o fluxo típico da profissão)
+     * "Posso remarcar?" (resposta genérica: comunicação via WhatsApp)
+     * "Atendem por convênio?" (PERGUNTA aceitável; RESPOSTA deve ser placeholder — depende do cliente — e entra em placeholders[])
+   - REGRA: a pergunta NÃO pode fingir saber política específica do cliente. Se a resposta depende do cliente (preços, convênios, estacionamento, formas de pagamento), a resposta é placeholder e o item entra em placeholders[].
+   - Design: cards brancos (bg-white), borda sutil (1px), ícone "+" (plus SVG) à direita que rotaciona 45° ao abrir, tipografia legível, expansível com transition-all duration-300
+
+7. **Localização (py-20, id="localizacao", fundo branco)**
+   SÓ INCLUIR SE lead.address existir no briefing. Se não houver, OMITIR.
+   - Título: "Onde estamos"
+   - Grid 2 colunas no desktop, 1 col no mobile:
+     * Esquerda: endereço completo em font-semibold + link "Abrir no Google Maps" (abre em nova aba) apontando para https://www.google.com/maps/search/?api=1&query={ENCODED_ADDRESS}
+     * Direita: iframe com Google Maps embed usando https://www.google.com/maps?q={ENCODED_ADDRESS}&output=embed — altura fixa 400px, rounded-xl, sem border, loading="lazy"
+   - {ENCODED_ADDRESS} = endereço exato do briefing passado por encodeURIComponent no JSX
+   - NÃO mostrar se endereço não existe. NÃO inventar endereço.
+
+8. **CTA final (py-16, fundo com cor de destaque da paleta)**
    - Título: "Agende sua consulta/visita/horário" (adaptar ao nicho)
-   - Horários de funcionamento (placeholder se não informado)
+   - Horários de funcionamento: se o briefing fornecer lead.hours.weekday_text (ou bloco equivalente com os dias da semana), listar os dias reais formatados (ex: "Segunda: 9h-18h, Terça: 9h-18h, ..."). Se NÃO existir, OMITIR a linha de horário inteira e adicionar "horário de funcionamento" a placeholders[].
    - Badge do Google (pequeno): ícone Google + rating real + "X avaliações no Google" apontando pra busca do Google Maps do negócio
    - Botão WhatsApp grande e visível — mesmo estilo do hero
    - Texto de reforço: "Atendemos pelo WhatsApp" ou similar
 
-6. **Footer (py-12, fundo escuro)**
+9. **Footer (py-12, fundo escuro)**
    - Nome do negócio
    - Endereço completo
    - Telefone clicável (tel:)
@@ -498,6 +587,24 @@ export function buildClaudeCodeUserPrompt(
     `- País: ${lead.country ?? "BR"}`,
     "",
   ];
+
+  if (lead.hours?.weekday_text && lead.hours.weekday_text.length > 0) {
+    lines.push("");
+    lines.push("HORÁRIO DE FUNCIONAMENTO:");
+    for (const line of lead.hours.weekday_text) {
+      lines.push(`- ${line}`);
+    }
+  }
+
+  if (Array.isArray(lead.reviews) && lead.reviews.length > 0) {
+    lines.push("");
+    lines.push("REVIEWS REAIS DO GOOGLE (use literalmente, sem inventar):");
+    for (const r of lead.reviews) {
+      lines.push(
+        `- ${r.author_name} (${r.rating} estrelas, ${r.relative_time_description}): "${r.text}"`,
+      );
+    }
+  }
 
   lines.push("ANÁLISE TÉCNICA DO SITE ATUAL:");
   if (hasWebsite) {
