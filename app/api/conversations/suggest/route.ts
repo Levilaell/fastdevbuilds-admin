@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { SCORE_REASON_LABELS, STATUS_LABELS, type Lead, type Conversation } from '@/lib/types'
 import {
   buildSuggestionSystemPrompt,
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'place_id is required' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
   const [leadResult, convResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', place_id).single(),
@@ -48,13 +48,6 @@ export async function POST(request: NextRequest) {
   const inboundCount = conversations.filter((c) => c.direction === 'in').length
   const phase: 'inicial' | 'engajado' = inboundCount >= 3 ? 'engajado' : 'inicial'
   const systemPrompt = buildSuggestionSystemPrompt(lead, reasons, STATUS_LABELS[lead.status], phase)
-
-  // DEBUG TEMPORÁRIO — remover após diagnóstico
-  console.log('[suggest:debug] place_id=', place_id)
-  console.log('[suggest:debug] country=', lead.country, 'isUSLead path=', systemPrompt.startsWith('You are'))
-  console.log('[suggest:debug] phase=', phase, 'inbound_count=', inboundCount)
-  console.log('[suggest:debug] history_chars=', historyText.length)
-  console.log('[suggest:debug] system_prompt_first_200_chars=', systemPrompt.slice(0, 200))
 
   const anthropic = new Anthropic()
 
