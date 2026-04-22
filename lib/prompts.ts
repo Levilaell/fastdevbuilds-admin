@@ -346,7 +346,13 @@ O array "services" no JSON de saída é a ÚNICA fonte de verdade para serviços
 
 - Todo serviço listado na seção "Serviços" do campo "prompt" DEVE ter entrada correspondente em "services" com "name" e "image_prompt"
 - Recíproco: todo item em "services" DEVE aparecer como card no "prompt"
-- Mínimo 3 serviços, máximo 6. Nunca menos, nunca mais.
+- EXATAMENTE 3 ou EXATAMENTE 6 serviços. Nunca 4, 5, 7+.
+  Motivo: o grid desktop é de 3 colunas. 4 ou 5 cards geram
+  órfãos na última linha (layout quebrado). 3 cards preenchem
+  1 linha, 6 cards preenchem 2 linhas — zero órfão.
+  Preferência: 6 serviços (mais conteúdo, mais autoridade).
+  Use 3 apenas se o nicho não suportar 6 serviços plausíveis
+  sem inventar — ex: barbearia com só corte/barba/combo.
 - Se o nicho tem mais de 6 serviços plausíveis, escolha os 6 mais relevantes. NÃO crie cards extras no "prompt" sem image_prompt correspondente.
 - Se o nicho tem menos de 3 plausíveis, inclua categorias relacionadas pra chegar em 3.
 
@@ -458,7 +464,9 @@ Write the exact hex values chosen.]
    - O botão WhatsApp é o elemento MAIS VISÍVEL da seção
 
 3. **Serviços (py-20)**
-   - 3 a 6 cards em grid responsivo (1 col mobile, 2 col tablet, 3 col desktop)
+   - 3 OU 6 cards em grid responsivo (1 col mobile, 2 col tablet, 3 col desktop).
+     Nunca 4 ou 5 — quebra a grid. Ver regra de consistência services↔images.
+     Quando 3: grid-cols-1 md:grid-cols-3. Quando 6: grid-cols-1 md:grid-cols-2 lg:grid-cols-3.
    - Cada card: ícone SVG inline relevante + título do serviço + descrição de 1-2 linhas
    - Se o cliente listou serviços na conversa: usar EXATAMENTE esses
    - Se não listou: inferir os mais comuns do nicho
