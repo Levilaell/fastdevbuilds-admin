@@ -125,6 +125,7 @@ type MatchMethod =
   | "phone"
   | "text-echo"
   | "instance-attribution"
+  | "pushname-fuzzy"
   | "none";
 
 interface MatchResult {
@@ -155,6 +156,7 @@ async function matchLead(params: {
   isFromMe: boolean;
   text: string;
   webhookInstanceName: string;
+  pushName: string;
 }): Promise<MatchResult> {
   const {
     supabase,
@@ -163,6 +165,7 @@ async function matchLead(params: {
     isFromMe,
     text,
     webhookInstanceName,
+    pushName,
   } = params;
 
   // 1. whatsapp_jid exact
@@ -302,7 +305,166 @@ async function matchLead(params: {
     );
   }
 
+  // 5. pushName fuzzy match. Última tentativa antes de quarantine:
+  // muitos inbounds @lid não resolvem via resolvePhoneFromLid
+  // (contato sem foto de perfil, ou foto diferente), mas chegam
+  // com data.pushName que bate com algum lead na mesma instance.
+  // Heurísticas: substring (após normalização), subset de tokens,
+  // jaccard >= 0.4.
+  if (webhookInstanceName && pushName && !isFromMe) {
+    const fuzzyLead = await matchByPushName(
+      supabase,
+      pushName,
+      webhookInstanceName,
+    );
+    if (fuzzyLead) {
+      console.log(
+        "[webhook:match] method=pushname-fuzzy place_id=",
+        fuzzyLead.place_id,
+        "pushName:",
+        pushName,
+        "business_name:",
+        fuzzyLead.business_name,
+      );
+      return { lead: fuzzyLead, method: "pushname-fuzzy" };
+    }
+  }
+
   return { lead: null, method: "none" };
+}
+
+const PUSHNAME_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const PUSHNAME_STOPWORDS = new Set([
+  "de", "da", "do", "das", "dos", "e", "em", "no", "na", "nos",
+  "nas", "o", "a", "os", "as", "com", "por", "para", "pela",
+  "pelo", "um", "uma", "the", "and", "of", "for", "with", "to",
+  "i", "my",
+]);
+
+function pushNameNormalize(str: string): string {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pushNameTokens(str: string): string[] {
+  return pushNameNormalize(str)
+    .split(" ")
+    .filter((t) => t.length >= 2 && !PUSHNAME_STOPWORDS.has(t));
+}
+
+interface FuzzyCandidate {
+  lead: MatchedLead & { business_name: string };
+  substring: boolean;
+  subset: boolean;
+  jaccard: number;
+  score: number;
+}
+
+function scorePushNameMatch(
+  pushName: string,
+  businessName: string,
+): Omit<FuzzyCandidate, "lead"> {
+  const na = pushNameNormalize(pushName);
+  const nb = pushNameNormalize(businessName);
+
+  // Substring: um contém o outro (min 6 chars)
+  const ss = na.length >= 6 && nb.length >= 6
+    && (na.includes(nb) || nb.includes(na));
+
+  // Subset: todos os tokens de A estão em B (ou vice-versa)
+  const ta = pushNameTokens(pushName);
+  const tb = pushNameTokens(businessName);
+  let subset = false;
+  if (ta.length > 0 && tb.length > 0 && (ta.length >= 2 || tb.length >= 2)) {
+    const setA = new Set(ta);
+    const setB = new Set(tb);
+    subset = ta.every((t) => setB.has(t)) || tb.every((t) => setA.has(t));
+  }
+
+  // Jaccard
+  const setA2 = new Set(ta);
+  const setB2 = new Set(tb);
+  const inter = [...setA2].filter((t) => setB2.has(t)).length;
+  const union = new Set([...setA2, ...setB2]).size;
+  const jc = union === 0 ? 0 : inter / union;
+
+  const score = (ss ? 2 : 0) + (subset ? 1 : 0) + jc;
+
+  return { substring: ss, subset, jaccard: jc, score };
+}
+
+/**
+ * Match by pushName ≈ business_name. Replicates the heuristic used
+ * by scripts/reconcile-quarantine.js (bot repo) so prospectively
+ * we catch @lid inbounds that would otherwise quarantine.
+ *
+ * Returns null if no high-confidence match or if multiple
+ * candidates can't be disambiguated.
+ */
+async function matchByPushName(
+  supabase: SupabaseClient,
+  pushName: string,
+  instance: string,
+): Promise<(MatchedLead & { business_name: string }) | null> {
+  const since = new Date(Date.now() - PUSHNAME_LOOKBACK_MS).toISOString();
+
+  const { data: leads } = await supabase
+    .from("leads")
+    .select("place_id, phone, status, evolution_instance, whatsapp_jid, business_name")
+    .eq("evolution_instance", instance)
+    .eq("outreach_sent", true)
+    .gte("outreach_sent_at", since);
+
+  if (!leads || leads.length === 0) return null;
+
+  const scored: FuzzyCandidate[] = leads
+    .filter((l): l is typeof l & { business_name: string } =>
+      typeof l.business_name === "string" && l.business_name.length > 0
+    )
+    .map((lead) => ({
+      lead: lead as MatchedLead & { business_name: string },
+      ...scorePushNameMatch(pushName, lead.business_name),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const strong = scored.filter((s) => s.substring || s.subset);
+
+  if (strong.length === 1) {
+    return strong[0].lead;
+  }
+  if (strong.length > 1) {
+    // Desempate: top >= 1.3x segundo
+    if (strong[0].score >= strong[1].score * 1.3) {
+      console.log(
+        "[webhook:match] pushname-fuzzy best-of-" + strong.length,
+        "top score:", strong[0].score.toFixed(2),
+        "second:", strong[1].score.toFixed(2),
+      );
+      return strong[0].lead;
+    }
+    console.log(
+      "[webhook:match] pushname-fuzzy ambiguous strong —",
+      "top 3:",
+      strong.slice(0, 3).map((s) => s.lead.business_name).join(" | "),
+    );
+    return null;
+  }
+
+  // Nenhum match forte — tentar jaccard >= 0.4 se só 1 candidato
+  const medium = scored.filter((s) => !s.substring && !s.subset && s.jaccard >= 0.4);
+  if (medium.length === 1) {
+    return medium[0].lead;
+  }
+  if (medium.length > 1 && medium[0].score >= medium[1].score * 1.5) {
+    return medium[0].lead;
+  }
+
+  return null;
 }
 
 /**
@@ -567,6 +729,7 @@ export async function POST(request: Request) {
       isFromMe,
       text,
       webhookInstanceName,
+      pushName: data.pushName ?? "",
     });
     const lead = matchResult.lead;
 
