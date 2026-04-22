@@ -68,6 +68,11 @@ function PromptSection({
   }
 
   async function handleGeneratePrompt() {
+    const confirmed = window.confirm(
+      "Regenerar o prompt vai gastar ~280 créditos Getimg (~R$14) " +
+      "e demorar 30-90s. O prompt atual será sobrescrito. Continuar?"
+    );
+    if (!confirmed) return;
     setGeneratingPrompt(true);
     try {
       const res = await fetch(

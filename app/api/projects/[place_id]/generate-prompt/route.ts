@@ -5,6 +5,10 @@ import { getRecentConversations } from '@/lib/supabase/queries'
 import { generateClaudeCodePrompt } from '@/lib/ai-workflow'
 import type { Lead, Project, Conversation } from '@/lib/types'
 
+// Arquitetura C: Opus + Getimg + Supabase upload leva 30-90s.
+// Mesmo cap que /create — senão função morre antes de terminar.
+export const maxDuration = 300
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ place_id: string }> },
