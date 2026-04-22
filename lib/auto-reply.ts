@@ -76,6 +76,17 @@ const STRONG_PATTERNS: RegExp[] = [
   /we('ve|\s+have)\s+received\s+your\s+(email|message|inquiry)/i,
   /we\s+will\s+(get\s+back|respond|reply)\s+(to\s+you\s+)?(shortly|soon|within)/i,
   /currently\s+closed/i,
+
+  // Boas-vindas institucional: saudação + apresentação de espaço/consultório/clínica
+  /bem[\s-]?vind[oa](?:\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa|ao seu)\s+(?:espaço|consultório|consultorio|escritório|escritorio|clínica|clinica|studio|estúdio|salão|salao|barbershop|atendimento)/i,
+  /seja\s+bem[\s-]?vind[oa](?:\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa)/i,
+  /muito\s+prazer,?\s+seja\s+bem[\s-]?vind[oa]/i,
+
+  // "Agradeço seu contato" / "Agradeço o seu contato"
+  /agrade[çc]o\s+(o\s+)?seu\s+contato/i,
+
+  // Saudação + "como posso te ajudar/direcionar"
+  /como\s+posso\s+(?:te\s+)?(?:direcionar|orientar|atender)/i,
 ];
 
 export function isAutoReply(message: string): boolean {
@@ -99,5 +110,5 @@ export function isInstantReply(
       : new Date(replyTimestamp).getTime();
   const outboundTime = new Date(lastOutboundTimestamp).getTime();
   const diffMs = replyTime - outboundTime;
-  return diffMs >= 0 && diffMs < 3_000;
+  return diffMs >= 0 && diffMs < 30_000;
 }
