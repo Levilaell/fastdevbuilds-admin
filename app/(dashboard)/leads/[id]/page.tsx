@@ -203,10 +203,7 @@ async function LeadDetailContent({ id }: { id: string }) {
               businessName={lead.business_name ?? ""}
             />
           ) : (
-            <CreateProjectButton
-              placeId={lead.place_id}
-              businessName={lead.business_name ?? 'lead'}
-            />
+            <CreateProjectButton placeId={lead.place_id} />
           )}
         </div>
       }
