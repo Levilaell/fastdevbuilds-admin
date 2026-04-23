@@ -5,7 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { timeAgo } from '@/lib/time-ago'
-import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type Project } from '@/lib/types'
+import {
+  PIPELINE_COLUMN_LABELS,
+  PIPELINE_COLUMN_COLORS,
+  getPipelineColumn,
+  type InboxItem,
+  type Conversation,
+  type Project,
+} from '@/lib/types'
 import SharedReplyBox from '@/components/shared/reply-box'
 import MarkLostModal from '@/components/lead-detail/mark-lost-modal'
 import WorkflowBar from '@/components/inbox/workflow-bar'
@@ -81,9 +88,15 @@ function ConversationListItem({
               {item.evolution_instance}
             </span>
           )}
-          <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[item.status]}`}>
-            {STATUS_LABELS[item.status]}
-          </span>
+          {(() => {
+            const col = getPipelineColumn(item.status, item.project_status)
+            if (!col) return null
+            return (
+              <span className={`text-[9px] px-1 py-0.5 rounded ${PIPELINE_COLUMN_COLORS[col]}`}>
+                {PIPELINE_COLUMN_LABELS[col]}
+              </span>
+            )
+          })()}
           {hasUnread && (
             <span className="text-[9px] font-semibold text-accent ml-auto">
               {item.unread_count}
@@ -600,9 +613,15 @@ export default function InboxClient() {
                         {activeItem.evolution_instance}
                       </span>
                     )}
-                    <span className={`text-[9px] px-1 py-0.5 rounded ${STATUS_COLORS[activeItem.status]}`}>
-                      {STATUS_LABELS[activeItem.status]}
-                    </span>
+                    {(() => {
+                      const col = getPipelineColumn(activeItem.status, activeItem.project_status)
+                      if (!col) return null
+                      return (
+                        <span className={`text-[9px] px-1 py-0.5 rounded ${PIPELINE_COLUMN_COLORS[col]}`}>
+                          {PIPELINE_COLUMN_LABELS[col]}
+                        </span>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

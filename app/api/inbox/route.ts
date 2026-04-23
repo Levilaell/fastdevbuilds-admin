@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
-import type { LeadStatus } from '@/lib/types'
+import type { LeadStatus, ProjectStatus } from '@/lib/types'
 
 interface RawRow {
   place_id: string
@@ -108,6 +108,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Step 3b: Fetch project status per lead so the badge can reflect
+  // pipeline-column state (e.g. "Preview enviado") instead of the raw
+  // lead.status ("Negociando"), keeping inbox consistent with /pipeline.
+  const projectMap = new Map<string, ProjectStatus>()
+  const leadPlaceIds = [...leadMap.keys()]
+  for (let i = 0; i < leadPlaceIds.length; i += CHUNK_SIZE) {
+    const chunk = leadPlaceIds.slice(i, i + CHUNK_SIZE)
+    const { data, error } = await supabase
+      .from('projects')
+      .select('place_id, status')
+      .in('place_id', chunk)
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    for (const row of (data ?? []) as { place_id: string; status: ProjectStatus }[]) {
+      projectMap.set(row.place_id, row.status)
+    }
+  }
+
   // Step 4: Merge conversations with lead info
   const allItems = placeIdsWithConvs
     .filter(pid => leadMap.has(pid))
@@ -120,6 +137,7 @@ export async function GET(request: NextRequest) {
         outreach_channel: lead.outreach_channel,
         evolution_instance: lead.evolution_instance,
         status: lead.status,
+        project_status: projectMap.get(pid) ?? null,
         last_message: conv.last_message,
         last_message_at: conv.last_message_at,
         last_direction: conv.last_direction,

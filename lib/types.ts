@@ -133,6 +133,7 @@ export interface InboxItem {
   outreach_channel: string | null;
   evolution_instance: string | null;
   status: LeadStatus;
+  project_status: ProjectStatus | null;
   last_message: string | null;
   last_message_at: string | null;
   last_direction: string | null;
@@ -244,6 +245,15 @@ export const PIPELINE_COLUMN_LABELS: Record<PipelineColumn, string> = {
   preview_sent: "Preview enviado",
   adjusting: "Ajustando",
   delivered: "Versão final enviada",
+};
+
+export const PIPELINE_COLUMN_COLORS: Record<PipelineColumn, string> = {
+  prospected: "bg-slate-500/20 text-slate-400",
+  sent: "bg-blue-500/20 text-blue-400",
+  accepted: "bg-yellow-500/20 text-yellow-400",
+  preview_sent: "bg-violet-500/20 text-violet-400",
+  adjusting: "bg-fuchsia-500/20 text-fuchsia-400",
+  delivered: "bg-emerald-500/20 text-emerald-400",
 };
 
 /** Columns whose drop target is a project-state change (require active project). */
