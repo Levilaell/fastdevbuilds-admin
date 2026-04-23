@@ -3,14 +3,22 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getAuthUser, unauthorizedResponse } from '@/lib/supabase/auth'
 import { LEAD_STATUSES, type LeadStatus } from '@/lib/types'
 
-/** Allowed forward transitions — any status can also move to 'lost' or 'disqualified'. */
+/**
+ * Allowed transitions between lead statuses. Reversibility is deliberate:
+ * the user is the source of truth for their funnel, and common corrections
+ * (e.g. spotting an auto-reply mislabeled as a real reply → move back to
+ * `sent`) need to happen without a UI workaround. Only `disqualified` is
+ * one-way, because it's set by the bot's qualification pass and shouldn't
+ * be reused to re-queue a lead.
+ */
+const ACTIVE_STATUSES: LeadStatus[] = ['prospected', 'sent', 'replied', 'negotiating', 'closed']
 const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
-  prospected: ['sent', 'lost', 'disqualified'],
-  sent: ['replied', 'lost', 'disqualified'],
-  replied: ['negotiating', 'lost', 'disqualified'],
-  negotiating: ['closed', 'lost', 'disqualified'],
-  closed: ['lost', 'disqualified'],
-  lost: ['prospected', 'sent', 'replied', 'negotiating'],
+  prospected: [...ACTIVE_STATUSES, 'lost', 'disqualified'],
+  sent: [...ACTIVE_STATUSES, 'lost', 'disqualified'],
+  replied: [...ACTIVE_STATUSES, 'lost', 'disqualified'],
+  negotiating: [...ACTIVE_STATUSES, 'lost', 'disqualified'],
+  closed: [...ACTIVE_STATUSES, 'lost', 'disqualified'],
+  lost: [...ACTIVE_STATUSES],
   disqualified: [],
 }
 
