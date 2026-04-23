@@ -38,9 +38,26 @@ export async function PATCH(
   if (!place_id) return Response.json({ error: 'place_id is required' }, { status: 400 })
   const body = await request.json()
   const newStatus = body.status as string
+  const rawPrice = body.price
 
   if (!PROJECT_STATUSES.includes(newStatus as ProjectStatus)) {
     return Response.json({ error: 'Invalid status' }, { status: 400 })
+  }
+
+  // Price is only meaningful on the paid transition — accept it optionally
+  // there and ignore elsewhere. This is the hook the dashboard uses to
+  // capture the final amount (the PaidPriceModal); metrics assume price is
+  // filled on every paid row going forward.
+  let priceToSet: number | null = null
+  if (newStatus === 'paid' && rawPrice !== undefined && rawPrice !== null) {
+    const n = typeof rawPrice === 'number' ? rawPrice : Number(rawPrice)
+    if (!Number.isFinite(n) || n < 0) {
+      return Response.json(
+        { error: 'price must be a non-negative number' },
+        { status: 400 },
+      )
+    }
+    priceToSet = n
   }
 
   const supabase = createServiceClient()
@@ -58,6 +75,7 @@ export async function PATCH(
   const update: Record<string, unknown> = { status: newStatus }
   const col = stampKey[newStatus as ProjectStatus]
   if (col) update[col] = now
+  if (priceToSet !== null) update.price = priceToSet
 
   const { data: project, error } = await supabase
     .from('projects')

@@ -10,6 +10,7 @@ import SharedReplyBox from '@/components/shared/reply-box'
 import MarkLostModal from '@/components/lead-detail/mark-lost-modal'
 import WorkflowBar from '@/components/inbox/workflow-bar'
 import OrphanMessages from '@/components/inbox/orphan-messages'
+import PaidPriceModal from '@/components/lead-detail/paid-price-modal'
 
 // ─── Conversation list item ───
 
@@ -151,19 +152,21 @@ function InboxPipelineAction({
   placeId,
   loading,
   onAction,
+  onRequestPaid,
 }: {
   leadStatus: string
   project: Project | null
   placeId: string
   loading: boolean
   onAction: (action: PipelineActionFn) => void
+  onRequestPaid: () => void
 }) {
   const projectStatus = project?.status ?? null
 
   // Determine which button to show based on lead + project state
   let label: string | null = null
   let action: PipelineActionFn | null = null
-  let color = 'bg-accent/15 border-accent/30 text-accent hover:bg-accent/25'
+  const color = 'bg-accent/15 border-accent/30 text-accent hover:bg-accent/25'
 
   if (leadStatus === 'closed' || leadStatus === 'lost') {
     return null
@@ -197,15 +200,19 @@ function InboxPipelineAction({
       })
     }
   } else if (projectStatus === 'delivered') {
-    label = 'Cliente aprovou e pagou →'
-    color = 'bg-success/15 border-success/30 text-success hover:bg-success/25'
-    action = async (pid) => {
-      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'paid' }),
-      })
-    }
+    // Paid transition is modal-gated — the price must be captured before the
+    // PATCH so revenue metrics have real numbers. Return a distinct button
+    // that fires the parent's onRequestPaid to avoid running through onAction
+    // (which wouldn't know to show the modal).
+    return (
+      <button
+        onClick={onRequestPaid}
+        disabled={loading}
+        className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-success/15 border-success/30 text-success hover:bg-success/25 disabled:opacity-50"
+      >
+        {loading ? 'Aguarde…' : 'Cliente aprovou e pagou →'}
+      </button>
+    )
   } else if (projectStatus === 'paid') {
     return (
       <span className="text-[10px] text-success px-1.5 py-0.5 rounded bg-success/10">
@@ -241,6 +248,7 @@ export default function InboxClient() {
   const [project, setProject] = useState<Project | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [showLostModal, setShowLostModal] = useState(false)
+  const [showPaidModal, setShowPaidModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [convLoading, setConvLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -604,6 +612,7 @@ export default function InboxClient() {
                   project={project}
                   placeId={activePlaceId}
                   loading={actionLoading}
+                  onRequestPaid={() => setShowPaidModal(true)}
                   onAction={async (action) => {
                     if (!activePlaceId || actionLoading) return
                     setActionLoading(true)
@@ -697,6 +706,27 @@ export default function InboxClient() {
             setShowLostModal(false)
             fetchInbox()
             showToast('Lead marcado como perdido', 'success')
+          }}
+        />
+      )}
+
+      {showPaidModal && activePlaceId && activeItem && (
+        <PaidPriceModal
+          placeId={activePlaceId}
+          businessName={activeItem.business_name ?? 'Lead'}
+          onClose={() => setShowPaidModal(false)}
+          onPaid={async () => {
+            setShowPaidModal(false)
+            // Refresh both sides so pipeline column + inbox status reflect paid.
+            const projRes = await fetch(
+              `/api/projects/${encodeURIComponent(activePlaceId)}/status`,
+            )
+            if (projRes.ok) {
+              const p = await projRes.json()
+              if (p) setProject(p)
+            }
+            fetchInbox()
+            showToast('Projeto marcado como pago', 'success')
           }}
         />
       )}

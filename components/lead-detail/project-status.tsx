@@ -7,6 +7,7 @@ import {
   type ProjectStatus,
 } from "@/lib/types";
 import SendPreviewModal from "./send-preview-modal";
+import PaidPriceModal from "./paid-price-modal";
 
 const fmtCurrency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -293,6 +294,7 @@ export default function ProjectStatusSection({
     status !== "cancelled";
 
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showPaidModal, setShowPaidModal] = useState(false);
 
   async function advanceStatus(newStatus: ProjectStatus) {
     const label = PROJECT_STATUS_LABELS[newStatus];
@@ -441,12 +443,28 @@ export default function ProjectStatusSection({
 
       {status === "delivered" && (
         <button
-          onClick={() => advanceStatus("paid")}
+          onClick={() => setShowPaidModal(true)}
           disabled={loading}
           className="w-full py-2 text-xs font-medium rounded-lg bg-success hover:bg-success/80 text-white disabled:opacity-50"
         >
           {loading ? "Atualizando…" : "Cliente aprovou e pagou →"}
         </button>
+      )}
+
+      {showPaidModal && (
+        <PaidPriceModal
+          placeId={placeId}
+          businessName={businessName}
+          onClose={() => setShowPaidModal(false)}
+          onPaid={() => {
+            setShowPaidModal(false);
+            // Refresh full project row so UI reflects paid state + price.
+            fetch(`/api/projects/${encodeURIComponent(placeId)}/status`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((p) => p && setProject(p))
+              .catch(() => {});
+          }}
+        />
       )}
 
       {status === "paid" && (
