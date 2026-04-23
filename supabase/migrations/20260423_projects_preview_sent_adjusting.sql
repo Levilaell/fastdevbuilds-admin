@@ -9,11 +9,11 @@
 -- iterating on client feedback). The pipeline UI needs them separate so
 -- "waiting on them" is visually distinct from "working on it".
 --
--- Backfill strategy for existing rows (13 projects): classification based on
--- conversations — every project we looked at had a preview URL outbound after
--- its creation, so none are truly "delivered" in the new meaning (= final
--- version, awaiting payment). Twelve had no client response after the preview
--- → `preview_sent`. One had inbound replies after preview → `adjusting`.
+-- Backfill strategy for existing rows (13 projects): every project had a
+-- preview URL outbound after creation, so all 13 are classified `preview_sent`
+-- here. Inbound replies from the client after the preview are NOT treated as
+-- an auto-transition to `adjusting` — that's a manual call (whether the user
+-- has started applying changes is unrelated to whether the client responded).
 -- `preview_sent_at` is backfilled from the preview outbound's sent_at.
 
 -- 1. Allow the new enum values via CHECK constraint. Existing `in_progress`
@@ -41,7 +41,7 @@ UPDATE projects SET status='preview_sent', preview_sent_at='2026-04-22T21:16:48.
 UPDATE projects SET status='preview_sent', preview_sent_at='2026-04-22T21:18:36.742+00:00' WHERE place_id='ChIJL2JZ2CL_zpQRkXVrPFn2PPU';
 UPDATE projects SET status='preview_sent', preview_sent_at='2026-04-22T21:24:05.247+00:00' WHERE place_id='ChIJ47lwsqz_zpQRf3cC7UEzApo';
 UPDATE projects SET status='preview_sent', preview_sent_at='2026-04-22T21:25:18.911+00:00' WHERE place_id='ChIJ5yHSyLj_zpQRtfChcQ-F0hU';
-UPDATE projects SET status='adjusting',    preview_sent_at='2026-04-22T18:43:03.221+00:00' WHERE place_id='ChIJb10yxqj5zJQRVxp0NBZP7U0';
+UPDATE projects SET status='preview_sent', preview_sent_at='2026-04-22T18:43:03.221+00:00' WHERE place_id='ChIJb10yxqj5zJQRVxp0NBZP7U0';
 
 -- 3. Any stragglers (shouldn't exist but defensively remap) — a row still
 -- on `in_progress` after this point is data we didn't classify; promote to
