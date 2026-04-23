@@ -11,6 +11,7 @@ import {
   resolvePhoneFromLid,
 } from "@/lib/whatsapp";
 import { onInboundLeadMessage } from "@/lib/leads/on-inbound";
+import { matchLeadByPushName } from "@/lib/leads/pushname-match";
 import { logWebhook } from "./debug/route";
 import type { Lead } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -41,10 +42,11 @@ type MatchedLead = {
   status: string;
   evolution_instance: string | null;
   whatsapp_jid: string | null;
+  whatsapp_lid_jid: string | null;
 };
 
 const LEAD_SELECT =
-  "place_id, phone, status, evolution_instance, whatsapp_jid";
+  "place_id, phone, status, evolution_instance, whatsapp_jid, whatsapp_lid_jid";
 
 /**
  * Coerce an Evolution `messageTimestamp` into a valid ISO string.
@@ -168,17 +170,33 @@ async function matchLead(params: {
     pushName,
   } = params;
 
-  // 1. whatsapp_jid exact
+  // 1. whatsapp_jid OR whatsapp_lid_jid exact match.
+  // `whatsapp_jid` holds the canonical @s.whatsapp.net form persisted by
+  // dispatch's `lookupJidFromPhone`. `whatsapp_lid_jid` holds the @lid form
+  // learned via quarantine triage (see lib/quarantine/resolve). Checking both
+  // in one `.or()` query keeps this the fastest match path — same sub-ms
+  // lookup whether the contact replies from the canonical number or their
+  // @lid alias.
   if (remoteJid) {
+    // JID values contain `.` (reserved in PostgREST `.or()` filter strings),
+    // so the value must be wrapped in double quotes to parse correctly.
+    const jidFilter = `"${remoteJid}"`;
     const { data: jidLead } = await supabase
       .from("leads")
       .select(LEAD_SELECT)
-      .eq("whatsapp_jid", remoteJid)
+      .or(
+        `whatsapp_jid.eq.${jidFilter},whatsapp_lid_jid.eq.${jidFilter}`,
+      )
       .limit(1)
       .maybeSingle();
 
     if (jidLead) {
-      console.log("[webhook:match] method=jid place_id=", jidLead.place_id);
+      console.log(
+        "[webhook:match] method=jid place_id=",
+        jidLead.place_id,
+        "matchedColumn=",
+        jidLead.whatsapp_jid === remoteJid ? "whatsapp_jid" : "whatsapp_lid_jid",
+      );
       return { lead: jidLead as MatchedLead, method: "jid" };
     }
   }
@@ -243,6 +261,8 @@ async function matchLead(params: {
           evolution_instance:
             (textHit.evolution_instance as string | null) ?? null,
           whatsapp_jid: (textHit.whatsapp_jid as string | null) ?? null,
+          whatsapp_lid_jid:
+            (textHit.whatsapp_lid_jid as string | null) ?? null,
         },
         method: "text-echo",
       };
@@ -271,7 +291,7 @@ async function matchLead(params: {
   const { data: candidates } = await supabase
     .from("leads")
     .select(
-      "place_id, phone, status, evolution_instance, whatsapp_jid, outreach_sent_at",
+      "place_id, phone, status, evolution_instance, whatsapp_jid, whatsapp_lid_jid, outreach_sent_at",
     )
     .eq("evolution_instance", webhookInstanceName)
     .eq("outreach_sent", true)
@@ -333,138 +353,22 @@ async function matchLead(params: {
   return { lead: null, method: "none" };
 }
 
-const PUSHNAME_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-const PUSHNAME_STOPWORDS = new Set([
-  "de", "da", "do", "das", "dos", "e", "em", "no", "na", "nos",
-  "nas", "o", "a", "os", "as", "com", "por", "para", "pela",
-  "pelo", "um", "uma", "the", "and", "of", "for", "with", "to",
-  "i", "my",
-]);
-
-function pushNameNormalize(str: string): string {
-  return (str || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function pushNameTokens(str: string): string[] {
-  return pushNameNormalize(str)
-    .split(" ")
-    .filter((t) => t.length >= 2 && !PUSHNAME_STOPWORDS.has(t));
-}
-
-interface FuzzyCandidate {
-  lead: MatchedLead & { business_name: string };
-  substring: boolean;
-  subset: boolean;
-  jaccard: number;
-  score: number;
-}
-
-function scorePushNameMatch(
-  pushName: string,
-  businessName: string,
-): Omit<FuzzyCandidate, "lead"> {
-  const na = pushNameNormalize(pushName);
-  const nb = pushNameNormalize(businessName);
-
-  // Substring: um contém o outro (min 6 chars)
-  const ss = na.length >= 6 && nb.length >= 6
-    && (na.includes(nb) || nb.includes(na));
-
-  // Subset: todos os tokens de A estão em B (ou vice-versa)
-  const ta = pushNameTokens(pushName);
-  const tb = pushNameTokens(businessName);
-  let subset = false;
-  if (ta.length > 0 && tb.length > 0 && (ta.length >= 2 || tb.length >= 2)) {
-    const setA = new Set(ta);
-    const setB = new Set(tb);
-    subset = ta.every((t) => setB.has(t)) || tb.every((t) => setA.has(t));
-  }
-
-  // Jaccard
-  const setA2 = new Set(ta);
-  const setB2 = new Set(tb);
-  const inter = [...setA2].filter((t) => setB2.has(t)).length;
-  const union = new Set([...setA2, ...setB2]).size;
-  const jc = union === 0 ? 0 : inter / union;
-
-  const score = (ss ? 2 : 0) + (subset ? 1 : 0) + jc;
-
-  return { substring: ss, subset, jaccard: jc, score };
-}
-
 /**
- * Match by pushName ≈ business_name. Replicates the heuristic used
- * by scripts/reconcile-quarantine.js (bot repo) so prospectively
- * we catch @lid inbounds that would otherwise quarantine.
- *
- * Returns null if no high-confidence match or if multiple
- * candidates can't be disambiguated.
+ * Match by pushName ≈ business_name using the shared fuzzy helper. Replicates
+ * the heuristic used by scripts/reconcile-quarantine.js (bot repo) so the
+ * real-time webhook catches @lid inbounds that would otherwise quarantine.
  */
 async function matchByPushName(
   supabase: SupabaseClient,
   pushName: string,
   instance: string,
 ): Promise<(MatchedLead & { business_name: string }) | null> {
-  const since = new Date(Date.now() - PUSHNAME_LOOKBACK_MS).toISOString();
-
-  const { data: leads } = await supabase
-    .from("leads")
-    .select("place_id, phone, status, evolution_instance, whatsapp_jid, business_name")
-    .eq("evolution_instance", instance)
-    .eq("outreach_sent", true)
-    .gte("outreach_sent_at", since);
-
-  if (!leads || leads.length === 0) return null;
-
-  const scored: FuzzyCandidate[] = leads
-    .filter((l): l is typeof l & { business_name: string } =>
-      typeof l.business_name === "string" && l.business_name.length > 0
-    )
-    .map((lead) => ({
-      lead: lead as MatchedLead & { business_name: string },
-      ...scorePushNameMatch(pushName, lead.business_name),
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  const strong = scored.filter((s) => s.substring || s.subset);
-
-  if (strong.length === 1) {
-    return strong[0].lead;
-  }
-  if (strong.length > 1) {
-    // Desempate: top >= 1.3x segundo
-    if (strong[0].score >= strong[1].score * 1.3) {
-      console.log(
-        "[webhook:match] pushname-fuzzy best-of-" + strong.length,
-        "top score:", strong[0].score.toFixed(2),
-        "second:", strong[1].score.toFixed(2),
-      );
-      return strong[0].lead;
-    }
-    console.log(
-      "[webhook:match] pushname-fuzzy ambiguous strong —",
-      "top 3:",
-      strong.slice(0, 3).map((s) => s.lead.business_name).join(" | "),
-    );
-    return null;
-  }
-
-  // Nenhum match forte — tentar jaccard >= 0.4 se só 1 candidato
-  const medium = scored.filter((s) => !s.substring && !s.subset && s.jaccard >= 0.4);
-  if (medium.length === 1) {
-    return medium[0].lead;
-  }
-  if (medium.length > 1 && medium[0].score >= medium[1].score * 1.5) {
-    return medium[0].lead;
-  }
-
-  return null;
+  return matchLeadByPushName<MatchedLead & { business_name: string | null }>({
+    supabase,
+    pushName,
+    instance,
+    leadColumns: `${LEAD_SELECT}, business_name`,
+  });
 }
 
 /**
@@ -821,6 +725,20 @@ export async function POST(request: Request) {
             remoteJid,
           );
         }
+      }
+
+      // Secondary @lid form: when a match resolves via phone/instance/fuzzy
+      // and the inbound is @lid, persist it on a separate column so future
+      // events from the same contact hit match #1 (jid-exact) directly —
+      // skipping the expensive/flaky resolution paths.
+      if (isLid && remoteJid && !lead.whatsapp_lid_jid) {
+        leadUpdates.whatsapp_lid_jid = remoteJid;
+        console.log(
+          "[webhook:match] learning @lid alias for",
+          placeId,
+          "lid:",
+          remoteJid,
+        );
       }
 
       if (!lead.evolution_instance && webhookInstanceName) {

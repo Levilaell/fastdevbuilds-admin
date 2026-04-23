@@ -9,6 +9,7 @@ import { STATUS_LABELS, STATUS_COLORS, type InboxItem, type Conversation, type P
 import SharedReplyBox from '@/components/shared/reply-box'
 import MarkLostModal from '@/components/lead-detail/mark-lost-modal'
 import WorkflowBar from '@/components/inbox/workflow-bar'
+import OrphanMessages from '@/components/inbox/orphan-messages'
 
 // ─── Conversation list item ───
 
@@ -474,6 +475,8 @@ export default function InboxClient() {
             />
           </div>
         </div>
+
+        <OrphanMessages onResolved={fetchInbox} />
 
         {/* List */}
         <div className="flex-1 overflow-y-auto divide-y divide-border">

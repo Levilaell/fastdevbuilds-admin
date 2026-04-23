@@ -1,0 +1,24 @@
+-- Drop a hidden trigger that auto-transitioned lead status on every inbound
+-- conversation insert, without respecting `approved_by='auto-reply'`. The
+-- trigger pre-dated file-based migrations and was discovered in production
+-- after it spuriously marked 8 leads as `replied` during a quarantine
+-- attribution session on 2026-04-22.
+--
+-- Why remove instead of patch:
+--   - All status transitions already exist as explicit code in
+--     `lib/leads/on-inbound.ts`, `lib/messages/record-outbound.ts`,
+--     `lib/messages/dispatch.ts`, and the WhatsApp + Instantly webhooks.
+--     Zero code paths depend on the trigger.
+--   - The trigger cannot distinguish a real human reply from an auto-reply,
+--     which is a first-class product distinction (auto-replies must NOT
+--     move leads to `replied` — they pollute pipeline metrics and trigger
+--     incorrect follow-up gating).
+--   - A hidden side-effect that duplicates explicit code is the worst kind
+--     of coupling: silent disagreement between file-based logic and DB
+--     state makes bugs hard to trace.
+--
+-- The function `update_lead_on_message()` is intentionally NOT dropped
+-- here, in case another trigger or caller we haven't mapped references it.
+-- If confirmed unused, a follow-up migration can drop the function.
+
+DROP TRIGGER IF EXISTS conversations_update_lead ON conversations;

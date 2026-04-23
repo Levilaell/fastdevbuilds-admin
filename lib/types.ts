@@ -98,6 +98,7 @@ export interface Lead {
   country: string | null;
   evolution_instance: string | null;
   whatsapp_jid: string | null;
+  whatsapp_lid_jid: string | null;
 
   // operational messaging state
   last_outbound_at: string | null;
