@@ -20,10 +20,7 @@ interface AutoQueueItem {
 
 interface InstanceUsage {
   name: string;
-  daily_cap: number;
   sent_today: number;
-  remaining: number;
-  configured: boolean;
 }
 
 interface AutoQueueData {
@@ -90,15 +87,19 @@ export default function BotClient() {
   // Required: must be filled (integer >= 0) for all known instances before Run.
   const [runInputs, setRunInputs] = useState<Record<string, string>>({});
 
-  // Inline cap edit state — key = instance name, value = pending edit string
-  const [capEdits, setCapEdits] = useState<Record<string, string>>({});
-  const [capSaving, setCapSaving] = useState<string | null>(null);
-
   // Terminal
   const [lines, setLines] = useState<TermLine[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">(
     "idle",
   );
+  // Live run stats — sourced from /run-status polling. Driven by the bot
+  // server parsing its own stdout, so the numbers advance as each step
+  // prints its summary. `runTarget` is the total the user queued at
+  // Run-click time (sum of per-instance inputs).
+  const [liveStats, setLiveStats] = useState<{ collected: number; qualified: number; sent: number }>({
+    collected: 0, qualified: 0, sent: 0,
+  });
+  const [runTarget, setRunTarget] = useState<number | null>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
 
   // Mobile tab (ignored on lg+)
@@ -213,6 +214,14 @@ export default function BotClient() {
         }));
         setLines((prev) => [...prev, ...newLines]);
         lineOffsetRef.current = data.totalLines;
+      }
+
+      if (data.stats) {
+        setLiveStats({
+          collected: data.stats.collected ?? 0,
+          qualified: data.stats.qualified ?? 0,
+          sent: data.stats.sent ?? 0,
+        });
       }
 
       if (data.status === "not_found") {
@@ -340,12 +349,6 @@ export default function BotClient() {
           alert(`Valor inválido para '${inst.name}': deve ser inteiro >= 0.`);
           return;
         }
-        if (n > inst.remaining) {
-          alert(
-            `'${inst.name}' — ${n} excede o disponível hoje (${inst.remaining}).`,
-          );
-          return;
-        }
         totals[inst.name] = n;
       }
       const sum = Object.values(totals).reduce((a, b) => a + b, 0);
@@ -359,6 +362,12 @@ export default function BotClient() {
     setStatus("running");
     setMobileTab("terminal");
     lineOffsetRef.current = 0;
+    setLiveStats({ collected: 0, qualified: 0, sent: 0 });
+    setRunTarget(
+      perInstanceSend
+        ? Object.values(perInstanceSend).reduce((a, b) => a + b, 0)
+        : null,
+    );
 
     const perInstancePreview = perInstanceSend
       ? " " +
@@ -539,11 +548,7 @@ export default function BotClient() {
                   </div>
                   <div className="space-y-2">
                     {instanceUsage.map((inst) => {
-                      const editing = capEdits[inst.name] !== undefined;
                       const runVal = runInputs[inst.name] ?? "";
-                      const runNum = runVal === "" ? null : Number(runVal);
-                      const overLimit =
-                        runNum !== null && runNum > inst.remaining;
                       return (
                         <div
                           key={inst.name}
@@ -552,85 +557,15 @@ export default function BotClient() {
                           <span className="text-text/70 truncate flex-1 min-w-0">
                             {inst.name}
                           </span>
-                          {editing ? (
-                            <span className="flex items-center gap-1">
-                              <span className="text-text tabular-nums">
-                                {inst.sent_today}/
-                              </span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={500}
-                                value={capEdits[inst.name]}
-                                onChange={(e) =>
-                                  setCapEdits({
-                                    ...capEdits,
-                                    [inst.name]: e.target.value,
-                                  })
-                                }
-                                disabled={capSaving === inst.name}
-                                className="w-12 h-6 px-1 text-xs rounded bg-background border border-border text-text tabular-nums focus:outline-none focus:ring-1 focus:ring-accent"
-                              />
-                              <button
-                                onClick={async () => {
-                                  const raw = capEdits[inst.name];
-                                  const n = Number(raw);
-                                  if (!Number.isInteger(n) || n < 0 || n > 500) return;
-                                  setCapSaving(inst.name);
-                                  try {
-                                    await fetch("/api/bot/instance-cap", {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        instance_name: inst.name,
-                                        daily_cap: n,
-                                      }),
-                                    });
-                                    await fetchInstanceUsage();
-                                    const next = { ...capEdits };
-                                    delete next[inst.name];
-                                    setCapEdits(next);
-                                  } finally {
-                                    setCapSaving(null);
-                                  }
-                                }}
-                                disabled={capSaving === inst.name}
-                                className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40 px-1"
-                                title="Salvar"
-                              >
-                                ✓
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const next = { ...capEdits };
-                                  delete next[inst.name];
-                                  setCapEdits(next);
-                                }}
-                                disabled={capSaving === inst.name}
-                                className="text-muted hover:text-text disabled:opacity-40 px-1"
-                                title="Cancelar"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() =>
-                                setCapEdits({
-                                  ...capEdits,
-                                  [inst.name]: String(inst.daily_cap),
-                                })
-                              }
-                              className="text-text/80 hover:text-accent tabular-nums"
-                              title="Editar cap diário"
-                            >
-                              {inst.sent_today}/{inst.daily_cap}
-                            </button>
-                          )}
+                          <span
+                            className="text-text/70 tabular-nums"
+                            title="Enviadas hoje (contador, sem limite)"
+                          >
+                            {inst.sent_today}
+                          </span>
                           <input
                             type="number"
                             min={0}
-                            max={inst.remaining}
                             placeholder="0"
                             value={runVal}
                             onChange={(e) =>
@@ -639,12 +574,8 @@ export default function BotClient() {
                                 [inst.name]: e.target.value,
                               })
                             }
-                            className={`w-14 h-7 px-2 text-xs rounded border text-text tabular-nums focus:outline-none focus:ring-1 focus:ring-accent ${
-                              overLimit
-                                ? "border-red-500 bg-red-500/5"
-                                : "border-border bg-background"
-                            }`}
-                            title={`Máx: ${inst.remaining}`}
+                            className="w-14 h-7 px-2 text-xs rounded border border-border bg-background text-text tabular-nums focus:outline-none focus:ring-1 focus:ring-accent"
+                            title="Target deste run"
                           />
                         </div>
                       );
@@ -789,7 +720,6 @@ export default function BotClient() {
                       (i) =>
                         runInputs[i.name] === undefined ||
                         runInputs[i.name] === "" ||
-                        Number(runInputs[i.name]) > i.remaining ||
                         Number.isNaN(Number(runInputs[i.name])),
                     ) ||
                     Object.values(runInputs).reduce(
@@ -893,13 +823,38 @@ export default function BotClient() {
           <span className="text-xs text-muted font-mono ml-1">
             prospect-bot
           </span>
+          {(running || status === "done") && (
+            <div className="flex items-center gap-2 text-[11px] font-mono ml-auto">
+              <span
+                className="text-muted"
+                title="Leads coletados do Google Places neste run"
+              >
+                coletados {liveStats.collected}
+              </span>
+              <span className="text-muted">·</span>
+              <span
+                className="text-muted"
+                title="Leads que passaram no pain_score mínimo"
+              >
+                qualificados {liveStats.qualified}
+              </span>
+              <span className="text-muted">·</span>
+              <span
+                className="text-emerald-400"
+                title="Mensagens enviadas com sucesso"
+              >
+                enviados {liveStats.sent}
+                {runTarget !== null ? `/${runTarget}` : ""}
+              </span>
+            </div>
+          )}
           {running && (
-            <span className="text-[11px] text-emerald-400 font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 ml-auto">
+            <span className="text-[11px] text-emerald-400 font-mono px-1.5 py-0.5 rounded bg-emerald-500/10">
               running
             </span>
           )}
           {status === "done" && (
-            <span className="text-[11px] text-emerald-400 font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 ml-auto">
+            <span className="text-[11px] text-emerald-400 font-mono px-1.5 py-0.5 rounded bg-emerald-500/10">
               done
             </span>
           )}
