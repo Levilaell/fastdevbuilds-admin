@@ -220,18 +220,16 @@ export type LeadCard = Pick<
 };
 
 // Kanban columns are a derived view over (lead.status, project.status) pairs,
-// not a 1:1 mapping with either enum. Two reasons:
-//   - "Aceitou" folds lead.status in (replied, negotiating) + no-active-project
-//     into one column, because the user handles reply → yes/no immediately
-//     (seconds) and never lingers in a dedicated "replied" column.
-//   - "Preview enviado" / "Ajustando" / "Versão final enviada" are project-
-//     level states: the lead is implicitly `negotiating` while any of these
-//     apply. Splitting by project.status keeps the column semantic clear
-//     ("waiting client to see preview" vs "iterating on feedback").
+// not a 1:1 mapping with either enum. "Respondeu" specifically means "a real
+// human reply landed and the user hasn't built a preview yet" — that's the
+// triage backlog. Auto-replies don't count: they never set lead.status to
+// `replied` (the webhook routes them to the auto-reply branch that stamps
+// last_auto_reply_at only), so they stay in Enviado until a real reply
+// arrives or the user gives up.
 export const PIPELINE_COLUMNS = [
   "prospected",
   "sent",
-  "accepted",
+  "replied",
   "preview_sent",
   "adjusting",
   "delivered",
@@ -241,7 +239,7 @@ export type PipelineColumn = (typeof PIPELINE_COLUMNS)[number];
 export const PIPELINE_COLUMN_LABELS: Record<PipelineColumn, string> = {
   prospected: "Prospectado",
   sent: "Enviado",
-  accepted: "Aceitou",
+  replied: "Respondeu",
   preview_sent: "Preview enviado",
   adjusting: "Ajustando",
   delivered: "Versão final enviada",
@@ -250,7 +248,7 @@ export const PIPELINE_COLUMN_LABELS: Record<PipelineColumn, string> = {
 export const PIPELINE_COLUMN_COLORS: Record<PipelineColumn, string> = {
   prospected: "bg-slate-500/20 text-slate-400",
   sent: "bg-blue-500/20 text-blue-400",
-  accepted: "bg-yellow-500/20 text-yellow-400",
+  replied: "bg-yellow-500/20 text-yellow-400",
   preview_sent: "bg-violet-500/20 text-violet-400",
   adjusting: "bg-fuchsia-500/20 text-fuchsia-400",
   delivered: "bg-emerald-500/20 text-emerald-400",
@@ -280,16 +278,22 @@ export function getPipelineColumn(
     return null;
   }
 
-  // Project-state columns take precedence over the lead's raw status: a lead
-  // with an in-flight project is always past "Aceitou" regardless of whether
-  // someone forgot to bump lead.status from replied → negotiating.
+  // Project-state columns take precedence — once a preview has shipped, the
+  // lead is driven by project.status regardless of lead.status.
   if (projectStatus === "delivered") return "delivered";
   if (projectStatus === "adjusting") return "adjusting";
   if (projectStatus === "preview_sent") return "preview_sent";
-  if (projectStatus === "approved") return "accepted";
 
-  // No project yet — fall back to lead.status.
-  if (leadStatus === "negotiating" || leadStatus === "replied") return "accepted";
+  // Real human reply with no preview yet → Respondeu (triage backlog).
+  // project=approved sits here too: the user created the project but hasn't
+  // sent the preview yet, which is the same as "waiting for me to act".
+  if (
+    projectStatus === "approved" ||
+    leadStatus === "negotiating" ||
+    leadStatus === "replied"
+  ) {
+    return "replied";
+  }
   if (leadStatus === "sent") return "sent";
   if (leadStatus === "prospected") return "prospected";
 

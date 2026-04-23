@@ -16,7 +16,7 @@ function getWorkflowSteps(
   const allSteps = [
     'Prospectado',
     'Enviado',
-    'Aceitou',
+    'Respondeu',
     'Preview enviado',
     'Ajustando',
     'Versão final enviada',
@@ -25,14 +25,15 @@ function getWorkflowSteps(
 
   let currentStep = 1
 
-  // Project-side steps take precedence — a project in "adjusting" means the
-  // lead has long since replied, even if lead.status still says 'replied'.
   if (leadStatus === 'closed' || projectStatus === 'paid') currentStep = 7
   else if (projectStatus === 'delivered') currentStep = 6
   else if (projectStatus === 'adjusting') currentStep = 5
   else if (projectStatus === 'preview_sent') currentStep = 4
-  else if (projectStatus === 'approved') currentStep = 3
-  else if (leadStatus === 'negotiating' || leadStatus === 'replied') currentStep = 3
+  else if (
+    projectStatus === 'approved' ||
+    leadStatus === 'negotiating' ||
+    leadStatus === 'replied'
+  ) currentStep = 3
   else if (leadStatus === 'sent') currentStep = 2
   else if (leadStatus === 'prospected') currentStep = 1
 
@@ -46,8 +47,8 @@ function getWorkflowSteps(
   let nextAction: string | null = null
   switch (currentStep) {
     case 1: nextAction = 'Enviar mensagem de prospecção'; break
-    case 2: nextAction = 'Aguardando resposta do lead'; break
-    case 3: nextAction = 'Criar projeto e enviar preview'; break
+    case 2: nextAction = 'Aguardando resposta real (auto-reply fica aqui)'; break
+    case 3: nextAction = 'Triar resposta: criar projeto + enviar preview, ou descartar'; break
     case 4: nextAction = 'Aguardando feedback do cliente'; break
     case 5: nextAction = 'Aplicar ajustes e enviar versão final'; break
     case 6: nextAction = 'Aguardando pagamento'; break

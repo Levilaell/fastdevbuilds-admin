@@ -137,7 +137,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     const leadStatusForColumn: Record<PipelineColumn, LeadStatus | null> = {
       prospected: 'prospected',
       sent: 'sent',
-      accepted: 'replied',
+      replied: 'replied',
       preview_sent: null,
       adjusting: null,
       delivered: null,

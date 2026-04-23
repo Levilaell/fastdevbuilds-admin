@@ -20,9 +20,12 @@ const STRONG_PATTERNS: RegExp[] = [
   /sua\s+mensagem\s+foi\s+recebida/i,
   /recebemos\s+sua\s+(mensagem|solicitação)/i,
 
-  // Generic virtual-attendant greetings (short, but unambiguous)
-  /como\s+(podemos|posso)\s+(te\s+)?ajudar/i,
-  /em\s+que\s+(podemos|posso)\s+(te\s+)?ajudar/i,
+  // Generic virtual-attendant greetings (short, but unambiguous).
+  // "como eu posso te ajudar" variant is common on WhatsApp Business auto-
+  // greeters (1st person singular instead of plural); missing it let a real
+  // prod message sneak past the classifier.
+  /como\s+(?:eu\s+)?(podemos|posso)\s+(te\s+)?ajudar/i,
+  /em\s+que\s+(?:eu\s+)?(podemos|posso)\s+(te\s+)?ajudar/i,
   /how\s+(can|may)\s+(we|I)\s+help\s+you/i,
   /how\s+may\s+I\s+assist/i,
 
@@ -77,9 +80,12 @@ const STRONG_PATTERNS: RegExp[] = [
   /we\s+will\s+(get\s+back|respond|reply)\s+(to\s+you\s+)?(shortly|soon|within)/i,
   /currently\s+closed/i,
 
-  // Boas-vindas institucional: saudação + apresentação de espaço/consultório/clínica
-  /bem[\s-]?vind[oa](?:\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa|ao seu)\s+(?:espaço|consultório|consultorio|escritório|escritorio|clínica|clinica|studio|estúdio|salão|salao|barbershop|atendimento)/i,
-  /seja\s+bem[\s-]?vind[oa](?:\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa)/i,
+  // Boas-vindas institucional: saudação + apresentação de espaço/consultório/clínica.
+  // `(?:\s*\(a\))?` — the `(a)` gender marker is sometimes written attached
+  // (`vindo(a)`) and sometimes detached (`vindo (a)`). Matching only the
+  // attached form was letting real auto-greeters through in production.
+  /bem[\s-]?vind[oa](?:\s*\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa|ao seu)\s+(?:espaço|consultório|consultorio|escritório|escritorio|clínica|clinica|studio|estúdio|salão|salao|barbershop|atendimento|auto)/i,
+  /seja\s+bem[\s-]?vind[oa](?:\s*\(a\))?\s+(?:ao|à|a|ao meu|ao nosso|a nossa)/i,
   /muito\s+prazer,?\s+seja\s+bem[\s-]?vind[oa]/i,
 
   // "Agradeço seu contato" / "Agradeço o seu contato"
