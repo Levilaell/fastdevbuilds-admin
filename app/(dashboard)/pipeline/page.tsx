@@ -12,6 +12,7 @@ async function PipelineBoard() {
     supabase
       .from('leads')
       .select(CARD_COLUMNS)
+      .in('status', ['prospected', 'sent', 'replied', 'negotiating'])
       .order('status_updated_at', { ascending: false, nullsFirst: false }),
     supabase
       .from('projects')
