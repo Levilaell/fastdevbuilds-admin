@@ -129,7 +129,11 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
 
   // --- Revenue ---
   const pendingProjects = projects.filter(
-    (p) => p.status === "approved" || p.status === "in_progress",
+    (p) =>
+      p.status === "approved" ||
+      p.status === "preview_sent" ||
+      p.status === "adjusting" ||
+      p.status === "delivered",
   );
   const totalPending = pendingProjects.reduce((s, p) => s + (p.price ?? 0), 0);
   const avgTicket =

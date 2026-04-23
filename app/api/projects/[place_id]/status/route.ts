@@ -45,9 +45,23 @@ export async function PATCH(
 
   const supabase = createServiceClient()
 
+  // Stamp the matching lifecycle timestamp so the UI can show "preview foi há
+  // 2 dias" without re-deriving from conversations. These columns existed in
+  // the schema before but were never populated; this closes that gap.
+  const now = new Date().toISOString()
+  const stampKey: Partial<Record<ProjectStatus, string>> = {
+    approved: 'approved_at',
+    preview_sent: 'preview_sent_at',
+    delivered: 'delivered_at',
+    paid: 'paid_at',
+  }
+  const update: Record<string, unknown> = { status: newStatus }
+  const col = stampKey[newStatus as ProjectStatus]
+  if (col) update[col] = now
+
   const { data: project, error } = await supabase
     .from('projects')
-    .update({ status: newStatus })
+    .update(update)
     .eq('place_id', place_id)
     .select()
     .single()
@@ -60,12 +74,12 @@ export async function PATCH(
   if (newStatus === 'paid') {
     await supabase
       .from('leads')
-      .update({ status: 'closed', status_updated_at: new Date().toISOString() })
+      .update({ status: 'closed', status_updated_at: now })
       .eq('place_id', place_id)
   } else if (newStatus === 'cancelled') {
     await supabase
       .from('leads')
-      .update({ status: 'lost', status_updated_at: new Date().toISOString() })
+      .update({ status: 'lost', status_updated_at: now })
       .eq('place_id', place_id)
   }
 

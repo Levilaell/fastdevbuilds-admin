@@ -21,7 +21,8 @@ interface Props {
 
 const FLOW: ProjectStatus[] = [
   "approved",
-  "in_progress",
+  "preview_sent",
+  "adjusting",
   "delivered",
   "paid",
 ];
@@ -328,7 +329,11 @@ export default function ProjectStatusSection({
 
   async function handlePreviewSent() {
     setShowSendModal(false);
-    await advanceStatus("delivered");
+    // Preview just shipped; client hasn't touched it yet. The jump to
+    // `delivered` that used to happen here was the root cause of the 10
+    // mislabeled "Versão final enviada" rows found in prod — delivered now
+    // means the *final* iteration shipped, not the first preview.
+    await advanceStatus("preview_sent");
   }
 
   return (
@@ -385,18 +390,8 @@ export default function ProjectStatusSection({
       )}
 
       {status === "approved" && (
-        <button
-          onClick={() => advanceStatus("in_progress")}
-          disabled={loading}
-          className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
-        >
-          {loading ? "Atualizando…" : "Marcar em progresso →"}
-        </button>
-      )}
-
-      {status === "in_progress" && (
         <div className="space-y-3">
-          {/* Preview URL */}
+          {/* Preview URL — sending it also moves to preview_sent */}
           <input
             type="url"
             value={previewUrl}
@@ -412,6 +407,26 @@ export default function ProjectStatusSection({
             {loading ? "Enviando…" : "Enviar link de preview →"}
           </button>
         </div>
+      )}
+
+      {status === "preview_sent" && (
+        <button
+          onClick={() => advanceStatus("adjusting")}
+          disabled={loading}
+          className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
+        >
+          {loading ? "Atualizando…" : "Iniciar ajustes →"}
+        </button>
+      )}
+
+      {status === "adjusting" && (
+        <button
+          onClick={() => advanceStatus("delivered")}
+          disabled={loading}
+          className="w-full py-2 text-xs font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-50"
+        >
+          {loading ? "Atualizando…" : "Marcar versão final enviada →"}
+        </button>
       )}
 
       {showSendModal && previewUrl.trim() && (

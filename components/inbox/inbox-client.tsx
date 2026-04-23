@@ -170,16 +170,25 @@ function InboxPipelineAction({
   }
 
   if (projectStatus === 'approved') {
-    label = 'Marcar em progresso →'
+    label = 'Marcar preview enviado →'
     action = async (pid) => {
       await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'in_progress' }),
+        body: JSON.stringify({ status: 'preview_sent' }),
       })
     }
-  } else if (projectStatus === 'in_progress') {
-    label = 'Marcar entregue →'
+  } else if (projectStatus === 'preview_sent') {
+    label = 'Iniciar ajustes →'
+    action = async (pid) => {
+      await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'adjusting' }),
+      })
+    }
+  } else if (projectStatus === 'adjusting') {
+    label = 'Marcar versão final enviada →'
     action = async (pid) => {
       await fetch(`/api/projects/${encodeURIComponent(pid)}/status`, {
         method: 'PATCH',

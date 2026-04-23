@@ -53,6 +53,7 @@ export async function POST(
     .insert({
       place_id,
       status: 'approved',
+      approved_at: new Date().toISOString(),
       notes,
       scope: null,
     })

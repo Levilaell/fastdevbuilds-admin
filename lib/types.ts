@@ -8,15 +8,6 @@ export const LEAD_STATUSES = [
   "disqualified",
 ] as const;
 
-/** Statuses shown as pipeline columns (excludes 'lost' — archived leads go there automatically) */
-export const PIPELINE_STATUSES: LeadStatus[] = [
-  "prospected",
-  "sent",
-  "replied",
-  "negotiating",
-  "closed",
-];
-
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
 export const STATUS_LABELS: Record<LeadStatus, string> = {
@@ -178,6 +169,10 @@ export interface Project {
   currency: string | null;
   status: ProjectStatus;
   created_at: string;
+  approved_at: string | null;
+  preview_sent_at: string | null;
+  delivered_at: string | null;
+  paid_at: string | null;
   claude_code_prompt: string | null;
   pending_info: string | null;
   info_request_message: string | null;
@@ -187,7 +182,8 @@ export interface Project {
 
 export const PROJECT_STATUSES = [
   "approved",
-  "in_progress",
+  "preview_sent",
+  "adjusting",
   "delivered",
   "paid",
   "cancelled",
@@ -196,9 +192,10 @@ export const PROJECT_STATUSES = [
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  approved: "Aprovado",
-  in_progress: "Em progresso",
-  delivered: "Entregue",
+  approved: "Aceitou",
+  preview_sent: "Preview enviado",
+  adjusting: "Ajustando",
+  delivered: "Versão final enviada",
   paid: "Pago",
   cancelled: "Cancelado",
 };
@@ -220,3 +217,71 @@ export type LeadCard = Pick<
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
 };
+
+// Kanban columns are a derived view over (lead.status, project.status) pairs,
+// not a 1:1 mapping with either enum. Two reasons:
+//   - "Aceitou" folds lead.status in (replied, negotiating) + no-active-project
+//     into one column, because the user handles reply → yes/no immediately
+//     (seconds) and never lingers in a dedicated "replied" column.
+//   - "Preview enviado" / "Ajustando" / "Versão final enviada" are project-
+//     level states: the lead is implicitly `negotiating` while any of these
+//     apply. Splitting by project.status keeps the column semantic clear
+//     ("waiting client to see preview" vs "iterating on feedback").
+export const PIPELINE_COLUMNS = [
+  "prospected",
+  "sent",
+  "accepted",
+  "preview_sent",
+  "adjusting",
+  "delivered",
+] as const;
+export type PipelineColumn = (typeof PIPELINE_COLUMNS)[number];
+
+export const PIPELINE_COLUMN_LABELS: Record<PipelineColumn, string> = {
+  prospected: "Prospectado",
+  sent: "Enviado",
+  accepted: "Aceitou",
+  preview_sent: "Preview enviado",
+  adjusting: "Ajustando",
+  delivered: "Versão final enviada",
+};
+
+/** Columns whose drop target is a project-state change (require active project). */
+export const PROJECT_COLUMNS: PipelineColumn[] = [
+  "preview_sent",
+  "adjusting",
+  "delivered",
+];
+
+/**
+ * Resolve which column a lead belongs in. Returns null when the lead is
+ * terminal/archived (paid, closed, lost, disqualified, cancelled project) —
+ * the pipeline hides those.
+ */
+export function getPipelineColumn(
+  leadStatus: LeadStatus,
+  projectStatus: ProjectStatus | null | undefined,
+): PipelineColumn | null {
+  // Terminal / archived states leave the pipeline entirely.
+  if (leadStatus === "closed" || leadStatus === "lost" || leadStatus === "disqualified") {
+    return null;
+  }
+  if (projectStatus === "paid" || projectStatus === "cancelled") {
+    return null;
+  }
+
+  // Project-state columns take precedence over the lead's raw status: a lead
+  // with an in-flight project is always past "Aceitou" regardless of whether
+  // someone forgot to bump lead.status from replied → negotiating.
+  if (projectStatus === "delivered") return "delivered";
+  if (projectStatus === "adjusting") return "adjusting";
+  if (projectStatus === "preview_sent") return "preview_sent";
+  if (projectStatus === "approved") return "accepted";
+
+  // No project yet — fall back to lead.status.
+  if (leadStatus === "negotiating" || leadStatus === "replied") return "accepted";
+  if (leadStatus === "sent") return "sent";
+  if (leadStatus === "prospected") return "prospected";
+
+  return null;
+}

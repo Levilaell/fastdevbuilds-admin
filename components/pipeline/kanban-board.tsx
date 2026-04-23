@@ -8,10 +8,14 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd'
 import {
-  PIPELINE_STATUSES,
-  STATUS_LABELS,
+  PIPELINE_COLUMNS,
+  PIPELINE_COLUMN_LABELS,
+  PROJECT_COLUMNS,
+  getPipelineColumn,
   type LeadCard,
   type LeadStatus,
+  type PipelineColumn,
+  type ProjectStatus,
 } from '@/lib/types'
 import LeadCardComponent from './lead-card'
 import PipelineFilters from './pipeline-filters'
@@ -48,8 +52,8 @@ function SkeletonCard() {
 export function KanbanSkeleton() {
   return (
     <div className="flex gap-2 pb-4 px-3 sm:px-6 pt-4 overflow-x-auto">
-      {PIPELINE_STATUSES.map((status) => (
-        <div key={status} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink">
+      {PIPELINE_COLUMNS.map((col) => (
+        <div key={col} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink">
           <div className="flex items-center gap-2 mb-3 px-3 pt-3">
             <div className="h-4 bg-border rounded w-20" />
             <div className="h-5 bg-border rounded w-7" />
@@ -95,10 +99,11 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
   }, [leads, search, channel, minScore, niche])
 
   const grouped = useMemo(() => {
-    const map: Partial<Record<LeadStatus, LeadCard[]>> = {}
-    for (const s of PIPELINE_STATUSES) map[s] = []
+    const map: Partial<Record<PipelineColumn, LeadCard[]>> = {}
+    for (const c of PIPELINE_COLUMNS) map[c] = []
     filtered.forEach((l) => {
-      if (map[l.status]) map[l.status]!.push(l)
+      const col = getPipelineColumn(l.status, l.project_status ?? null)
+      if (col && map[col]) map[col]!.push(l)
     })
     return map
   }, [filtered])
@@ -108,49 +113,84 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     if (!destination) return
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
 
-    const newStatus = destination.droppableId as LeadStatus
-    const oldStatus = source.droppableId
+    const targetCol = destination.droppableId as PipelineColumn
+    const sourceCol = source.droppableId as PipelineColumn
+    const lead = leads.find((l) => l.place_id === draggableId)
+    if (!lead) return
 
+    // Dropping into a project-state column requires an active project. We
+    // don't auto-create one here (option A: fail loud) to avoid writing
+    // projects with default scope/price/etc that the user would have to
+    // fix up later — cleaner to send them to the inbox flow that collects
+    // real context.
+    if (PROJECT_COLUMNS.includes(targetCol) && !lead.project_status) {
+      setToast('Crie o projeto pelo inbox antes de mover o lead pra essa coluna')
+      setTimeout(() => setToast(''), 5000)
+      return
+    }
+
+    // Resolve what API call the drop implies.
+    // Project columns → PATCH project.status (value == column key, because
+    // we deliberately named them after the project enum).
+    // Lead columns → PATCH lead.status (with the small mapping below).
+    const isProjectColumn = PROJECT_COLUMNS.includes(targetCol)
+    const leadStatusForColumn: Record<PipelineColumn, LeadStatus | null> = {
+      prospected: 'prospected',
+      sent: 'sent',
+      accepted: 'replied',
+      preview_sent: null,
+      adjusting: null,
+      delivered: null,
+    }
+
+    // Optimistic local update — revert on failure.
+    const snapshot = { status: lead.status, project_status: lead.project_status ?? null }
     setLeads((prev) =>
       prev.map((l) =>
         l.place_id === draggableId
-          ? { ...l, status: newStatus, status_updated_at: new Date().toISOString() }
+          ? {
+              ...l,
+              ...(isProjectColumn
+                ? { project_status: targetCol as ProjectStatus }
+                : { status: leadStatusForColumn[targetCol] as LeadStatus }),
+              status_updated_at: new Date().toISOString(),
+            }
           : l
       )
     )
 
     try {
-      const res = await fetch(`/api/leads/${encodeURIComponent(draggableId)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
+      const res = isProjectColumn
+        ? await fetch(`/api/projects/${encodeURIComponent(draggableId)}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: targetCol }),
+          })
+        : await fetch(`/api/leads/${encodeURIComponent(draggableId)}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: leadStatusForColumn[targetCol] }),
+          })
 
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         const msg = body?.error ?? `HTTP ${res.status}`
         setLeads((prev) =>
           prev.map((l) =>
-            l.place_id === draggableId
-              ? { ...l, status: source.droppableId as LeadStatus }
-              : l
-          )
+            l.place_id === draggableId ? { ...l, ...snapshot } : l,
+          ),
         )
-        setToast(`Erro ao mover lead: ${msg}`)
+        setToast(`Erro ao mover lead (de ${sourceCol} pra ${targetCol}): ${msg}`)
         setTimeout(() => setToast(''), 5000)
       }
     } catch {
       setLeads((prev) =>
-        prev.map((l) =>
-          l.place_id === draggableId
-            ? { ...l, status: source.droppableId as LeadStatus }
-            : l
-        )
+        prev.map((l) => (l.place_id === draggableId ? { ...l, ...snapshot } : l)),
       )
       setToast('Erro de conexão — status revertido')
       setTimeout(() => setToast(''), 4000)
     }
-  }, [])
+  }, [leads])
 
   const handleDisqualify = useCallback(async (placeId: string) => {
     const original = leads.find((l) => l.place_id === placeId)?.status
@@ -213,20 +253,20 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-2 pb-4 px-3 sm:px-6 overflow-x-auto">
-          {PIPELINE_STATUSES.map((status) => {
-            const cards = grouped[status] ?? []
+          {PIPELINE_COLUMNS.map((col) => {
+            const cards = grouped[col] ?? []
             return (
-              <div key={status} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink bg-sidebar border border-border rounded-xl">
+              <div key={col} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink bg-sidebar border border-border rounded-xl">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
-                    {STATUS_LABELS[status]}
+                    {PIPELINE_COLUMN_LABELS[col]}
                   </h2>
                   <span className="bg-border text-text text-[11px] font-mono px-1.5 py-0.5 rounded min-w-[22px] text-center">
                     {cards.length}
                   </span>
                 </div>
 
-                <Droppable droppableId={status}>
+                <Droppable droppableId={col}>
                   {(provided, snapshot) => (
                     <div
                       ref={provided.innerRef}

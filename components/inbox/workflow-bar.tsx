@@ -16,23 +16,23 @@ function getWorkflowSteps(
   const allSteps = [
     'Prospectado',
     'Enviado',
-    'Respondeu',
-    'Negociando',
-    'Em progresso',
+    'Aceitou',
     'Preview enviado',
-    'Cliente aprovou e pagou',
-    'Entregue',
+    'Ajustando',
+    'Versão final enviada',
+    'Pago',
   ]
 
   let currentStep = 1
 
-  if (leadStatus === 'closed') currentStep = 8
-  else if (projectStatus === 'paid') currentStep = 7
+  // Project-side steps take precedence — a project in "adjusting" means the
+  // lead has long since replied, even if lead.status still says 'replied'.
+  if (leadStatus === 'closed' || projectStatus === 'paid') currentStep = 7
   else if (projectStatus === 'delivered') currentStep = 6
-  else if (projectStatus === 'in_progress') currentStep = 5
-  else if (projectStatus === 'approved') currentStep = 5
-  else if (leadStatus === 'negotiating') currentStep = 4
-  else if (leadStatus === 'replied') currentStep = 3
+  else if (projectStatus === 'adjusting') currentStep = 5
+  else if (projectStatus === 'preview_sent') currentStep = 4
+  else if (projectStatus === 'approved') currentStep = 3
+  else if (leadStatus === 'negotiating' || leadStatus === 'replied') currentStep = 3
   else if (leadStatus === 'sent') currentStep = 2
   else if (leadStatus === 'prospected') currentStep = 1
 
@@ -47,12 +47,11 @@ function getWorkflowSteps(
   switch (currentStep) {
     case 1: nextAction = 'Enviar mensagem de prospecção'; break
     case 2: nextAction = 'Aguardando resposta do lead'; break
-    case 3: nextAction = 'Responder ao lead'; break
-    case 4: nextAction = 'Negociar e criar projeto'; break
-    case 5: nextAction = 'Executar prompt e enviar preview'; break
-    case 6: nextAction = 'Aguardando aprovação e pagamento'; break
-    case 7: nextAction = 'Entregar projeto'; break
-    case 8: nextAction = null; break
+    case 3: nextAction = 'Criar projeto e enviar preview'; break
+    case 4: nextAction = 'Aguardando feedback do cliente'; break
+    case 5: nextAction = 'Aplicar ajustes e enviar versão final'; break
+    case 6: nextAction = 'Aguardando pagamento'; break
+    case 7: nextAction = null; break
   }
 
   return { steps, currentStep, nextAction }
@@ -96,7 +95,7 @@ export default function WorkflowBar({ leadStatus, projectStatus }: Props) {
       {/* Current step + next action */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] text-muted">
-          Etapa {currentStep}/8: <span className="text-text/80">{steps[currentStep - 1]?.label}</span>
+          Etapa {currentStep}/7: <span className="text-text/80">{steps[currentStep - 1]?.label}</span>
         </span>
         {nextAction && (
           <span className="text-[10px] text-accent font-medium truncate">
