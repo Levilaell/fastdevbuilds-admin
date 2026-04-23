@@ -192,49 +192,6 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     }
   }, [leads])
 
-  const handleDisqualify = useCallback(async (placeId: string) => {
-    const original = leads.find((l) => l.place_id === placeId)?.status
-
-    setLeads((prev) =>
-      prev.map((l) =>
-        l.place_id === placeId
-          ? { ...l, status: 'disqualified' as LeadStatus }
-          : l
-      )
-    )
-
-    try {
-      const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'disqualified' }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        const msg = body?.error ?? `HTTP ${res.status}`
-        setLeads((prev) =>
-          prev.map((l) =>
-            l.place_id === placeId
-              ? { ...l, status: (original ?? 'prospected') as LeadStatus }
-              : l
-          )
-        )
-        setToast(`Erro ao desqualificar: ${msg}`)
-        setTimeout(() => setToast(''), 5000)
-      }
-    } catch {
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.place_id === placeId
-            ? { ...l, status: (original ?? 'prospected') as LeadStatus }
-            : l
-        )
-      )
-      setToast('Erro de conexão ao desqualificar')
-      setTimeout(() => setToast(''), 5000)
-    }
-  }, [leads])
-
   return (
     <>
       <div className="px-3 sm:px-6 pt-4">
@@ -286,7 +243,7 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                               {...provided.dragHandleProps}
                               className={snapshot.isDragging ? 'opacity-90 rotate-1' : ''}
                             >
-                              <LeadCardComponent lead={lead} onDisqualify={handleDisqualify} />
+                              <LeadCardComponent lead={lead} />
                             </div>
                           )}
                         </Draggable>

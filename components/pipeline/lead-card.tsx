@@ -59,73 +59,51 @@ function PendingIndicator({ lead }: { lead: LeadCard }) {
 
 interface LeadCardProps {
   lead: LeadCard
-  onDisqualify?: (placeId: string) => void
 }
 
-function LeadCardComponent({ lead, onDisqualify }: LeadCardProps) {
+function LeadCardComponent({ lead }: LeadCardProps) {
   return (
-    <div className="relative group">
-      <Link
-        href={`/leads/${lead.place_id}`}
-        className="block bg-card border border-border rounded-lg p-3 hover:bg-card-hover group/link"
-      >
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="text-sm font-medium text-text truncate group-hover/link:text-accent">
-            {lead.business_name || 'Sem nome'}
-          </h3>
-          <div className="flex items-center gap-1 shrink-0">
-            {lead.evolution_instance && (
-              <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
-                {lead.evolution_instance}
-              </span>
-            )}
-            <ChannelBadge channel={lead.outreach_channel} />
-          </div>
-        </div>
-
-        <PainBar score={lead.pain_score} />
-
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-muted truncate">
-            {lead.city || '—'}
-          </span>
-          <span className="text-[11px] text-muted tabular-nums shrink-0">
-            {timeAgo(lead.status_updated_at)}
-          </span>
-        </div>
-
-        {/* Project status badge */}
-        {lead.project_status && (
-          <div className="mt-1.5">
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent/80 border border-accent/15">
-              {PROJECT_STATUS_LABELS[lead.project_status as ProjectStatus] ?? lead.project_status}
+    <Link
+      href={`/leads/${lead.place_id}`}
+      className="block bg-card border border-border rounded-lg p-3 hover:bg-card-hover group/link"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="text-sm font-medium text-text truncate group-hover/link:text-accent">
+          {lead.business_name || 'Sem nome'}
+        </h3>
+        <div className="flex items-center gap-1 shrink-0">
+          {lead.evolution_instance && (
+            <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded border border-zinc-700/50 bg-zinc-800/50 tabular-nums">
+              {lead.evolution_instance}
             </span>
-          </div>
-        )}
+          )}
+          <ChannelBadge channel={lead.outreach_channel} />
+        </div>
+      </div>
 
-        {/* Pending action indicators */}
-        <PendingIndicator lead={lead} />
-      </Link>
+      <PainBar score={lead.pain_score} />
 
-      {/* Disqualify button — visible on hover */}
-      {onDisqualify && (
-        <button
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onDisqualify(lead.place_id)
-          }}
-          title="Desqualificar"
-          className="absolute top-2 right-2 p-1 rounded bg-card border border-border text-muted hover:text-danger hover:border-danger/50 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-            <line x1="9" y1="9" x2="15" y2="15" />
-          </svg>
-        </button>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] text-muted truncate">
+          {lead.city || '—'}
+        </span>
+        <span className="text-[11px] text-muted tabular-nums shrink-0">
+          {timeAgo(lead.status_updated_at)}
+        </span>
+      </div>
+
+      {/* Project status badge */}
+      {lead.project_status && (
+        <div className="mt-1.5">
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent/80 border border-accent/15">
+            {PROJECT_STATUS_LABELS[lead.project_status as ProjectStatus] ?? lead.project_status}
+          </span>
+        </div>
       )}
-    </div>
+
+      {/* Pending action indicators */}
+      <PendingIndicator lead={lead} />
+    </Link>
   )
 }
 
