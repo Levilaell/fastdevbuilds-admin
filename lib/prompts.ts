@@ -625,11 +625,121 @@ Write the exact hex values chosen.]
 
 ## Seções obrigatórias (implementar TODAS, nesta ordem)
 
-1. **Header fixo (sticky top-0 z-50 com backdrop-blur)**
-   - Logo textual: nome do negócio em font-bold text-xl
-   - Menu de navegação: links âncora para cada seção (Serviços, Diferenciais, Contato)
-   - Botão "Agendar" à direita → abre WhatsApp
-   - No mobile: menu hamburger com drawer
+1. **Header fixo + Drawer mobile — ATENÇÃO: arquitetura obrigatória**
+
+   O drawer mobile NÃO PODE estar dentro do <header>. Backdrop-blur no
+   <header> cria um stacking context que quebra position:fixed dos
+   descendentes em iOS Safari (o drawer renderiza off-screen ou ignora
+   z-index). 90% dos sites gerados quebram nisso. Segue o pattern exato:
+
+   Estrutura obrigatória — Header component retorna fragment com header
+   e drawer como SIBLINGS, nunca aninhados:
+
+   \`\`\`tsx
+   const Header = () => {
+     const [open, setOpen] = useState(false);
+
+     useEffect(() => {
+       if (!open) return;
+       const prev = document.body.style.overflow;
+       document.body.style.overflow = "hidden";
+       const onKey = (e: KeyboardEvent) => {
+         if (e.key === "Escape") setOpen(false);
+       };
+       window.addEventListener("keydown", onKey);
+       return () => {
+         document.body.style.overflow = prev;
+         window.removeEventListener("keydown", onKey);
+       };
+     }, [open]);
+
+     return (
+       <>
+         <header className="sticky top-0 z-40 backdrop-blur bg-[FUNDO]/90 border-b border-[COR]/10">
+           <div className="max-w-7xl mx-auto px-5 md:px-8 py-4 flex items-center justify-between">
+             <a href="#top" className="font-bold text-lg sm:text-xl tracking-tight">NOME</a>
+             <nav className="hidden md:flex items-center gap-8">
+               {NAV_LINKS.map(l => (
+                 <a key={l.href} href={l.href} className="text-sm font-medium">{l.label}</a>
+               ))}
+             </nav>
+             <div className="hidden md:block">
+               <a href={CTA_URL} target="_blank" rel="noopener noreferrer" className="bg-[ACCENT] text-white rounded-lg px-5 py-2.5 text-sm font-semibold">CTA Label</a>
+             </div>
+             <button
+               type="button"
+               className="md:hidden p-2 -mr-2"
+               onClick={() => setOpen(true)}
+               aria-label="Open menu"
+               aria-expanded={open}
+             >
+               <MenuIcon />
+             </button>
+           </div>
+         </header>
+
+         {/* Drawer FORA do <header> pra evitar stacking issues do backdrop-blur */}
+         <div
+           className={\`md:hidden fixed inset-0 z-[60] transition-opacity duration-200 \${
+             open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+           }\`}
+           aria-hidden={!open}
+         >
+           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+           <div
+             className={\`absolute top-0 right-0 h-full w-full max-w-sm bg-[FUNDO] shadow-2xl flex flex-col transition-transform duration-300 ease-out \${
+               open ? "translate-x-0" : "translate-x-full"
+             }\`}
+             role="dialog"
+             aria-modal="true"
+           >
+             <div className="flex items-center justify-between px-5 py-4 border-b border-[COR]/10">
+               <span className="font-bold text-lg">NOME</span>
+               <button type="button" onClick={() => setOpen(false)} aria-label="Close menu" className="p-2 -mr-2">
+                 <CloseIcon />
+               </button>
+             </div>
+             <nav className="flex flex-col px-6 py-8 gap-2 flex-1 overflow-y-auto">
+               {NAV_LINKS.map(l => (
+                 <a
+                   key={l.href}
+                   href={l.href}
+                   onClick={() => setOpen(false)}
+                   className="text-lg font-semibold py-3 border-b border-[COR]/10"
+                 >
+                   {l.label}
+                 </a>
+               ))}
+               <a
+                 href={CTA_URL}
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 onClick={() => setOpen(false)}
+                 className="mt-6 bg-[ACCENT] text-white text-center rounded-lg px-5 py-4 text-base font-semibold shadow-md"
+               >
+                 CTA Label
+               </a>
+             </nav>
+           </div>
+         </div>
+       </>
+     );
+   };
+   \`\`\`
+
+   Checklist obrigatório do drawer:
+   - Fragment envolvendo <header> e drawer lado a lado (NUNCA drawer dentro de header)
+   - Header z-40, drawer z-[60]
+   - useEffect que trava document.body.style.overflow="hidden" quando open=true e limpa no cleanup
+   - useEffect que fecha com Escape
+   - Overlay bg-black/40 com onClick pra fechar
+   - Panel com translate-x-full → translate-x-0 + transition-transform 300ms
+   - Outer wrapper com opacity-0 pointer-events-none → opacity-100 pointer-events-auto
+   - role="dialog" aria-modal="true" no panel; aria-hidden={!open} no wrapper
+   - Botões type="button" (senão submetem form se estiverem em um)
+   - Hamburger e close com p-2 -mr-2 (área de toque mobile ≥ 44px)
+   - Link clicks e CTA click fecham o drawer (onClick={() => setOpen(false)})
+   - Import: import { useEffect, useState } from "react";
 
 2. **Hero (min-h-screen flex items-center)**
    - Headline: focada em BENEFÍCIO para o cliente, NÃO no nome do negócio (ex: "Seu sorriso merece o melhor cuidado" em vez de "Bem-vindo à Clínica X")
@@ -722,9 +832,46 @@ Write the exact hex values chosen.]
 - Em seções com fundo em cor de destaque (ex: CTA final com fundo dourado), botões devem ter contraste alto — preferir botão preto sólido (#1A1A1A) com texto branco (#F5F5F5), nunca botão com fundo da mesma família de cor do fundo da seção
 
 ## Como entregar
-- Deploy na Vercel como preview primeiro
-- URL de preview para o cliente aprovar antes do pagamento
-- Só migrar domínio após aprovação e pagamento
+
+Sequência obrigatória, sem desvios:
+
+1. \`npm install\` (se ainda não rodou)
+2. \`npm run build\` — precisa passar sem erro de TypeScript nem ESLint.
+   Se falhar, corrige e roda de novo até passar.
+3. \`npx --yes vercel@latest deploy --prod --yes\` — usar PRODUÇÃO, não
+   preview. Preview deployment no plano Hobby da Vercel tem Vercel
+   Authentication ativada por padrão, e o lead NÃO consegue abrir o link
+   (tela de "sign in"). \`--prod\` contorna isso e ainda gera URL curta
+   tipo \`https://{nome-do-projeto}.vercel.app\`.
+
+   Primeira vez no diretório, o CLI pergunta:
+   - "Set up and deploy?" → Y
+   - "Which scope?" → aceita default
+   - "Link to existing project?" → N
+   - "Project name?" → aceita default (nome do diretório)
+   - "In which directory is your code located?" → ./
+   - Framework auto-detected (Next.js) → tudo Y
+
+4. Extrai a URL de produção do output. Formato sempre
+   \`https://{nome-do-projeto}.vercel.app\` — NÃO é a URL que começa com
+   \`{nome}-xxxxx.vercel.app\` (essa é da preview específica, fica pesada
+   pra WhatsApp mostrar link preview).
+
+## Deployment Protection
+Se o \`Vercel Authentication\` ainda aparecer no link final (o lead cair
+numa tela de login/gate), o operador precisa desativar manual em:
+Project Settings → Deployment Protection → **None**.
+Avise isso explicitamente na entrega se detectar que o site não é público.
+
+## Entrega final
+Retornar APENAS a URL curta de produção em UMA única linha, sem
+markdown, sem explicações adicionais. O admin pega essa URL e
+automatiza o envio — qualquer texto extra atrapalha o parsing.
+
+Exemplo de resposta correta:
+\`\`\`
+https://buffalo-bayou.vercel.app
+\`\`\`
 
 ## Meta de performance
 - PageSpeed mobile > 90
