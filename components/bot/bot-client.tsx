@@ -545,6 +545,29 @@ export default function BotClient() {
                 </div>
               </div>
 
+              {/* No WhatsApp chips registered for the selected country yet —
+                  explain so the user doesn't think the UI is broken. */}
+              {countryConfig.channel === "whatsapp" &&
+                !usageLoading &&
+                instanceUsage.length === 0 && (
+                  <div className="bg-sidebar border border-warning/30 rounded-lg p-3 text-xs text-muted space-y-1.5">
+                    <p className="text-warning font-medium">
+                      Nenhum chip {countryConfig.country} configurado
+                    </p>
+                    <p className="leading-relaxed">
+                      Adicione no <code className="text-text">.env.local</code>:
+                    </p>
+                    <pre className="text-[10px] bg-background border border-border rounded px-2 py-1.5 overflow-x-auto">
+{`EVOLUTION_INSTANCE_X=nome-do-chip
+EVOLUTION_API_KEY_X=...
+EVOLUTION_INSTANCE_COUNTRY_X=${countryConfig.country}`}
+                    </pre>
+                    <p className="leading-relaxed">
+                      Depois redeploy + restart do bot-server.
+                    </p>
+                  </div>
+                )}
+
               {/* Per-instance daily cap + "send this run" input */}
               {countryConfig.channel === "whatsapp" && instanceUsage.length > 0 && (
                 <div className="bg-sidebar border border-border rounded-lg p-2.5">
