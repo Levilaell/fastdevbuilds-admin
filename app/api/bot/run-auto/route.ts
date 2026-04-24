@@ -12,6 +12,12 @@ interface AutoParams {
   market: string
   max_send?: number
   /**
+   * Hard cap on how many Projects to create in this US-WA run. Each Project
+   * costs ~$0.72 (Opus prompt + Getimg images), so without a cap the full
+   * queue can burn hundreds of dollars. Sent as --max-projects to the bot.
+   */
+  max_projects?: number
+  /**
    * Per-instance send cap for this run. Keys are Evolution instance names,
    * values are non-negative integers. When set, the bot stops sending on
    * each instance once its count is reached. Unknown names or negative
@@ -100,6 +106,8 @@ export async function POST(request: NextRequest) {
           niches: cc.niches.flatMap(g => [...g.items]),
           cities: [...cc.cities],
           lang: cc.lang,
+          country: cc.country,
+          channel: cc.channel,
         } : {}),
         evolutionInstances,
         evolutionApiUrl: process.env.EVOLUTION_API_URL,

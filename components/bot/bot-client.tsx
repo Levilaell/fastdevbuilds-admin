@@ -78,6 +78,7 @@ export default function BotClient() {
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoLimit, setAutoLimit] = useState(20);
   const [autoMinScore, setAutoMinScore] = useState(4);
+  const [autoMaxProjects, setAutoMaxProjects] = useState<number>(5);
   const [autoSend, setAutoSend] = useState(false);
   const [autoDryRun, setAutoDryRun] = useState(false);
   // Daily usage + cap per Evolution instance (fetched from /api/bot/instance-usage)
@@ -382,6 +383,7 @@ export default function BotClient() {
       : "";
 
     const minScoreFlag = isUsWa ? "" : ` --min-score ${autoMinScore}`;
+    const maxProjectsFlag = isUsWa ? ` --max-projects ${autoMaxProjects}` : "";
 
     setLines([
       {
@@ -389,7 +391,7 @@ export default function BotClient() {
         type: "accent",
       },
       {
-        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit}${minScoreFlag}${autoDryRun ? " --dry" : ""}${willSend ? " --send" : ""}${perInstancePreview ? ` --per-instance${perInstancePreview}` : ""}`,
+        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit}${minScoreFlag}${maxProjectsFlag}${autoDryRun ? " --dry" : ""}${willSend ? " --send" : ""}${perInstancePreview ? ` --per-instance${perInstancePreview}` : ""}`,
         type: "info",
       },
     ]);
@@ -404,6 +406,7 @@ export default function BotClient() {
           dry_run: autoDryRun,
           send: willSend,
           market: country,
+          ...(isUsWa && { max_projects: autoMaxProjects }),
           ...(perInstanceSend && { per_instance_send: perInstanceSend }),
         }),
       });
@@ -673,11 +676,7 @@ EVOLUTION_API_KEY_X=...`}
           )}
 
           {/* Auto params */}
-          <div
-            className={`grid gap-3 ${
-              countryConfig.code === "US-WA" ? "grid-cols-1" : "grid-cols-2"
-            }`}
-          >
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-muted mb-1.5">
                 Limite/item
@@ -693,8 +692,28 @@ EVOLUTION_API_KEY_X=...`}
             </div>
             {/* Score min only matters for campaigns that score leads with
                 websites. US-WA targets only no-website leads (pain=10 auto),
-                so hide the knob. */}
-            {countryConfig.code !== "US-WA" && (
+                so the knob becomes "max previews" (hard cap on project
+                creation per run). */}
+            {countryConfig.code === "US-WA" ? (
+              <div>
+                <label
+                  className="block text-xs text-muted mb-1.5"
+                  title="Cap de previews gerados (~$0.72 cada)"
+                >
+                  Max previews
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={autoMaxProjects}
+                  onChange={(e) =>
+                    setAutoMaxProjects(Number(e.target.value) || 5)
+                  }
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+            ) : (
               <div>
                 <label className="block text-xs text-muted mb-1.5">
                   Score mín.
