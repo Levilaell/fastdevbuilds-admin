@@ -95,13 +95,18 @@ export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoard
 
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Defensive: hide any lead whose country doesn't match the selected
+      // tab. Server already filters but cached responses or data drift can
+      // leak — belt and suspenders.
+      if (market === 'US' && l.country !== 'US') return false
+      if (market === 'BR' && l.country !== 'BR' && l.country !== null) return false
       if (search && !(l.business_name ?? '').toLowerCase().includes(search.toLowerCase())) return false
       if (channel && l.outreach_channel !== channel) return false
       if (minScore > 0 && (l.pain_score ?? 0) < minScore) return false
       if (niche && l.niche !== niche) return false
       return true
     })
-  }, [leads, search, channel, minScore, niche])
+  }, [leads, search, channel, minScore, niche, market])
 
   const columns = market === 'US' ? US_PIPELINE_COLUMNS : PIPELINE_COLUMNS
   const columnLabels =

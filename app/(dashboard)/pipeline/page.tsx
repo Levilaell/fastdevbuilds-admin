@@ -4,6 +4,10 @@ import type { LeadCard } from '@/lib/types'
 import PipelineTabs from '@/components/pipeline/pipeline-tabs'
 import { KanbanSkeleton } from '@/components/pipeline/kanban-board'
 
+// Pipeline state can change any time (bot writes, webhook inbound, user drags) —
+// rendering from cache would show stale leads in the wrong tab.
+export const dynamic = 'force-dynamic'
+
 const CARD_COLUMNS =
   'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche, country'
 
