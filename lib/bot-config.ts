@@ -313,10 +313,13 @@ export const COUNTRIES: readonly CountryConfig[] = [
       'Warwick, RI', 'Cranston, RI',
     ],
   },
-  // ─── US-WA: WhatsApp-first cold outreach targeting hispanic-operated
-  // contractors. Cities skew to high-hispanic-density metros; FL excluded
-  // because FTSA (Florida) exposes to state-level TCPA-analog litigation risk
-  // even for over-the-top channels — revisit when a US legal entity exists.
+  // ─── US-WA: WhatsApp-first preview-first outreach targeting solo-operator
+  // SMBs without websites. Niches are intentionally small-scale trades where
+  // the owner is the operator in the field and hasn't prioritized digital
+  // presence — "roofing contractors" was dropped because those are LLCs that
+  // invested in SEO + site to survive Angi/HomeAdvisor competition. Cities
+  // include hispanic-dense metros and their suburbs (lower digital
+  // saturation). FL excluded pending US entity (FTSA risk).
   {
     code: 'US-WA',
     name: 'US (WhatsApp)',
@@ -326,24 +329,36 @@ export const COUNTRIES: readonly CountryConfig[] = [
     channel: 'whatsapp',
     niches: [
       {
-        category: 'Home Services',
+        category: 'Solo Operator Services',
         items: [
-          'roofing contractors', 'remodeling contractors', 'HVAC companies',
-          'landscaping companies', 'pool services', 'fence contractors',
-          'painting contractors', 'concrete contractors',
-          'flooring contractors', 'window installation',
+          'handyman',
+          'gutter cleaning',
+          'pressure washing',
+          'junk removal',
+          'lawn mowing',
+          'tree service',
+          'fence repair',
+          'drywall repair',
+          'appliance repair',
+          'mobile car detailing',
+          'pool cleaning',
+          'mobile mechanic',
         ],
       },
     ],
     cities: [
-      // ── TX (no FL) ──
+      // ── TX metros + suburbs (hispanic-dense) ──
       'Houston, TX', 'San Antonio, TX', 'Dallas, TX', 'Fort Worth, TX',
       'Austin, TX', 'El Paso, TX', 'Laredo, TX', 'McAllen, TX',
       'Brownsville, TX', 'Corpus Christi, TX', 'Arlington, TX',
       'Plano, TX', 'Garland, TX', 'Irving, TX',
+      'Pasadena, TX', 'Pearland, TX', 'Sugar Land, TX', 'Katy, TX',
+      'Humble, TX', 'Baytown, TX', 'Conroe, TX', 'League City, TX',
+      'Missouri City, TX', 'Spring, TX',
       // ── AZ ──
       'Phoenix, AZ', 'Tucson, AZ', 'Mesa, AZ', 'Chandler, AZ',
       'Glendale, AZ', 'Gilbert, AZ', 'Scottsdale, AZ', 'Tempe, AZ',
+      'Buckeye, AZ', 'Surprise, AZ', 'Goodyear, AZ',
       // ── NV ──
       'Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV',
       // ── CA ──
@@ -352,14 +367,16 @@ export const COUNTRIES: readonly CountryConfig[] = [
       'Riverside, CA', 'Santa Ana, CA', 'San Bernardino, CA',
       'Stockton, CA', 'Modesto, CA', 'Oxnard, CA', 'Fontana, CA',
       'Moreno Valley, CA', 'Santa Clarita, CA', 'Oceanside, CA',
+      'Pomona, CA', 'Norwalk, CA', 'El Monte, CA',
+      'Garden Grove, CA', 'Whittier, CA',
       // ── GA ──
-      'Atlanta, GA', 'Gwinnett, GA', 'Norcross, GA', 'Marietta, GA',
-      'Roswell, GA',
+      'Atlanta, GA', 'Marietta, GA', 'Roswell, GA',
+      'Duluth, GA', 'Lawrenceville, GA', 'Alpharetta, GA', 'Norcross, GA',
       // ── NC ──
       'Charlotte, NC', 'Raleigh, NC', 'Greensboro, NC', 'Durham, NC',
       // ── IL ──
       'Chicago, IL', 'Aurora, IL', 'Joliet, IL', 'Elgin, IL',
-      'Cicero, IL', 'Waukegan, IL',
+      'Cicero, IL', 'Waukegan, IL', 'Berwyn, IL', 'Melrose Park, IL',
       // ── NJ ──
       'Newark, NJ', 'Paterson, NJ', 'Elizabeth, NJ', 'Jersey City, NJ',
       'Passaic, NJ',
@@ -369,10 +386,10 @@ export const COUNTRIES: readonly CountryConfig[] = [
       'Denver, CO', 'Aurora, CO', 'Colorado Springs, CO',
     ],
   },
-  // ─── US-SMS: same niches/cities as US-WA but delivered via SMS. Used to
-  // compare conversion head-to-head against WhatsApp. SMS provider (Twilio)
-  // is not yet integrated — sends fail cleanly with 'sms_not_configured'
-  // until 10DLC registration and API keys are set up.
+  // ─── US-SMS: mirrors US-WA (same niches + cities, different channel).
+  // Twilio + 10DLC integration is pending — sends currently fail with
+  // sms_not_configured. Kept in sync with US-WA so when SMS goes live the
+  // comparison run is apples-to-apples.
   {
     code: 'US-SMS',
     name: 'US (SMS)',
@@ -382,47 +399,50 @@ export const COUNTRIES: readonly CountryConfig[] = [
     channel: 'sms',
     niches: [
       {
-        category: 'Home Services',
+        category: 'Solo Operator Services',
         items: [
-          'roofing contractors', 'remodeling contractors', 'HVAC companies',
-          'landscaping companies', 'pool services', 'fence contractors',
-          'painting contractors', 'concrete contractors',
-          'flooring contractors', 'window installation',
+          'handyman',
+          'gutter cleaning',
+          'pressure washing',
+          'junk removal',
+          'lawn mowing',
+          'tree service',
+          'fence repair',
+          'drywall repair',
+          'appliance repair',
+          'mobile car detailing',
+          'pool cleaning',
+          'mobile mechanic',
         ],
       },
     ],
     cities: [
-      // Mirrors US-WA — same target market, different channel.
-      // ── TX ──
       'Houston, TX', 'San Antonio, TX', 'Dallas, TX', 'Fort Worth, TX',
       'Austin, TX', 'El Paso, TX', 'Laredo, TX', 'McAllen, TX',
       'Brownsville, TX', 'Corpus Christi, TX', 'Arlington, TX',
       'Plano, TX', 'Garland, TX', 'Irving, TX',
-      // ── AZ ──
+      'Pasadena, TX', 'Pearland, TX', 'Sugar Land, TX', 'Katy, TX',
+      'Humble, TX', 'Baytown, TX', 'Conroe, TX', 'League City, TX',
+      'Missouri City, TX', 'Spring, TX',
       'Phoenix, AZ', 'Tucson, AZ', 'Mesa, AZ', 'Chandler, AZ',
       'Glendale, AZ', 'Gilbert, AZ', 'Scottsdale, AZ', 'Tempe, AZ',
-      // ── NV ──
+      'Buckeye, AZ', 'Surprise, AZ', 'Goodyear, AZ',
       'Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV',
-      // ── CA ──
       'Los Angeles, CA', 'San Diego, CA', 'San Jose, CA', 'Fresno, CA',
       'Bakersfield, CA', 'Sacramento, CA', 'Long Beach, CA', 'Anaheim, CA',
       'Riverside, CA', 'Santa Ana, CA', 'San Bernardino, CA',
       'Stockton, CA', 'Modesto, CA', 'Oxnard, CA', 'Fontana, CA',
       'Moreno Valley, CA', 'Santa Clarita, CA', 'Oceanside, CA',
-      // ── GA ──
-      'Atlanta, GA', 'Gwinnett, GA', 'Norcross, GA', 'Marietta, GA',
-      'Roswell, GA',
-      // ── NC ──
+      'Pomona, CA', 'Norwalk, CA', 'El Monte, CA',
+      'Garden Grove, CA', 'Whittier, CA',
+      'Atlanta, GA', 'Marietta, GA', 'Roswell, GA',
+      'Duluth, GA', 'Lawrenceville, GA', 'Alpharetta, GA', 'Norcross, GA',
       'Charlotte, NC', 'Raleigh, NC', 'Greensboro, NC', 'Durham, NC',
-      // ── IL ──
       'Chicago, IL', 'Aurora, IL', 'Joliet, IL', 'Elgin, IL',
-      'Cicero, IL', 'Waukegan, IL',
-      // ── NJ ──
+      'Cicero, IL', 'Waukegan, IL', 'Berwyn, IL', 'Melrose Park, IL',
       'Newark, NJ', 'Paterson, NJ', 'Elizabeth, NJ', 'Jersey City, NJ',
       'Passaic, NJ',
-      // ── NM ──
       'Albuquerque, NM', 'Las Cruces, NM',
-      // ── CO ──
       'Denver, CO', 'Aurora, CO', 'Colorado Springs, CO',
     ],
   },
