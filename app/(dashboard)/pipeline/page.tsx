@@ -1,22 +1,33 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { LeadCard } from '@/lib/types'
-import KanbanBoard, { KanbanSkeleton } from '@/components/pipeline/kanban-board'
+import PipelineTabs from '@/components/pipeline/pipeline-tabs'
+import { KanbanSkeleton } from '@/components/pipeline/kanban-board'
 
-const CARD_COLUMNS = 'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche'
+const CARD_COLUMNS =
+  'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche, country'
 
-async function PipelineBoard() {
+async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
   const supabase = await createClient()
+
+  // BR only cares about lead-level statuses; US pulls anything not terminal
+  // because the pipeline is driven by the Project row (prompt / URL / sent),
+  // not by lead.status.
+  const leadStatusFilter =
+    market === 'BR'
+      ? ['prospected', 'sent', 'replied', 'negotiating']
+      : ['prospected', 'sent', 'replied', 'negotiating']
 
   const [leadsRes, projectsRes, unreadsRes] = await Promise.all([
     supabase
       .from('leads')
       .select(CARD_COLUMNS)
-      .in('status', ['prospected', 'sent', 'replied', 'negotiating'])
+      .eq('country', market)
+      .in('status', leadStatusFilter)
       .order('status_updated_at', { ascending: false, nullsFirst: false }),
     supabase
       .from('projects')
-      .select('place_id, status'),
+      .select('place_id, status, claude_code_prompt, preview_url, preview_sent_at'),
     supabase
       .from('conversations')
       .select('place_id')
@@ -38,12 +49,19 @@ async function PipelineBoard() {
     )
   }
 
-  // Build lookup maps
-  const projectMap = new Map<string, { status: string }>()
+  const projectMap = new Map<
+    string,
+    {
+      status: string
+      claude_code_prompt: string | null
+      preview_url: string | null
+      preview_sent_at: string | null
+    }
+  >()
   for (const p of projectsRes.data ?? []) {
     projectMap.set(p.place_id, p)
   }
-  const unreadSet = new Set((unreadsRes.data ?? []).map(r => r.place_id))
+  const unreadSet = new Set((unreadsRes.data ?? []).map((r) => r.place_id))
 
   const leads: LeadCard[] = (leadsRes.data ?? []).map((lead) => {
     const proj = projectMap.get(lead.place_id)
@@ -51,16 +69,26 @@ async function PipelineBoard() {
       ...lead,
       project_status: (proj?.status as LeadCard['project_status']) ?? null,
       has_unread: unreadSet.has(lead.place_id),
+      project_claude_code_prompt: proj?.claude_code_prompt ?? null,
+      project_preview_url: proj?.preview_url ?? null,
+      project_preview_sent_at: proj?.preview_sent_at ?? null,
     }
   })
 
-  return <KanbanBoard initialLeads={leads} />
+  return <PipelineTabs market={market} initialLeads={leads} />
 }
 
-export default function PipelinePage() {
+export default async function PipelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ market?: string }>
+}) {
+  const { market: marketParam } = await searchParams
+  const market: 'BR' | 'US' = marketParam === 'US' ? 'US' : 'BR'
+
   return (
     <Suspense fallback={<KanbanSkeleton />}>
-      <PipelineBoard />
+      <PipelineBoard market={market} />
     </Suspense>
   )
 }

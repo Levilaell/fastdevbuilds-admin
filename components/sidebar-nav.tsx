@@ -43,8 +43,8 @@ function IconMetrics() {
 }
 
 const navItems = [
-  { href: '/pipeline', label: 'Pipeline', icon: IconPipeline },
-  { href: '/inbox', label: 'Inbox', icon: IconInbox, showBadge: true },
+  { href: '/pipeline', label: 'Pipeline', icon: IconPipeline, badge: 'pipeline' as const },
+  { href: '/inbox', label: 'Inbox', icon: IconInbox, badge: 'unread' as const },
   { href: '/bot', label: 'Bot', icon: IconBot },
   { href: '/metrics', label: 'Metrics', icon: IconMetrics },
 ]
@@ -52,6 +52,7 @@ const navItems = [
 export default function SidebarNav() {
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = useState(0)
+  const [promptsAwaitingCount, setPromptsAwaitingCount] = useState(0)
 
   useEffect(() => {
     const supabase = createClient()
@@ -69,23 +70,44 @@ export default function SidebarNav() {
       setUnreadCount(count ?? 0)
     }
 
+    async function fetchPromptsAwaiting() {
+      // US projects with a Claude Code prompt generated but no preview URL
+      // pasted yet — Levi needs to run Claude Code and paste the URL back.
+      const { count } = await supabase
+        .from('projects')
+        .select('id, leads!inner(country, status)', { count: 'exact', head: true })
+        .not('claude_code_prompt', 'is', null)
+        .is('preview_url', null)
+        .eq('leads.country', 'US')
+        .not('leads.status', 'in', '("disqualified","lost","closed")')
+      setPromptsAwaitingCount(count ?? 0)
+    }
+
     function debouncedFetch() {
       if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(fetchUnread, 500)
+      debounceTimer = setTimeout(() => {
+        fetchUnread()
+        fetchPromptsAwaiting()
+      }, 500)
     }
 
     fetchUnread()
+    fetchPromptsAwaiting()
 
     const channel = supabase
-      .channel('unread-messages')
+      .channel('nav-counters')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'conversations' },
-        () => debouncedFetch()
+        () => debouncedFetch(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'projects' },
+        () => debouncedFetch(),
       )
       .subscribe()
 
-    // Re-fetch when inbox marks messages as read
     const onUnreadUpdated = () => fetchUnread()
     window.addEventListener('unread-updated', onUnreadUpdated)
 
@@ -98,23 +120,38 @@ export default function SidebarNav() {
 
   return (
     <nav className="flex flex-col gap-0.5 px-3">
-      {navItems.map(({ href, label, icon: Icon, showBadge }) => {
+      {navItems.map(({ href, label, icon: Icon, badge }) => {
         const isActive = pathname === href || pathname.startsWith(href + '/')
+        const badgeCount =
+          badge === 'unread'
+            ? unreadCount
+            : badge === 'pipeline'
+              ? promptsAwaitingCount
+              : 0
+        const badgeClass =
+          badge === 'pipeline'
+            ? 'bg-amber-500 text-white'
+            : 'bg-accent text-white'
         return (
           <Link
             key={href}
-            href={href}
+            href={badge === 'pipeline' && badgeCount > 0 ? '/pipeline?market=US' : href}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${
               isActive
                 ? 'bg-card-hover text-text border-l-2 border-accent -ml-px'
                 : 'text-muted hover:text-text hover:bg-card'
             }`}
+            title={
+              badge === 'pipeline' && badgeCount > 0
+                ? `${badgeCount} prompt(s) US aguardando URL do preview`
+                : undefined
+            }
           >
             <Icon />
             <span className="flex-1">{label}</span>
-            {showBadge && unreadCount > 0 && (
-              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-white text-xs font-semibold">
-                {unreadCount > 99 ? '99+' : unreadCount}
+            {badge && badgeCount > 0 && (
+              <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold ${badgeClass}`}>
+                {badgeCount > 99 ? '99+' : badgeCount}
               </span>
             )}
           </Link>

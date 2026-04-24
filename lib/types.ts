@@ -179,6 +179,13 @@ export interface Project {
   info_request_message: string | null;
   prompt_updated_at: string | null;
   generated_images: GeneratedImages | null;
+  /**
+   * Vercel preview URL of the generated site. In the US-WhatsApp
+   * preview-first flow this URL is what the outreach message embeds —
+   * the lead clicks straight into a working site.
+   * Populated when Levi pastes it from his local Claude Code run.
+   */
+  preview_url: string | null;
 }
 
 export const PROJECT_STATUSES = [
@@ -214,9 +221,16 @@ export type LeadCard = Pick<
   | "status"
   | "status_updated_at"
   | "niche"
+  | "country"
 > & {
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
+  /** Present when the Project row has a Claude Code prompt generated. */
+  project_claude_code_prompt?: string | null;
+  /** Present when Levi pasted the Vercel preview URL. */
+  project_preview_url?: string | null;
+  /** Timestamp of when the outreach with preview was dispatched. */
+  project_preview_sent_at?: string | null;
 };
 
 // Kanban columns are a derived view over (lead.status, project.status) pairs,
@@ -253,6 +267,101 @@ export const PIPELINE_COLUMN_COLORS: Record<PipelineColumn, string> = {
   adjusting: "bg-fuchsia-500/20 text-fuchsia-400",
   delivered: "bg-emerald-500/20 text-emerald-400",
 };
+
+// US pipeline is preview-first: bot qualifies → admin creates Project + prompt
+// → Levi runs Claude Code locally + pastes URL → admin sends outreach with
+// URL embedded. There is no "prospected" or "sent" state here — the lead
+// doesn't exist in the pipeline until the Project (with prompt) is built,
+// and sending always includes a preview URL.
+export const US_PIPELINE_COLUMNS = [
+  "prompt_ready",
+  "preview_sent",
+  "replied",
+  "adjusting",
+  "delivered",
+] as const;
+export type USPipelineColumn = (typeof US_PIPELINE_COLUMNS)[number];
+
+export const US_PIPELINE_COLUMN_LABELS: Record<USPipelineColumn, string> = {
+  prompt_ready: "Prompt pronto",
+  preview_sent: "Preview enviado",
+  replied: "Respondeu",
+  adjusting: "Ajustando",
+  delivered: "Versão final enviada",
+};
+
+export const US_PIPELINE_COLUMN_COLORS: Record<USPipelineColumn, string> = {
+  prompt_ready: "bg-amber-500/20 text-amber-400",
+  preview_sent: "bg-violet-500/20 text-violet-400",
+  replied: "bg-yellow-500/20 text-yellow-400",
+  adjusting: "bg-fuchsia-500/20 text-fuchsia-400",
+  delivered: "bg-emerald-500/20 text-emerald-400",
+};
+
+/** US pipeline columns driven by project state; adjusting/delivered take
+ * precedence over anything earlier. */
+export const US_PROJECT_COLUMNS: USPipelineColumn[] = [
+  "preview_sent",
+  "adjusting",
+  "delivered",
+];
+
+/**
+ * Resolve the US-market kanban column for a lead. Returns null when the
+ * lead is terminal (closed/lost/disqualified) or the project is terminal
+ * (paid/cancelled), matching the BR pipeline's hiding rules.
+ *
+ * Semantics:
+ *   - prompt_ready: project exists with a prompt generated, no preview URL
+ *     pasted yet → Levi needs to run Claude Code and paste the URL
+ *   - preview_sent: URL pasted + outreach msg sent; lead is stewing
+ *     (includes leads that already replied — they jump to replied)
+ *   - replied: real reply landed and no preview/adjusting happening yet
+ *   - adjusting / delivered: mirror BR semantics
+ */
+export function getUSPipelineColumn(
+  leadStatus: LeadStatus,
+  projectStatus: ProjectStatus | null | undefined,
+  projectClaudeCodePrompt: string | null | undefined,
+  projectPreviewUrl: string | null | undefined,
+  projectPreviewSentAt: string | null | undefined,
+): USPipelineColumn | null {
+  if (
+    leadStatus === "closed" ||
+    leadStatus === "lost" ||
+    leadStatus === "disqualified"
+  ) {
+    return null;
+  }
+  if (projectStatus === "paid" || projectStatus === "cancelled") {
+    return null;
+  }
+
+  if (projectStatus === "delivered") return "delivered";
+  if (projectStatus === "adjusting") return "adjusting";
+
+  if (leadStatus === "replied" || leadStatus === "negotiating") {
+    // Preview already went out and lead responded → Respondeu.
+    // If project says preview_sent but lead also replied, replied wins —
+    // the conversation is now the actionable thing, not the preview.
+    return "replied";
+  }
+
+  if (projectStatus === "preview_sent" || projectPreviewSentAt) {
+    return "preview_sent";
+  }
+
+  if (projectClaudeCodePrompt && !projectPreviewUrl) {
+    return "prompt_ready";
+  }
+
+  if (projectClaudeCodePrompt && projectPreviewUrl && !projectPreviewSentAt) {
+    // Edge: URL pasted but admin hasn't dispatched yet — still ours to act on.
+    return "prompt_ready";
+  }
+
+  return null;
+}
 
 /** Columns whose drop target is a project-state change (require active project). */
 export const PROJECT_COLUMNS: PipelineColumn[] = [

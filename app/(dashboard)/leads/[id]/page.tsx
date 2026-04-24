@@ -17,6 +17,7 @@ import LeadStatusControls from '@/components/lead-detail/lead-status-controls'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
 import CreateProjectButton from '@/components/lead-detail/create-project-button'
+import USPreviewSection from '@/components/lead-detail/us-preview-section'
 import LeadDetailShell from '@/components/lead-detail/lead-detail-shell'
 
 function LeadDetailSkeleton() {
@@ -194,6 +195,12 @@ async function LeadDetailContent({ id }: { id: string }) {
               initialStatus={lead.status}
             />
           </div>
+
+          {/* US preview-first: Claude Code prompt + URL paste + send button.
+              Only for US leads with a Project (created by bot on qualify). */}
+          {lead.country === 'US' && project && (
+            <USPreviewSection placeId={lead.place_id} project={project} />
+          )}
 
           {/* Project — create button when none exists, status section otherwise */}
           {project ? (

@@ -11,10 +11,14 @@ import {
   PIPELINE_COLUMNS,
   PIPELINE_COLUMN_LABELS,
   PROJECT_COLUMNS,
+  US_PIPELINE_COLUMNS,
+  US_PIPELINE_COLUMN_LABELS,
   getPipelineColumn,
+  getUSPipelineColumn,
   type LeadCard,
   type LeadStatus,
   type PipelineColumn,
+  type USPipelineColumn,
   type ProjectStatus,
 } from '@/lib/types'
 import LeadCardComponent from './lead-card'
@@ -70,9 +74,10 @@ export function KanbanSkeleton() {
 
 interface KanbanBoardProps {
   initialLeads: LeadCard[]
+  market?: 'BR' | 'US'
 }
 
-export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
+export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoardProps) {
   const [leads, setLeads] = useState<LeadCard[]>(initialLeads)
   const [search, setSearch] = useState('')
   const [channel, setChannel] = useState('')
@@ -98,17 +103,37 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     })
   }, [leads, search, channel, minScore, niche])
 
+  const columns = market === 'US' ? US_PIPELINE_COLUMNS : PIPELINE_COLUMNS
+  const columnLabels =
+    market === 'US'
+      ? (US_PIPELINE_COLUMN_LABELS as Record<string, string>)
+      : (PIPELINE_COLUMN_LABELS as Record<string, string>)
+
   const grouped = useMemo(() => {
-    const map: Partial<Record<PipelineColumn, LeadCard[]>> = {}
-    for (const c of PIPELINE_COLUMNS) map[c] = []
+    const map: Record<string, LeadCard[]> = {}
+    for (const c of columns) map[c] = []
     filtered.forEach((l) => {
-      const col = getPipelineColumn(l.status, l.project_status ?? null)
-      if (col && map[col]) map[col]!.push(l)
+      const col =
+        market === 'US'
+          ? getUSPipelineColumn(
+              l.status,
+              l.project_status ?? null,
+              l.project_claude_code_prompt ?? null,
+              l.project_preview_url ?? null,
+              l.project_preview_sent_at ?? null,
+            )
+          : getPipelineColumn(l.status, l.project_status ?? null)
+      if (col && map[col]) map[col].push(l)
     })
     return map
-  }, [filtered])
+  }, [filtered, columns, market])
 
   const handleDragEnd = useCallback(async (result: DropResult) => {
+    // US pipeline is driven by project/send state (not draggable — each column
+    // transition requires a concrete action like "paste URL", "send preview").
+    // Block drag-and-drop on the US tab to prevent accidental state writes.
+    if (market === 'US') return
+
     const { draggableId, destination, source } = result
     if (!destination) return
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
@@ -210,13 +235,13 @@ export default function KanbanBoard({ initialLeads }: KanbanBoardProps) {
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-2 pb-4 px-3 sm:px-6 overflow-x-auto">
-          {PIPELINE_COLUMNS.map((col) => {
+          {columns.map((col) => {
             const cards = grouped[col] ?? []
             return (
               <div key={col} className="min-w-[260px] shrink-0 xl:min-w-0 xl:flex-1 xl:shrink bg-sidebar border border-border rounded-xl">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
-                    {PIPELINE_COLUMN_LABELS[col]}
+                    {columnLabels[col]}
                   </h2>
                   <span className="bg-border text-text text-[11px] font-mono px-1.5 py-0.5 rounded min-w-[22px] text-center">
                     {cards.length}
