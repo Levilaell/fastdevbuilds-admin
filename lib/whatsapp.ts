@@ -157,11 +157,15 @@ function getInstanceByName(name: string): EvolutionInstance | undefined {
  * Look up a lead's assigned instance. If none, assign the next one via
  * least-sends-in-last-24h and persist the assignment on the lead.
  *
- * Always filters the pool to the lead's country — prevents cross-country
- * chip assignment that would trip WhatsApp Business Policy (a BR chip
- * suddenly messaging US numbers, or vice versa). If the lead already has
- * an instance assigned that doesn't match its country, we ignore it and
- * re-assign — this handles leads created before the country field existed.
+ * Prefers chips matching the lead's country so a BR chip doesn't end up
+ * messaging a US number (the cross-country pattern trips WhatsApp Business
+ * Policy and burns chips fast). If no matching-country chip exists we fall
+ * back to any available chip — the user accepted that trade-off in the /bot
+ * UI when they chose to run without a country-matching chip.
+ *
+ * If the lead already has an assigned instance, we reuse it regardless of
+ * country match — swapping mid-conversation would fracture the WhatsApp
+ * thread on the prospect's side.
  */
 export async function getOrAssignInstance(
   supabase: SupabaseClient,
@@ -174,12 +178,20 @@ export async function getOrAssignInstance(
     .maybeSingle();
 
   const country = lead?.country ?? "BR";
-  const instances = getInstances({ country });
+  let instances = getInstances({ country });
+  if (instances.length === 0) {
+    instances = getInstances();
+    if (instances.length > 0) {
+      console.warn(
+        `[whatsapp] no chips for country=${country} — falling back to ${instances.length} cross-country chip(s) for lead ${placeId}`,
+      );
+    }
+  }
   if (instances.length === 0) return null;
 
   if (lead?.evolution_instance) {
     const existing = getInstanceByName(lead.evolution_instance);
-    if (existing && existing.country === country) return existing;
+    if (existing) return existing;
   }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

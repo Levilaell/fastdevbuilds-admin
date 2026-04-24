@@ -19,13 +19,23 @@ export async function GET(request: Request) {
 
   // Look up campaign config to send niches + cities as source of truth
   const countryConfig = getCountry(market)
-  // Only ship WhatsApp chips that belong to the campaign's country — prevents
-  // the bot from trying to send a US message through a BR chip (would get the
-  // account flagged) and vice versa.
-  const instances =
-    countryConfig?.channel === 'whatsapp'
-      ? getInstances({ country: countryConfig.country })
-      : []
+  // Prefer chips that match the campaign's country — keeps BR chip off US
+  // numbers and vice versa (cross-country sends risk WhatsApp Business bans).
+  // If no chip of the target country exists, fall back to all chips so the
+  // dashboard can still run (user has been warned in the UI and takes the
+  // trust / ban risk consciously).
+  let instances: ReturnType<typeof getInstances> = []
+  if (countryConfig?.channel === 'whatsapp') {
+    instances = getInstances({ country: countryConfig.country })
+    if (instances.length === 0) {
+      instances = getInstances()
+      if (instances.length > 0) {
+        console.warn(
+          `[queue] no chips for country=${countryConfig.country} — cross-country fallback to ${instances.length} chip(s)`,
+        )
+      }
+    }
+  }
 
   try {
     // Fetch bot queue and instance send counts in parallel
