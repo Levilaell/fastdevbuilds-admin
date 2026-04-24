@@ -16,27 +16,14 @@ interface InstanceUsage {
   sent_today: number
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   if (!await getAuthUser()) return unauthorizedResponse()
 
-  // Optional ?country=BR|US filter. When the /bot UI is showing US-WA the user
-  // only cares about US chip usage; mixing BR chip counters in there would be
-  // noise and break the per-instance send inputs.
-  //
-  // Fallback: if the requested country has zero chips registered, we return
-  // ALL chips with `crossCountryFallback: true` so the UI can warn and the
-  // user can decide whether to route a cross-country run (e.g. BR chip
-  // sending to US numbers — allowed but risks trust + bans).
-  const { searchParams } = new URL(request.url)
-  const country = searchParams.get('country') ?? undefined
-  let instances = getInstances(country ? { country } : undefined)
-  let crossCountryFallback = false
-  if (country && instances.length === 0) {
-    instances = getInstances()
-    crossCountryFallback = instances.length > 0
-  }
+  // All chips are returned — every chip can be used for every campaign.
+  // The `country` field on each instance is kept for display only.
+  const instances = getInstances()
   if (instances.length === 0) {
-    return Response.json({ instances: [], crossCountryFallback: false })
+    return Response.json({ instances: [] })
   }
 
   const supabase = createServiceClient()
@@ -74,5 +61,5 @@ export async function GET(request: Request) {
     sent_today: countMap.get(inst.name) ?? 0,
   }))
 
-  return Response.json({ instances: result, crossCountryFallback })
+  return Response.json({ instances: result })
 }

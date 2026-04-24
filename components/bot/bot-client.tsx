@@ -83,9 +83,6 @@ export default function BotClient() {
   // Daily usage + cap per Evolution instance (fetched from /api/bot/instance-usage)
   const [instanceUsage, setInstanceUsage] = useState<InstanceUsage[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
-  // True when the API returned chips from outside countryConfig.country
-  // because there were zero chips for the target country.
-  const [crossCountryFallback, setCrossCountryFallback] = useState(false);
 
   // "How many to send this run" per instance — key = instance name.
   // Required: must be filled (integer >= 0) for all known instances before Run.
@@ -141,14 +138,11 @@ export default function BotClient() {
   const fetchInstanceUsage = useCallback(async () => {
     setUsageLoading(true);
     try {
-      const res = await fetch(
-        `/api/bot/instance-usage?country=${countryConfig.country}`,
-      );
+      const res = await fetch("/api/bot/instance-usage");
       if (res.ok) {
         const data = await res.json();
         const items: InstanceUsage[] = data.instances ?? [];
         setInstanceUsage(items);
-        setCrossCountryFallback(Boolean(data.crossCountryFallback));
         setRunInputs((prev) => {
           const next = { ...prev };
           for (const inst of items) {
@@ -162,7 +156,7 @@ export default function BotClient() {
     } finally {
       setUsageLoading(false);
     }
-  }, [countryConfig.country]);
+  }, []);
 
   useEffect(() => {
     fetchRuns();
@@ -563,28 +557,13 @@ export default function BotClient() {
                     </p>
                     <pre className="text-[10px] bg-background border border-border rounded px-2 py-1.5 overflow-x-auto">
 {`EVOLUTION_INSTANCE_X=nome-do-chip
-EVOLUTION_API_KEY_X=...
-EVOLUTION_INSTANCE_COUNTRY_X=${countryConfig.country}`}
+EVOLUTION_API_KEY_X=...`}
                     </pre>
                     <p className="leading-relaxed">
                       Depois redeploy + restart do bot-server.
                     </p>
                   </div>
                 )}
-
-              {/* Cross-country warning — chips from other countries being
-                  used for this campaign. User explicitly accepted the
-                  trust/ban risk. */}
-              {crossCountryFallback && instanceUsage.length > 0 && (
-                <div className="bg-warning/10 border border-warning/40 rounded-lg p-2.5 text-[11px] text-warning space-y-1">
-                  <p className="font-medium">
-                    Sem chip {countryConfig.country} — usando chips de outros países
-                  </p>
-                  <p className="text-warning/80 leading-snug">
-                    Trust cai (número com country code diferente) e risco de ban sobe. Use só se aceita o trade-off.
-                  </p>
-                </div>
-              )}
 
               {/* Per-instance daily cap + "send this run" input */}
               {countryConfig.channel === "whatsapp" && instanceUsage.length > 0 && (
@@ -598,8 +577,6 @@ EVOLUTION_INSTANCE_COUNTRY_X=${countryConfig.country}`}
                   <div className="space-y-2">
                     {instanceUsage.map((inst) => {
                       const runVal = runInputs[inst.name] ?? "";
-                      const mismatchCountry =
-                        inst.country !== countryConfig.country;
                       return (
                         <div
                           key={inst.name}
@@ -608,12 +585,8 @@ EVOLUTION_INSTANCE_COUNTRY_X=${countryConfig.country}`}
                           <span className="text-text/70 truncate flex-1 min-w-0">
                             {inst.name}
                             <span
-                              className={`ml-1.5 text-[9px] px-1 py-0.5 rounded ${
-                                mismatchCountry
-                                  ? "text-warning bg-warning/10"
-                                  : "text-muted bg-background"
-                              }`}
-                              title={mismatchCountry ? "Chip de outro país" : undefined}
+                              className="ml-1.5 text-[9px] px-1 py-0.5 rounded text-muted bg-background"
+                              title="País configurado do chip (informativo)"
                             >
                               {inst.country}
                             </span>

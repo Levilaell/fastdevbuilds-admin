@@ -45,13 +45,13 @@ export function phoneMatch(a: string, b: string): boolean {
 export interface EvolutionInstance {
   name: string;
   apiKey: string;
-  /** ISO country code — identifies which market this chip serves. */
+  /**
+   * ISO country code — informational only. The UI surfaces it so Levi knows
+   * which chip is which, but routing does NOT filter by country anymore:
+   * any chip can dispatch to any campaign. Cross-country risk (trust +
+   * WhatsApp Business Policy flagging) is explicitly accepted.
+   */
   country: string;
-}
-
-export interface GetInstancesOptions {
-  /** When set, only return instances whose country matches. */
-  country?: string;
 }
 
 let cachedInstances: EvolutionInstance[] | null = null;
@@ -64,21 +64,16 @@ let cachedInstances: EvolutionInstance[] | null = null;
  *   2. Numbered env vars (EVOLUTION_INSTANCE_1 … _20) — legacy fallback,
  *      scans through gaps so a missing _2 won't hide _3
  *
- * Each entry carries a `country` field. In JSON form it's a property on the
- * object; in numbered form it's `EVOLUTION_INSTANCE_COUNTRY_${i}`. Default
- * is 'BR' so existing deploys don't need config changes.
+ * Each entry carries a `country` field (default 'BR') kept only for display.
+ * All chips are returned regardless of any campaign country — Levi uses any
+ * chip for any market, accepting the cross-country risk.
  *
- * Result is cached for the lifetime of the process. Pass `{country}` to
- * filter the returned list.
+ * Result is cached for the lifetime of the process.
  */
-export function getInstances(opts?: GetInstancesOptions): EvolutionInstance[] {
+export function getInstances(): EvolutionInstance[] {
   if (!cachedInstances) {
     const json = process.env.EVOLUTION_INSTANCES_JSON?.trim();
     cachedInstances = json ? parseInstancesJson(json) : loadLegacyInstances();
-  }
-
-  if (opts?.country) {
-    return cachedInstances.filter((i) => i.country === opts.country);
   }
   return cachedInstances;
 }
@@ -157,15 +152,11 @@ function getInstanceByName(name: string): EvolutionInstance | undefined {
  * Look up a lead's assigned instance. If none, assign the next one via
  * least-sends-in-last-24h and persist the assignment on the lead.
  *
- * Prefers chips matching the lead's country so a BR chip doesn't end up
- * messaging a US number (the cross-country pattern trips WhatsApp Business
- * Policy and burns chips fast). If no matching-country chip exists we fall
- * back to any available chip — the user accepted that trade-off in the /bot
- * UI when they chose to run without a country-matching chip.
- *
- * If the lead already has an assigned instance, we reuse it regardless of
- * country match — swapping mid-conversation would fracture the WhatsApp
- * thread on the prospect's side.
+ * No country filtering: any chip can message any lead. Levi accepts the
+ * cross-country risk (trust signal dip + WhatsApp Business flagging)
+ * consciously. If the lead already has an assigned instance, we reuse it
+ * (swapping mid-conversation would fracture the thread on the prospect's
+ * side).
  */
 export async function getOrAssignInstance(
   supabase: SupabaseClient,
@@ -173,20 +164,11 @@ export async function getOrAssignInstance(
 ): Promise<EvolutionInstance | null> {
   const { data: lead } = await supabase
     .from("leads")
-    .select("evolution_instance, country")
+    .select("evolution_instance")
     .eq("place_id", placeId)
     .maybeSingle();
 
-  const country = lead?.country ?? "BR";
-  let instances = getInstances({ country });
-  if (instances.length === 0) {
-    instances = getInstances();
-    if (instances.length > 0) {
-      console.warn(
-        `[whatsapp] no chips for country=${country} — falling back to ${instances.length} cross-country chip(s) for lead ${placeId}`,
-      );
-    }
-  }
+  const instances = getInstances();
   if (instances.length === 0) return null;
 
   if (lead?.evolution_instance) {
@@ -225,7 +207,7 @@ export async function getOrAssignInstance(
     .eq("place_id", placeId);
 
   console.log(
-    `[whatsapp] assigned instance "${assigned.name}" (${country}) to lead ${placeId}`,
+    `[whatsapp] assigned instance "${assigned.name}" to lead ${placeId}`,
   );
   return assigned;
 }
