@@ -331,7 +331,11 @@ export default function BotClient() {
   async function handleRunAuto() {
     if (running) return;
 
-    const willSend = autoSend && !autoDryRun;
+    // US-WA doesn't dispatch outreach — the bot creates Projects and Levi
+    // takes it from there. Treat "not dry" as the go signal; Enviar/chips
+    // are irrelevant for this campaign.
+    const isUsWa = countryConfig.code === "US-WA";
+    const willSend = isUsWa ? false : autoSend && !autoDryRun;
     let perInstanceSend: Record<string, number> | undefined;
     if (willSend && countryConfig.channel === "whatsapp") {
       if (instanceUsage.length === 0) {
@@ -377,13 +381,15 @@ export default function BotClient() {
           .join(",")
       : "";
 
+    const minScoreFlag = isUsWa ? "" : ` --min-score ${autoMinScore}`;
+
     setLines([
       {
         text: `━━━ Modo Automático — ${countryConfig.flag} ${country} ━━━`,
         type: "accent",
       },
       {
-        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit} --min-score ${autoMinScore}${autoDryRun ? " --dry" : ""}${willSend ? " --send" : ""}${perInstancePreview ? ` --per-instance${perInstancePreview}` : ""}`,
+        text: `$ prospect-bot --auto --market ${country} --limit ${autoLimit}${minScoreFlag}${autoDryRun ? " --dry" : ""}${willSend ? " --send" : ""}${perInstancePreview ? ` --per-instance${perInstancePreview}` : ""}`,
         type: "info",
       },
     ]);
@@ -544,8 +550,11 @@ export default function BotClient() {
                 </div>
               </div>
 
-              {/* Zero chips at all — explain what to add in .env.local */}
+              {/* Zero chips at all — explain what to add in .env.local.
+                  US-WA doesn't send directly (admin dispatches), so chip
+                  config isn't required to run that campaign. */}
               {countryConfig.channel === "whatsapp" &&
+                countryConfig.code !== "US-WA" &&
                 !usageLoading &&
                 instanceUsage.length === 0 && (
                   <div className="bg-sidebar border border-warning/30 rounded-lg p-3 text-xs text-muted space-y-1.5">
@@ -565,8 +574,12 @@ EVOLUTION_API_KEY_X=...`}
                   </div>
                 )}
 
-              {/* Per-instance daily cap + "send this run" input */}
-              {countryConfig.channel === "whatsapp" && instanceUsage.length > 0 && (
+              {/* Per-instance daily cap + "send this run" input. Hidden for
+                  US-WA — that campaign doesn't send from the bot, so chip
+                  volumes don't apply. Admin picks a chip at dispatch time. */}
+              {countryConfig.channel === "whatsapp" &&
+                countryConfig.code !== "US-WA" &&
+                instanceUsage.length > 0 && (
                 <div className="bg-sidebar border border-border rounded-lg p-2.5">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] text-muted uppercase">Envios hoje</p>
@@ -660,7 +673,11 @@ EVOLUTION_API_KEY_X=...`}
           )}
 
           {/* Auto params */}
-          <div className="grid grid-cols-2 gap-3">
+          <div
+            className={`grid gap-3 ${
+              countryConfig.code === "US-WA" ? "grid-cols-1" : "grid-cols-2"
+            }`}
+          >
             <div>
               <label className="block text-xs text-muted mb-1.5">
                 Limite/item
@@ -674,22 +691,32 @@ EVOLUTION_API_KEY_X=...`}
                 className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
               />
             </div>
-            <div>
-              <label className="block text-xs text-muted mb-1.5">
-                Score mín.
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={autoMinScore}
-                onChange={(e) => setAutoMinScore(Number(e.target.value) || 4)}
-                className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
-              />
-            </div>
+            {/* Score min only matters for campaigns that score leads with
+                websites. US-WA targets only no-website leads (pain=10 auto),
+                so hide the knob. */}
+            {countryConfig.code !== "US-WA" && (
+              <div>
+                <label className="block text-xs text-muted mb-1.5">
+                  Score mín.
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={autoMinScore}
+                  onChange={(e) =>
+                    setAutoMinScore(Number(e.target.value) || 4)
+                  }
+                  className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Dry Run + Send toggles */}
+          {/* Dry Run + Send toggles. "Enviar" is hidden for US-WA because
+              the bot doesn't dispatch outreach on that campaign — it creates
+              Projects and waits for Levi to paste a preview URL. Running
+              "Dry" shows the queue preview without collecting. */}
           <div className="flex gap-3">
             <button
               onClick={() => {
@@ -704,19 +731,21 @@ EVOLUTION_API_KEY_X=...`}
             >
               Dry Run
             </button>
-            <button
-              onClick={() => {
-                if (!autoDryRun) setAutoSend(!autoSend);
-              }}
-              disabled={autoDryRun}
-              className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
-                autoSend && !autoDryRun
-                  ? "border-success text-success bg-success/10"
-                  : "border-border text-muted hover:text-text"
-              }`}
-            >
-              Enviar
-            </button>
+            {countryConfig.code !== "US-WA" && (
+              <button
+                onClick={() => {
+                  if (!autoDryRun) setAutoSend(!autoSend);
+                }}
+                disabled={autoDryRun}
+                className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
+                  autoSend && !autoDryRun
+                    ? "border-success text-success bg-success/10"
+                    : "border-border text-muted hover:text-text"
+                }`}
+              >
+                Enviar
+              </button>
+            )}
           </div>
 
           {/* Run / Cancel */}
@@ -749,6 +778,7 @@ EVOLUTION_API_KEY_X=...`}
                 (autoSend &&
                   !autoDryRun &&
                   countryConfig.channel === "whatsapp" &&
+                  countryConfig.code !== "US-WA" &&
                   (instanceUsage.length === 0 ||
                     instanceUsage.some(
                       (i) =>
