@@ -1,12 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Project } from '@/lib/types'
 
 interface USPreviewSectionProps {
   placeId: string
   project: Project
+}
+
+interface InstanceOption {
+  name: string
+  country: string
+  sent_today: number
 }
 
 /**
@@ -23,6 +29,23 @@ export default function USPreviewSection({ placeId, project }: USPreviewSectionP
   const [sending, setSending] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [instances, setInstances] = useState<InstanceOption[]>([])
+  const [selectedInstance, setSelectedInstance] = useState<string>('')
+
+  useEffect(() => {
+    async function loadInstances() {
+      try {
+        const res = await fetch('/api/bot/instance-usage')
+        if (!res.ok) return
+        const data = await res.json()
+        const items: InstanceOption[] = data.instances ?? []
+        setInstances(items)
+      } catch {
+        /* ignore — dropdown just won't show manual options */
+      }
+    }
+    loadInstances()
+  }, [])
 
   if (!project.claude_code_prompt) {
     return (
@@ -65,7 +88,10 @@ export default function USPreviewSection({ placeId, project }: USPreviewSectionP
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ preview_url: trimmed }),
+          body: JSON.stringify({
+            preview_url: trimmed,
+            ...(selectedInstance ? { evolution_instance: selectedInstance } : {}),
+          }),
         },
       )
       if (!res.ok) {
@@ -145,6 +171,27 @@ export default function USPreviewSection({ placeId, project }: USPreviewSectionP
             />
           </div>
 
+          {instances.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-muted uppercase tracking-wider">
+                3. Chip (opcional — default auto least-used)
+              </label>
+              <select
+                value={selectedInstance}
+                onChange={(e) => setSelectedInstance(e.target.value)}
+                disabled={sending}
+                className="w-full h-9 px-3 text-sm rounded-lg bg-sidebar border border-border text-text focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              >
+                <option value="">Auto (least-used nas últimas 24h)</option>
+                {instances.map((inst) => (
+                  <option key={inst.name} value={inst.name}>
+                    {inst.name} ({inst.country}) — {inst.sent_today} hoje
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {error && <p className="text-xs text-danger">{error}</p>}
 
           <button
@@ -152,7 +199,7 @@ export default function USPreviewSection({ placeId, project }: USPreviewSectionP
             disabled={sending || !urlInput.trim()}
             className="w-full py-2 text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
           >
-            {sending ? 'Enviando…' : '3. Enviar preview via WhatsApp'}
+            {sending ? 'Enviando…' : '4. Enviar preview via WhatsApp'}
           </button>
 
           <p className="text-[10px] text-muted leading-relaxed">

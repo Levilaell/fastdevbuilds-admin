@@ -50,6 +50,14 @@ export async function POST(
     return Response.json({ error: "preview_url is required" }, { status: 400 });
   }
 
+  // Optional override: force a specific Evolution instance for this lead.
+  // When set, we pin the lead to that instance before dispatch so
+  // getOrAssignInstance reuses it (instead of picking least-used globally).
+  const evolutionInstanceOverride =
+    typeof body?.evolution_instance === "string" && body.evolution_instance.trim()
+      ? body.evolution_instance.trim()
+      : null;
+
   // Basic URL sanity — avoid dispatching a malformed link that WhatsApp won't
   // render as a clickable preview.
   try {
@@ -105,6 +113,27 @@ export async function POST(
     .from("projects")
     .update({ preview_url: previewUrl })
     .eq("id", project.id);
+
+  // Pin the chosen instance on the lead so dispatchMessage reuses it via
+  // getOrAssignInstance. Validates the name against the configured pool
+  // so a bogus value doesn't silently send from a default fallback.
+  if (evolutionInstanceOverride) {
+    const { getInstances } = await import("@/lib/whatsapp");
+    const known = getInstances().some((i) => i.name === evolutionInstanceOverride);
+    if (!known) {
+      return Response.json(
+        {
+          error: `evolution_instance '${evolutionInstanceOverride}' is not configured`,
+        },
+        { status: 400 },
+      );
+    }
+    await supabase
+      .from("leads")
+      .update({ evolution_instance: evolutionInstanceOverride })
+      .eq("place_id", place_id);
+    lead.evolution_instance = evolutionInstanceOverride;
+  }
 
   // Compose cold outreach message with the URL embedded.
   const reasonsText = (lead.score_reasons ?? "")
