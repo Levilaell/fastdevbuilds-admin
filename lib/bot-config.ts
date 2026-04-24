@@ -1,5 +1,7 @@
-// ─── Country-based bot configuration ───
-// To add a new country: add an entry to COUNTRIES with its niches, cities, lang, and channel.
+// ─── Campaign-based bot configuration ───
+// Each entry = one (country, channel) campaign. To add a new campaign add an
+// entry to COUNTRIES. `code` is the stable identifier the bot receives as
+// --market and the UI persists in state.
 
 export interface NicheGroup {
   category: string
@@ -10,8 +12,9 @@ export interface CountryConfig {
   code: string
   name: string
   flag: string
+  country: 'BR' | 'US'
   lang: string
-  channel: 'whatsapp' | 'email'
+  channel: 'whatsapp' | 'email' | 'sms'
   niches: readonly NicheGroup[]
   cities: readonly string[]
 }
@@ -21,6 +24,7 @@ export const COUNTRIES: readonly CountryConfig[] = [
     code: 'BR',
     name: 'Brasil',
     flag: '🇧🇷',
+    country: 'BR',
     lang: 'pt',
     channel: 'whatsapp',
     niches: [
@@ -109,9 +113,10 @@ export const COUNTRIES: readonly CountryConfig[] = [
     ],
   },
   {
-    code: 'US',
-    name: 'United States',
+    code: 'US-EM',
+    name: 'US (Email)',
     flag: '🇺🇸',
+    country: 'US',
     lang: 'en',
     channel: 'email',
     niches: [
@@ -306,6 +311,119 @@ export const COUNTRIES: readonly CountryConfig[] = [
       // ── CT / RI Interior ──
       'Waterbury, CT', 'New Britain, CT', 'Danbury, CT', 'Norwich, CT',
       'Warwick, RI', 'Cranston, RI',
+    ],
+  },
+  // ─── US-WA: WhatsApp-first cold outreach targeting hispanic-operated
+  // contractors. Cities skew to high-hispanic-density metros; FL excluded
+  // because FTSA (Florida) exposes to state-level TCPA-analog litigation risk
+  // even for over-the-top channels — revisit when a US legal entity exists.
+  {
+    code: 'US-WA',
+    name: 'US (WhatsApp)',
+    flag: '🇺🇸',
+    country: 'US',
+    lang: 'en',
+    channel: 'whatsapp',
+    niches: [
+      {
+        category: 'Home Services',
+        items: [
+          'roofing contractors', 'remodeling contractors', 'HVAC companies',
+          'landscaping companies', 'pool services', 'fence contractors',
+          'painting contractors', 'concrete contractors',
+          'flooring contractors', 'window installation',
+        ],
+      },
+    ],
+    cities: [
+      // ── TX (no FL) ──
+      'Houston, TX', 'San Antonio, TX', 'Dallas, TX', 'Fort Worth, TX',
+      'Austin, TX', 'El Paso, TX', 'Laredo, TX', 'McAllen, TX',
+      'Brownsville, TX', 'Corpus Christi, TX', 'Arlington, TX',
+      'Plano, TX', 'Garland, TX', 'Irving, TX',
+      // ── AZ ──
+      'Phoenix, AZ', 'Tucson, AZ', 'Mesa, AZ', 'Chandler, AZ',
+      'Glendale, AZ', 'Gilbert, AZ', 'Scottsdale, AZ', 'Tempe, AZ',
+      // ── NV ──
+      'Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV',
+      // ── CA ──
+      'Los Angeles, CA', 'San Diego, CA', 'San Jose, CA', 'Fresno, CA',
+      'Bakersfield, CA', 'Sacramento, CA', 'Long Beach, CA', 'Anaheim, CA',
+      'Riverside, CA', 'Santa Ana, CA', 'San Bernardino, CA',
+      'Stockton, CA', 'Modesto, CA', 'Oxnard, CA', 'Fontana, CA',
+      'Moreno Valley, CA', 'Santa Clarita, CA', 'Oceanside, CA',
+      // ── GA ──
+      'Atlanta, GA', 'Gwinnett, GA', 'Norcross, GA', 'Marietta, GA',
+      'Roswell, GA',
+      // ── NC ──
+      'Charlotte, NC', 'Raleigh, NC', 'Greensboro, NC', 'Durham, NC',
+      // ── IL ──
+      'Chicago, IL', 'Aurora, IL', 'Joliet, IL', 'Elgin, IL',
+      'Cicero, IL', 'Waukegan, IL',
+      // ── NJ ──
+      'Newark, NJ', 'Paterson, NJ', 'Elizabeth, NJ', 'Jersey City, NJ',
+      'Passaic, NJ',
+      // ── NM ──
+      'Albuquerque, NM', 'Las Cruces, NM',
+      // ── CO ──
+      'Denver, CO', 'Aurora, CO', 'Colorado Springs, CO',
+    ],
+  },
+  // ─── US-SMS: same niches/cities as US-WA but delivered via SMS. Used to
+  // compare conversion head-to-head against WhatsApp. SMS provider (Twilio)
+  // is not yet integrated — sends fail cleanly with 'sms_not_configured'
+  // until 10DLC registration and API keys are set up.
+  {
+    code: 'US-SMS',
+    name: 'US (SMS)',
+    flag: '🇺🇸',
+    country: 'US',
+    lang: 'en',
+    channel: 'sms',
+    niches: [
+      {
+        category: 'Home Services',
+        items: [
+          'roofing contractors', 'remodeling contractors', 'HVAC companies',
+          'landscaping companies', 'pool services', 'fence contractors',
+          'painting contractors', 'concrete contractors',
+          'flooring contractors', 'window installation',
+        ],
+      },
+    ],
+    cities: [
+      // Mirrors US-WA — same target market, different channel.
+      // ── TX ──
+      'Houston, TX', 'San Antonio, TX', 'Dallas, TX', 'Fort Worth, TX',
+      'Austin, TX', 'El Paso, TX', 'Laredo, TX', 'McAllen, TX',
+      'Brownsville, TX', 'Corpus Christi, TX', 'Arlington, TX',
+      'Plano, TX', 'Garland, TX', 'Irving, TX',
+      // ── AZ ──
+      'Phoenix, AZ', 'Tucson, AZ', 'Mesa, AZ', 'Chandler, AZ',
+      'Glendale, AZ', 'Gilbert, AZ', 'Scottsdale, AZ', 'Tempe, AZ',
+      // ── NV ──
+      'Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV',
+      // ── CA ──
+      'Los Angeles, CA', 'San Diego, CA', 'San Jose, CA', 'Fresno, CA',
+      'Bakersfield, CA', 'Sacramento, CA', 'Long Beach, CA', 'Anaheim, CA',
+      'Riverside, CA', 'Santa Ana, CA', 'San Bernardino, CA',
+      'Stockton, CA', 'Modesto, CA', 'Oxnard, CA', 'Fontana, CA',
+      'Moreno Valley, CA', 'Santa Clarita, CA', 'Oceanside, CA',
+      // ── GA ──
+      'Atlanta, GA', 'Gwinnett, GA', 'Norcross, GA', 'Marietta, GA',
+      'Roswell, GA',
+      // ── NC ──
+      'Charlotte, NC', 'Raleigh, NC', 'Greensboro, NC', 'Durham, NC',
+      // ── IL ──
+      'Chicago, IL', 'Aurora, IL', 'Joliet, IL', 'Elgin, IL',
+      'Cicero, IL', 'Waukegan, IL',
+      // ── NJ ──
+      'Newark, NJ', 'Paterson, NJ', 'Elizabeth, NJ', 'Jersey City, NJ',
+      'Passaic, NJ',
+      // ── NM ──
+      'Albuquerque, NM', 'Las Cruces, NM',
+      // ── CO ──
+      'Denver, CO', 'Aurora, CO', 'Colorado Springs, CO',
     ],
   },
 ] as const

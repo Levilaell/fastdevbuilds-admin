@@ -137,7 +137,9 @@ export default function BotClient() {
   const fetchInstanceUsage = useCallback(async () => {
     setUsageLoading(true);
     try {
-      const res = await fetch("/api/bot/instance-usage");
+      const res = await fetch(
+        `/api/bot/instance-usage?country=${countryConfig.country}`,
+      );
       if (res.ok) {
         const data = await res.json();
         const items: InstanceUsage[] = data.instances ?? [];
@@ -155,7 +157,7 @@ export default function BotClient() {
     } finally {
       setUsageLoading(false);
     }
-  }, []);
+  }, [countryConfig.country]);
 
   useEffect(() => {
     fetchRuns();
@@ -501,10 +503,16 @@ export default function BotClient() {
             className={`px-1.5 py-0.5 rounded font-medium ${
               countryConfig.channel === "whatsapp"
                 ? "text-emerald-400 bg-emerald-500/10"
+                : countryConfig.channel === "sms"
+                ? "text-orange-400 bg-orange-500/10"
                 : "text-blue-400 bg-blue-500/10"
             }`}
           >
-            {countryConfig.channel === "whatsapp" ? "WhatsApp" : "Email"}
+            {countryConfig.channel === "whatsapp"
+              ? "WhatsApp"
+              : countryConfig.channel === "sms"
+              ? "SMS"
+              : "Email"}
           </span>
         </div>
 

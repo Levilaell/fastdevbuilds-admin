@@ -5,7 +5,7 @@ import { extractProviderMessageId, extractRemoteJid } from "@/lib/whatsapp";
 
 interface SentPayload {
   place_id: string;
-  channel: "whatsapp" | "email";
+  channel: "whatsapp" | "email" | "sms";
   message: string;
   subject: string | null;
   evolution_response: unknown;
@@ -32,8 +32,8 @@ function validatePayload(raw: unknown): ValidationResult {
   if (typeof b.place_id !== "string" || !b.place_id.trim()) {
     return { ok: false, error: "place_id is required" };
   }
-  if (b.channel !== "whatsapp" && b.channel !== "email") {
-    return { ok: false, error: "channel must be 'whatsapp' or 'email'" };
+  if (b.channel !== "whatsapp" && b.channel !== "email" && b.channel !== "sms") {
+    return { ok: false, error: "channel must be 'whatsapp', 'email', or 'sms'" };
   }
   if (typeof b.message !== "string" || !b.message) {
     return { ok: false, error: "message is required" };

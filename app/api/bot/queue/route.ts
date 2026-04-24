@@ -17,9 +17,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const market = searchParams.get('market') || 'BR'
 
-  // Look up country config to send niches + cities as source of truth
+  // Look up campaign config to send niches + cities as source of truth
   const countryConfig = getCountry(market)
-  const instances = getInstances()
+  // Only ship WhatsApp chips that belong to the campaign's country — prevents
+  // the bot from trying to send a US message through a BR chip (would get the
+  // account flagged) and vice versa.
+  const instances =
+    countryConfig?.channel === 'whatsapp'
+      ? getInstances({ country: countryConfig.country })
+      : []
 
   try {
     // Fetch bot queue and instance send counts in parallel
@@ -40,9 +46,12 @@ export async function GET(request: Request) {
             : undefined,
           cities: countryConfig ? [...countryConfig.cities] : undefined,
           lang: countryConfig?.lang,
+          country: countryConfig?.country,
+          channel: countryConfig?.channel,
           evolutionInstances: instances.map(i => ({
             name: i.name,
             apiKey: i.apiKey,
+            country: i.country,
           })),
           evolutionApiUrl: process.env.EVOLUTION_API_URL,
         }),

@@ -8,7 +8,7 @@ import ReplyBox from '@/components/shared/reply-box'
 interface ConversationPanelProps {
   placeId: string
   initialConversations: Conversation[]
-  channel?: 'whatsapp' | 'email'
+  channel?: 'whatsapp' | 'email' | 'sms'
 }
 
 export default function ConversationPanel({

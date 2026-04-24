@@ -103,7 +103,7 @@ export interface Conversation {
   id: string;
   place_id: string;
   direction: "in" | "out";
-  channel: "whatsapp" | "email";
+  channel: "whatsapp" | "email" | "sms";
   message: string;
   subject: string | null;
   sent_at: string;

@@ -709,7 +709,13 @@ export default function InboxClient() {
               placeId={activePlaceId}
               onNewMessage={handleNewMessage}
               enablePhonePrompt
-              channel={activeItem?.outreach_channel === 'email' ? 'email' : 'whatsapp'}
+              channel={
+                activeItem?.outreach_channel === 'email'
+                  ? 'email'
+                  : activeItem?.outreach_channel === 'sms'
+                  ? 'sms'
+                  : 'whatsapp'
+              }
             />
           </>
         )}

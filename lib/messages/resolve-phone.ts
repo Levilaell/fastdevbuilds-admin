@@ -9,6 +9,12 @@ export interface ResolvePhoneInput {
   phone: string | null;
   whatsapp_jid: string | null;
   evolution_instance: string | null;
+  /**
+   * Lead country ('BR' | 'US'). Gates phone-shape validation. When omitted,
+   * isValidPhone auto-detects by prefix — good enough for webhook paths,
+   * but send paths should pass country explicitly.
+   */
+  country?: string | null;
 }
 
 export interface ResolvePhoneResult {
@@ -29,11 +35,12 @@ export interface ResolvePhoneResult {
 export async function resolvePhoneForLead(
   input: ResolvePhoneInput,
 ): Promise<ResolvePhoneResult | null> {
+  const country = input.country ?? undefined;
   let phone = input.phone?.trim() || null;
 
   if (!phone && input.place_id.startsWith("unknown_")) {
     const candidate = input.place_id.replace("unknown_", "");
-    if (/^55\d{10,11}$/.test(candidate)) {
+    if (isValidPhone(candidate, country ?? undefined)) {
       phone = candidate;
     }
   }
@@ -43,7 +50,7 @@ export async function resolvePhoneForLead(
 
     if (jid.endsWith("@s.whatsapp.net")) {
       const candidate = jid.split("@")[0].replace(/\D/g, "");
-      if (isValidPhone(candidate)) {
+      if (isValidPhone(candidate, country ?? undefined)) {
         phone = candidate;
       }
     } else if (jid.endsWith("@lid")) {
@@ -59,7 +66,7 @@ export async function resolvePhoneForLead(
         inst?.apiKey,
       );
 
-      if (resolved && isValidPhone(resolved)) {
+      if (resolved && isValidPhone(resolved, country ?? inst?.country)) {
         phone = resolved;
       }
     }

@@ -4,7 +4,7 @@ import { pickCanonicalJid } from "@/lib/whatsapp";
 export interface RecordOutboundOptions {
   supabase: SupabaseClient;
   place_id: string;
-  channel: "whatsapp" | "email";
+  channel: "whatsapp" | "email" | "sms";
   message: string;
   subject?: string | null;
   whatsapp_jid?: string | null;

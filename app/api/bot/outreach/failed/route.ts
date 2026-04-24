@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 interface FailedPayload {
   place_id: string;
-  channel: "whatsapp" | "email";
+  channel: "whatsapp" | "email" | "sms";
   error: string;
   error_code: string | null;
   evolution_instance: string | null;
@@ -23,8 +23,8 @@ function validatePayload(raw: unknown): ValidationResult {
   if (typeof b.place_id !== "string" || !b.place_id.trim()) {
     return { ok: false, error: "place_id is required" };
   }
-  if (b.channel !== "whatsapp" && b.channel !== "email") {
-    return { ok: false, error: "channel must be 'whatsapp' or 'email'" };
+  if (b.channel !== "whatsapp" && b.channel !== "email" && b.channel !== "sms") {
+    return { ok: false, error: "channel must be 'whatsapp', 'email', or 'sms'" };
   }
   if (typeof b.error !== "string" || !b.error) {
     return { ok: false, error: "error message is required" };

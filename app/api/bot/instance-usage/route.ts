@@ -15,10 +15,15 @@ interface InstanceUsage {
   sent_today: number
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!await getAuthUser()) return unauthorizedResponse()
 
-  const instances = getInstances()
+  // Optional ?country=BR|US filter. When the /bot UI is showing US-WA the user
+  // only cares about US chip usage; mixing BR chip counters in there would be
+  // noise and break the per-instance send inputs.
+  const { searchParams } = new URL(request.url)
+  const country = searchParams.get('country') ?? undefined
+  const instances = getInstances(country ? { country } : undefined)
   if (instances.length === 0) {
     return Response.json({ instances: [] })
   }

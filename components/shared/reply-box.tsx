@@ -9,7 +9,7 @@ interface ReplyBoxProps {
   /** If true, show phone input prompt when lead has no phone */
   enablePhonePrompt?: boolean
   /** Channel for sending — defaults to 'whatsapp' */
-  channel?: 'whatsapp' | 'email'
+  channel?: 'whatsapp' | 'email' | 'sms'
 }
 
 export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt, channel = 'whatsapp' }: ReplyBoxProps) {
@@ -23,6 +23,7 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt, cha
   const [needsPhone, setNeedsPhone] = useState(false)
   const [sent, setSent] = useState(false)
   const isEmail = channel === 'email'
+  const isSms = channel === 'sms'
 
   async function handleSuggest() {
     setSuggesting(true)
@@ -183,9 +184,11 @@ export default function ReplyBox({ placeId, onNewMessage, enablePhonePrompt, cha
           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
             isEmail
               ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+              : isSms
+              ? 'text-orange-400 bg-orange-500/10 border-orange-500/20'
               : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
           }`}>
-            {isEmail ? 'Email' : 'WhatsApp'}
+            {isEmail ? 'Email' : isSms ? 'SMS' : 'WhatsApp'}
           </span>
           <button
             onClick={handleSuggest}

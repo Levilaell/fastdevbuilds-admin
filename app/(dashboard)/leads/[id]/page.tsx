@@ -215,7 +215,13 @@ async function LeadDetailContent({ id }: { id: string }) {
           <ConversationPanel
             placeId={lead.place_id}
             initialConversations={conversations}
-            channel={lead.outreach_channel === 'email' ? 'email' : 'whatsapp'}
+            channel={
+              lead.outreach_channel === 'email'
+                ? 'email'
+                : lead.outreach_channel === 'sms'
+                ? 'sms'
+                : 'whatsapp'
+            }
           />
         </>
       }

@@ -12,7 +12,7 @@ export interface DispatchOptions {
   supabase: SupabaseClient;
   place_id: string;
   message: string;
-  channel: "whatsapp" | "email";
+  channel: "whatsapp" | "email" | "sms";
   subject?: string;
   suggestedByAi?: boolean;
   lead: {
@@ -20,6 +20,7 @@ export interface DispatchOptions {
     email: string | null;
     evolution_instance: string | null;
     whatsapp_jid: string | null;
+    country?: string | null;
   };
 }
 
@@ -69,6 +70,7 @@ export async function dispatchMessage(
       phone: lead.phone,
       whatsapp_jid: lead.whatsapp_jid,
       evolution_instance: lead.evolution_instance,
+      country: lead.country ?? null,
     });
 
     if (!resolved) {
@@ -133,6 +135,25 @@ export async function dispatchMessage(
 
     sendRemoteJid = result.remoteJid;
     sendProviderMessageId = result.providerMessageId;
+  } else if (channel === "sms") {
+    // Twilio integration is not wired up yet. Fail loudly so the reply-box in
+    // the admin never silently "succeeds" without a message actually leaving.
+    // When 10DLC registration + Twilio API keys are in place, replace this
+    // with a real provider call that returns { remoteJid?, providerMessageId? }.
+    const errorDetail = "SMS provider not configured (Twilio integration pending 10DLC registration)";
+    await supabase
+      .from("leads")
+      .update({
+        outreach_error: errorDetail,
+        status_updated_at: now,
+      })
+      .eq("place_id", place_id);
+
+    return {
+      ok: false,
+      error: errorDetail,
+      httpStatus: 501,
+    };
   } else {
     const email = lead.email?.trim();
     if (!email) {

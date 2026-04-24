@@ -1,12 +1,34 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Normalize a Brazilian phone to 55 + DDD + number (12-13 digits). */
-export function normalizePhone(phone: string): string {
+/**
+ * Normalize a phone to the canonical form used for matching and sending.
+ *
+ *   BR → 55 + DDD + number (12-13 digits)
+ *   US → 1 + area code + number (11 digits)
+ *
+ * When `country` is omitted we auto-detect by prefix; this is the webhook
+ * path where the caller doesn't know the lead's country yet. When no prefix
+ * matches we fall back to BR because the historical default of this project
+ * was BR-only — legacy callers keep working.
+ */
+export function normalizePhone(phone: string, country?: string): string {
   const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13)
+
+  if (country === "US") {
+    if (digits.startsWith("1") && digits.length === 11) return digits;
+    if (digits.length === 10) return `1${digits}`;
     return digits;
-  const clean = digits.startsWith("0") ? digits.slice(1) : digits;
-  if (clean.length >= 10 && clean.length <= 11) return `55${clean}`;
+  }
+
+  if (country === "BR" || country === undefined) {
+    if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13)
+      return digits;
+    if (country === undefined && digits.startsWith("1") && digits.length === 11)
+      return digits;
+    const clean = digits.startsWith("0") ? digits.slice(1) : digits;
+    if (clean.length >= 10 && clean.length <= 11) return `55${clean}`;
+  }
+
   return digits;
 }
 
@@ -23,6 +45,13 @@ export function phoneMatch(a: string, b: string): boolean {
 export interface EvolutionInstance {
   name: string;
   apiKey: string;
+  /** ISO country code — identifies which market this chip serves. */
+  country: string;
+}
+
+export interface GetInstancesOptions {
+  /** When set, only return instances whose country matches. */
+  country?: string;
 }
 
 let cachedInstances: EvolutionInstance[] | null = null;
@@ -35,19 +64,22 @@ let cachedInstances: EvolutionInstance[] | null = null;
  *   2. Numbered env vars (EVOLUTION_INSTANCE_1 … _20) — legacy fallback,
  *      scans through gaps so a missing _2 won't hide _3
  *
- * Result is cached for the lifetime of the process.
+ * Each entry carries a `country` field. In JSON form it's a property on the
+ * object; in numbered form it's `EVOLUTION_INSTANCE_COUNTRY_${i}`. Default
+ * is 'BR' so existing deploys don't need config changes.
+ *
+ * Result is cached for the lifetime of the process. Pass `{country}` to
+ * filter the returned list.
  */
-export function getInstances(): EvolutionInstance[] {
-  if (cachedInstances) return cachedInstances;
-
-  const json = process.env.EVOLUTION_INSTANCES_JSON?.trim();
-
-  if (json) {
-    cachedInstances = parseInstancesJson(json);
-  } else {
-    cachedInstances = loadLegacyInstances();
+export function getInstances(opts?: GetInstancesOptions): EvolutionInstance[] {
+  if (!cachedInstances) {
+    const json = process.env.EVOLUTION_INSTANCES_JSON?.trim();
+    cachedInstances = json ? parseInstancesJson(json) : loadLegacyInstances();
   }
 
+  if (opts?.country) {
+    return cachedInstances.filter((i) => i.country === opts.country);
+  }
   return cachedInstances;
 }
 
@@ -75,9 +107,11 @@ function parseInstancesJson(raw: string): EvolutionInstance[] {
       (entry as Record<string, unknown>).name &&
       (entry as Record<string, unknown>).apiKey
     ) {
+      const rec = entry as Record<string, string>;
       instances.push({
-        name: (entry as Record<string, string>).name,
-        apiKey: (entry as Record<string, string>).apiKey,
+        name: rec.name,
+        apiKey: rec.apiKey,
+        country: typeof rec.country === "string" && rec.country ? rec.country : "BR",
       });
     } else {
       console.warn("[whatsapp] skipping invalid entry in EVOLUTION_INSTANCES_JSON:", entry);
@@ -93,8 +127,9 @@ function loadLegacyInstances(): EvolutionInstance[] {
   for (let i = 1; i <= 20; i++) {
     const name = process.env[`EVOLUTION_INSTANCE_${i}`];
     const apiKey = process.env[`EVOLUTION_API_KEY_${i}`];
+    const country = process.env[`EVOLUTION_INSTANCE_COUNTRY_${i}`] ?? "BR";
     if (name && apiKey) {
-      instances.push({ name, apiKey });
+      instances.push({ name, apiKey, country });
     }
     // no break — scan through gaps
   }
@@ -121,23 +156,30 @@ function getInstanceByName(name: string): EvolutionInstance | undefined {
 /**
  * Look up a lead's assigned instance. If none, assign the next one via
  * least-sends-in-last-24h and persist the assignment on the lead.
+ *
+ * Always filters the pool to the lead's country — prevents cross-country
+ * chip assignment that would trip WhatsApp Business Policy (a BR chip
+ * suddenly messaging US numbers, or vice versa). If the lead already has
+ * an instance assigned that doesn't match its country, we ignore it and
+ * re-assign — this handles leads created before the country field existed.
  */
 export async function getOrAssignInstance(
   supabase: SupabaseClient,
   placeId: string,
 ): Promise<EvolutionInstance | null> {
-  const instances = getInstances();
-  if (instances.length === 0) return null;
-
   const { data: lead } = await supabase
     .from("leads")
-    .select("evolution_instance")
+    .select("evolution_instance, country")
     .eq("place_id", placeId)
     .maybeSingle();
 
+  const country = lead?.country ?? "BR";
+  const instances = getInstances({ country });
+  if (instances.length === 0) return null;
+
   if (lead?.evolution_instance) {
     const existing = getInstanceByName(lead.evolution_instance);
-    if (existing) return existing;
+    if (existing && existing.country === country) return existing;
   }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -171,14 +213,28 @@ export async function getOrAssignInstance(
     .eq("place_id", placeId);
 
   console.log(
-    `[whatsapp] assigned instance "${assigned.name}" to lead ${placeId}`,
+    `[whatsapp] assigned instance "${assigned.name}" (${country}) to lead ${placeId}`,
   );
   return assigned;
 }
 
-/** Check if a normalized phone looks like a valid BR number. */
-export function isValidPhone(phone: string): boolean {
-  return phone.startsWith("55") && phone.length >= 12 && phone.length <= 13;
+/**
+ * Check if a normalized phone has valid format.
+ *
+ *   BR → 55 + 10-11 digits (12-13 total)
+ *   US → 1 + 10 digits (11 total) — does NOT distinguish mobile vs landline,
+ *        US doesn't encode that in the number. Downstream dispatch catches
+ *        landline via the provider's "number not reachable" error.
+ *
+ * Without `country` we auto-detect by prefix — used by code paths that
+ * don't know the lead's country yet (webhook, LID resolution).
+ */
+export function isValidPhone(phone: string, country?: string): boolean {
+  if (country === "US") return /^1\d{10}$/.test(phone);
+  if (country === "BR") return /^55\d{10,11}$/.test(phone);
+  if (phone.startsWith("55")) return /^55\d{10,11}$/.test(phone);
+  if (phone.startsWith("1")) return /^1\d{10}$/.test(phone);
+  return false;
 }
 
 /**
@@ -392,8 +448,11 @@ export async function lookupJidFromPhone(
     return null;
   }
 
-  const cleanPhone = normalizePhone(phone);
-  if (!isValidPhone(cleanPhone)) {
+  const instanceCountry = instanceName
+    ? getInstanceByName(instanceName)?.country
+    : getInstances()[0]?.country;
+  const cleanPhone = normalizePhone(phone, instanceCountry);
+  if (!isValidPhone(cleanPhone, instanceCountry)) {
     console.log("[whatsapp:lookup] invalid phone after normalization:", cleanPhone);
     return null;
   }
@@ -528,8 +587,8 @@ export async function sendWhatsApp(
     }
   }
 
-  const cleanPhone = normalizePhone(phone);
-  if (!isValidPhone(cleanPhone)) {
+  const cleanPhone = normalizePhone(phone, instance.country);
+  if (!isValidPhone(cleanPhone, instance.country)) {
     return { ok: false, reason: "invalid_phone" };
   }
 

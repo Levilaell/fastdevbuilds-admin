@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   const { place_id, message, channel, subject } = body as {
     place_id: string;
     message: string;
-    channel: "whatsapp" | "email";
+    channel: "whatsapp" | "email" | "sms";
     subject?: string;
   };
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("phone, email, evolution_instance, whatsapp_jid")
+    .select("phone, email, evolution_instance, whatsapp_jid, country")
     .eq("place_id", place_id)
     .maybeSingle();
 
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       email: lead.email,
       evolution_instance: lead.evolution_instance,
       whatsapp_jid: lead.whatsapp_jid,
+      country: lead.country,
     },
   });
 
