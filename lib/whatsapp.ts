@@ -420,6 +420,7 @@ export async function lookupJidFromPhone(
   phone: string,
   instanceName?: string,
   instanceApiKey?: string,
+  country?: string,
 ): Promise<string | null> {
   const evoUrl = process.env.EVOLUTION_API_URL;
   const fallback = getInstances()[0];
@@ -442,11 +443,9 @@ export async function lookupJidFromPhone(
     return null;
   }
 
-  const instanceCountry = instanceName
-    ? getInstanceByName(instanceName)?.country
-    : getInstances()[0]?.country;
-  const cleanPhone = normalizePhone(phone, instanceCountry);
-  if (!isValidPhone(cleanPhone, instanceCountry)) {
+  // Normalize by recipient country, not chip country. Chip is agnostic.
+  const cleanPhone = normalizePhone(phone, country);
+  if (!isValidPhone(cleanPhone, country)) {
     console.log("[whatsapp:lookup] invalid phone after normalization:", cleanPhone);
     return null;
   }
@@ -550,11 +549,19 @@ export async function lookupJidFromPhone(
  * Send a WhatsApp message via Evolution API.
  * If instanceName is provided, uses that specific instance.
  * Otherwise uses the first configured instance as fallback.
+ *
+ * `country` controls phone normalization — it must reflect the RECIPIENT's
+ * country, not the chip's. A BR chip can legally message a US number; what
+ * matters is that we don't prepend 55 to a +1 number (creates a 11-digit
+ * invalid BR number that Evolution rejects with exists:false). If omitted,
+ * normalize auto-detects by prefix, which works for WA-native numbers that
+ * already come with a country code.
  */
 export async function sendWhatsApp(
   phone: string,
   text: string,
   instanceName?: string,
+  country?: string,
 ): Promise<SendResult> {
   const url = process.env.EVOLUTION_API_URL;
   if (!url) {
@@ -581,8 +588,8 @@ export async function sendWhatsApp(
     }
   }
 
-  const cleanPhone = normalizePhone(phone, instance.country);
-  if (!isValidPhone(cleanPhone, instance.country)) {
+  const cleanPhone = normalizePhone(phone, country);
+  if (!isValidPhone(cleanPhone, country)) {
     return { ok: false, reason: "invalid_phone" };
   }
 

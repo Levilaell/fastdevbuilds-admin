@@ -89,7 +89,12 @@ export async function dispatchMessage(
     }
 
     const instance = await getOrAssignInstance(supabase, place_id);
-    const result = await sendWhatsApp(resolved.phone, message, instance?.name);
+    const result = await sendWhatsApp(
+      resolved.phone,
+      message,
+      instance?.name,
+      lead.country ?? undefined,
+    );
 
     // Capture phone+instance so we can backfill the JID after send even if
     // the Evolution response didn't include a remoteJid we could parse.
@@ -206,6 +211,8 @@ export async function dispatchMessage(
     jidToPersist = await lookupJidFromPhone(
       dispatchContext.phone,
       dispatchContext.instance ?? undefined,
+      undefined,
+      lead.country ?? undefined,
     );
     console.log(
       "[dispatch:jid] fallback lookup for",
