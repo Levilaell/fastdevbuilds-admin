@@ -3,10 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Project } from '@/lib/types'
+import { timeAgo } from '@/lib/time-ago'
 
 interface USPreviewSectionProps {
   placeId: string
   project: Project
+  previewViews?: {
+    firstAt: string | null
+    count: number
+  }
 }
 
 interface InstanceOption {
@@ -28,7 +33,7 @@ interface InstanceOption {
  * Hidden until claude_code_prompt is populated; switches to a sent-state
  * summary once preview_sent_at is set.
  */
-export default function USPreviewSection({ placeId, project }: USPreviewSectionProps) {
+export default function USPreviewSection({ placeId, project, previewViews }: USPreviewSectionProps) {
   const router = useRouter()
   const [urlInput, setUrlInput] = useState(project.preview_url ?? '')
   const [sending, setSending] = useState(false)
@@ -218,6 +223,14 @@ export default function USPreviewSection({ placeId, project }: USPreviewSectionP
             Preview enviado em{' '}
             {new Date(project.preview_sent_at!).toLocaleString('pt-BR')}
           </p>
+          {previewViews && previewViews.count > 0 ? (
+            <p className="text-emerald-400">
+              Visto {timeAgo(previewViews.firstAt)}
+              {previewViews.count > 1 ? ` · ${previewViews.count}x` : ''}
+            </p>
+          ) : (
+            <p className="text-muted/70">Ainda não abriu</p>
+          )}
           {project.preview_url && (
             <a
               href={project.preview_url}

@@ -22,7 +22,7 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
       ? ['prospected', 'sent', 'replied', 'negotiating']
       : ['prospected', 'sent', 'replied', 'negotiating']
 
-  const [leadsRes, projectsRes, unreadsRes] = await Promise.all([
+  const [leadsRes, projectsRes, unreadsRes, viewsRes] = await Promise.all([
     supabase
       .from('leads')
       .select(CARD_COLUMNS)
@@ -37,6 +37,9 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
       .select('place_id')
       .eq('direction', 'in')
       .is('read_at', null),
+    // Beacon rows are tiny and we aggregate in JS to avoid a Postgres function.
+    // Once volume crosses ~10k rows this should move to an RPC view.
+    supabase.from('preview_views').select('place_id, viewed_at'),
   ])
 
   if (leadsRes.error) {
@@ -67,8 +70,20 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
   }
   const unreadSet = new Set((unreadsRes.data ?? []).map((r) => r.place_id))
 
+  const viewsByPlace = new Map<string, { firstAt: string; count: number }>()
+  for (const v of viewsRes.data ?? []) {
+    const cur = viewsByPlace.get(v.place_id)
+    if (!cur) {
+      viewsByPlace.set(v.place_id, { firstAt: v.viewed_at, count: 1 })
+    } else {
+      cur.count += 1
+      if (v.viewed_at < cur.firstAt) cur.firstAt = v.viewed_at
+    }
+  }
+
   const leads: LeadCard[] = (leadsRes.data ?? []).map((lead) => {
     const proj = projectMap.get(lead.place_id)
+    const views = viewsByPlace.get(lead.place_id)
     return {
       ...lead,
       project_status: (proj?.status as LeadCard['project_status']) ?? null,
@@ -76,6 +91,8 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
       project_claude_code_prompt: proj?.claude_code_prompt ?? null,
       project_preview_url: proj?.preview_url ?? null,
       project_preview_sent_at: proj?.preview_sent_at ?? null,
+      preview_first_view_at: views?.firstAt ?? null,
+      preview_view_count: views?.count ?? 0,
     }
   })
 

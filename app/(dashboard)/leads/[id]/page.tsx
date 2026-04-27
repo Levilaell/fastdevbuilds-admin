@@ -52,7 +52,7 @@ async function LeadDetailContent({ id }: { id: string }) {
   const supabase = await createClient()
   const svc = createServiceClient()
 
-  const [leadResult, convResult, projectResult] = await Promise.all([
+  const [leadResult, convResult, projectResult, viewsResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', id).single(),
     svc
       .from('conversations')
@@ -66,6 +66,11 @@ async function LeadDetailContent({ id }: { id: string }) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    svc
+      .from('preview_views')
+      .select('viewed_at')
+      .eq('place_id', id)
+      .order('viewed_at', { ascending: true }),
   ])
 
   if (leadResult.error && leadResult.error.code === 'PGRST116') {
@@ -83,6 +88,11 @@ async function LeadDetailContent({ id }: { id: string }) {
   const lead = leadResult.data as Lead
   const conversations = (convResult.data ?? []) as Conversation[]
   const project = (projectResult.data as Project | null) ?? null
+  const previewViews = (viewsResult.data ?? []) as { viewed_at: string }[]
+  const previewViewSummary = {
+    firstAt: previewViews[0]?.viewed_at ?? null,
+    count: previewViews.length,
+  }
 
   // Mark inbound unread messages as read
   const unreadIds = conversations
@@ -199,7 +209,11 @@ async function LeadDetailContent({ id }: { id: string }) {
           {/* US preview-first: Claude Code prompt + URL paste + send button.
               Only for US leads with a Project (created by bot on qualify). */}
           {lead.country === 'US' && project && (
-            <USPreviewSection placeId={lead.place_id} project={project} />
+            <USPreviewSection
+              placeId={lead.place_id}
+              project={project}
+              previewViews={previewViewSummary}
+            />
           )}
 
           {/* Project — create button when none exists, status section otherwise */}

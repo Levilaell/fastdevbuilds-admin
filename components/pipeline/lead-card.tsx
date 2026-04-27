@@ -41,6 +41,14 @@ function PendingIndicator({ lead }: { lead: LeadCard }) {
     indicators.push({ label: 'Nova msg', color: 'text-accent bg-accent/10 border-accent/20' })
   }
 
+  const viewCount = lead.preview_view_count ?? 0
+  if (viewCount > 0) {
+    indicators.push({
+      label: viewCount > 1 ? `Viu ${viewCount}x` : 'Viu',
+      color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    })
+  }
+
   if (indicators.length === 0) return null
 
   return (

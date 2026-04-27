@@ -7,6 +7,7 @@ import {
   PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN,
   buildPreviewFirstOutreachUserPrompt,
 } from "@/lib/prompts";
+import { withViewMarker } from "@/lib/preview-tracking";
 import { SCORE_REASON_LABELS, type Lead } from "@/lib/types";
 
 // Claude Sonnet generation (fast) + WhatsApp send. Keep headroom for Evolution
@@ -143,6 +144,11 @@ export async function POST(
     .map((r) => SCORE_REASON_LABELS[r] ?? r)
     .join(", ");
 
+  // Tracker URL embeds ?v={place_id} so the public/track.js beacon on the
+  // preview HTML logs the open. Raw preview_url is what we keep in the DB
+  // (so Levi can QA without inflating the count).
+  const trackedUrl = withViewMarker(previewUrl, place_id);
+
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -154,7 +160,7 @@ export async function POST(
         content: buildPreviewFirstOutreachUserPrompt(
           lead,
           reasonsText,
-          previewUrl,
+          trackedUrl,
         ),
       },
     ],
@@ -173,11 +179,11 @@ export async function POST(
   }
 
   // Safety net: Claude sometimes drops the URL (hallucinates shortened form or
-  // paraphrases). If the URL isn't verbatim in the message, append it on its
-  // own line so the link-preview still renders.
-  const messageWithUrl = message.includes(previewUrl)
+  // paraphrases). If the tracked URL isn't verbatim in the message, append it
+  // so the link-preview still renders and the view gets logged on click.
+  const messageWithUrl = message.includes(trackedUrl)
     ? message
-    : `${message}\n\n${previewUrl}`;
+    : `${message}\n\n${trackedUrl}`;
 
   const dispatchResult = await dispatchMessage({
     supabase,

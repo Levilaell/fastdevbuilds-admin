@@ -231,6 +231,11 @@ export type LeadCard = Pick<
   project_preview_url?: string | null;
   /** Timestamp of when the outreach with preview was dispatched. */
   project_preview_sent_at?: string | null;
+  /** Earliest beacon hit logged by public/track.js — when the lead first
+   *  opened the preview. Null = never opened (or tracker missing). */
+  preview_first_view_at?: string | null;
+  /** Total beacon hits across all opens. */
+  preview_view_count?: number;
 };
 
 // Kanban columns are a derived view over (lead.status, project.status) pairs,

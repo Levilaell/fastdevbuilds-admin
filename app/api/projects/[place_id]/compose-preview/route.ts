@@ -6,6 +6,7 @@ import {
   PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN,
   buildPreviewFirstOutreachUserPrompt,
 } from "@/lib/prompts";
+import { withViewMarker } from "@/lib/preview-tracking";
 import { SCORE_REASON_LABELS, type Lead } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -97,6 +98,8 @@ export async function POST(
     .map((r) => SCORE_REASON_LABELS[r] ?? r)
     .join(", ");
 
+  const trackedUrl = withViewMarker(previewUrl, place_id);
+
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -108,7 +111,7 @@ export async function POST(
         content: buildPreviewFirstOutreachUserPrompt(
           lead,
           reasonsText,
-          previewUrl,
+          trackedUrl,
         ),
       },
     ],
@@ -126,9 +129,9 @@ export async function POST(
     );
   }
 
-  const messageWithUrl = message.includes(previewUrl)
+  const messageWithUrl = message.includes(trackedUrl)
     ? message
-    : `${message}\n\n${previewUrl}`;
+    : `${message}\n\n${trackedUrl}`;
 
   return Response.json({
     ok: true,

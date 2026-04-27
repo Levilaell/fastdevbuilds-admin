@@ -6,6 +6,7 @@ import {
   PREVIEW_DELIVERY_SYSTEM_PROMPT,
   buildPreviewDeliveryUserPrompt,
 } from '@/lib/prompts'
+import { withViewMarker } from '@/lib/preview-tracking'
 
 export async function POST(
   request: NextRequest,
@@ -54,7 +55,8 @@ export async function POST(
     }
   }
 
-  const userPrompt = buildPreviewDeliveryUserPrompt(businessName, previewUrl, pendingSummary)
+  const trackedUrl = withViewMarker(previewUrl, place_id)
+  const userPrompt = buildPreviewDeliveryUserPrompt(businessName, trackedUrl, pendingSummary)
 
   const anthropic = new Anthropic()
   const response = await anthropic.messages.create({
