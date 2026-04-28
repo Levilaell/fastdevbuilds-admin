@@ -1234,11 +1234,41 @@ Hoje, sem um site bem estruturado, essa paciente encontra primeiro a concorrênc
 
 Regras do bloco 3:
 - 2 parágrafos separados por linha em branco.
-- <sub1>, <sub2>, <sub3>: escolher 3 procedimentos PLAUSÍVEIS, POPULARES e COMPLEMENTARES da clínica de estética. Variar combinação por lead (não usar sempre os 3 mesmos). Lista pra escolher:
-  microagulhamento · harmonização facial · limpeza de pele · depilação a laser · botox · preenchimento labial · peeling · drenagem linfática · massagem modeladora · radiofrequência · criolipólise
 - Aspas tipográficas duplas ("…") nos sub-serviços, NÃO simples ou retas.
 - "intenção de compra" verbatim — vocabulário-chave do reframe.
 - Texto do segundo parágrafo verbatim.
+
+ESCOLHA DOS 3 SUB-SERVIÇOS — ORDEM DE PRIORIDADE (regra crítica):
+
+  Errar o sub-serviço destrói credibilidade — Dra. lê "harmonização facial"
+  numa clínica que só faz depilação e descarta como robô. Siga essa ordem:
+
+  1. REVIEWS REAIS (sinal mais confiável): se as reviews do Google passadas
+     no contexto mencionam procedimentos específicos ("fiz harmonização aqui",
+     "limpeza de pele incrível", "amei a depilação a laser"), USE esses
+     procedimentos como um ou mais dos 3. Reviews são o que pacientes de
+     verdade fizeram lá.
+
+  2. BUSINESS_NAME: se o nome do negócio explicita um procedimento ("Clínica
+     de Microagulhamento", "Daniela Botox", "Espaço Harmonia Facial"), USE
+     esse procedimento como um dos 3.
+
+  3. FALLBACK (quando reviews + nome NÃO dão pista clara): use 3 procedimentos-
+     base que praticamente toda clínica de estética oferece:
+       "limpeza de pele", "drenagem linfática" e UM dos seguintes (varie
+       por lead): "depilação a laser", "peeling", "massagem modeladora".
+
+  REGRA DURA: NUNCA usar procedimento de alta especialidade ("harmonização
+  facial", "microagulhamento", "botox", "preenchimento labial",
+  "criolipólise", "radiofrequência") como um dos 3 sub-serviços SEM
+  evidência clara nas reviews ou no business_name. Quando em dúvida, vá
+  pro fallback genérico.
+
+  Lista completa de procedimentos aceitos (escolher dessa lista, nunca
+  inventar fora dela):
+    microagulhamento · harmonização facial · limpeza de pele · depilação
+    a laser · botox · preenchimento labial · peeling · drenagem linfática
+    · massagem modeladora · radiofrequência · criolipólise
 
 BLOCO 4 — Argumento Instagram → Google (2 parágrafos verbatim):
 "E tem outro ponto importante: quando alguém vê seu Instagram e fica interessada, quase sempre o próximo passo é pesquisar seu nome no Google para validar confiança.
@@ -1256,8 +1286,11 @@ Depois disso, cada nova paciente que chega por ele vira lucro recorrente."
 
 Regras do bloco 5:
 - 2 parágrafos separados por linha em branco.
-- <sub-roi>: escolher UM dos 3 sub-serviços do bloco 3 com TICKET ALTO. Preferir: microagulhamento, harmonização facial, peeling, botox, criolipólise. NÃO usar limpeza de pele aqui (ticket baixo, não vende ROI convincente).
 - "investimento", "lucro recorrente" verbatim.
+- <sub-roi>: escolher UM dos 3 sub-serviços do bloco 3 com TICKET ALTO. Mesma regra de evidência:
+   • Se as reviews/nome confirmam um procedimento de ticket alto ("harmonização", "microagulhamento", "peeling", "botox", "criolipólise") → use esse.
+   • Senão (fallback genérico) → use "depilação a laser" (ticket médio mas universal). NÃO usar "limpeza de pele" (ticket baixo, não vende ROI convincente).
+   • NUNCA escolher um <sub-roi> que NÃO esteja entre os 3 que você usou no bloco 3.
 
 BLOCO 6 — Oferta (3 linhas, sem linha em branco entre elas):
 "O projeto completo fica em R$ 997
@@ -1353,9 +1386,33 @@ export function buildPreviewFirstOutreachUserPromptBR(
   ];
   if (reasonsText) lines.push(`Problemas detectados no site: ${reasonsText}`);
   if (lead.visual_notes) lines.push(`Notas visuais: ${lead.visual_notes}`);
+
+  // Reviews are the most reliable signal of what the clinic ACTUALLY
+  // delivers — patients quote real services in real words. Without this
+  // the LLM would invent procedures from a hardcoded list and risk
+  // mismatching the clinic's actual specialty (e.g. picking "harmonização
+  // facial" for a depilação-only clinic). Truncated to keep token cost
+  // bounded; collect.js already filtered reviews under 80 chars.
+  if (Array.isArray(lead.reviews) && lead.reviews.length > 0) {
+    lines.push("");
+    lines.push(
+      "Reviews reais do Google da clínica (extraia menções a procedimentos específicos pra escolher os 3 sub-serviços do bloco 3 — siga a ordem de prioridade do system prompt):",
+    );
+    for (const r of lead.reviews.slice(0, 3)) {
+      const text = (r.text ?? "").replace(/\s+/g, " ").trim();
+      const truncated = text.length > 220 ? text.slice(0, 220) + "…" : text;
+      if (truncated) lines.push(`- "${truncated}"`);
+    }
+  } else {
+    lines.push("");
+    lines.push(
+      "Reviews do Google: nenhuma review longa disponível pra essa clínica. Use o fallback genérico do system prompt (limpeza de pele + drenagem linfática + um dos: depilação a laser / peeling / massagem modeladora) — NÃO invente procedimento de alta especialidade sem evidência.",
+    );
+  }
+
   lines.push("");
   lines.push(
-    "Escreva a mensagem fria de WhatsApp seguindo a estrutura exata de 9 blocos do system prompt. Extrai um nome próprio do business_name pro bloco 1 quando ele aparecer literal (ex: 'Clínica Dra. Larissa Rodrigues' → 'Dra. Larissa'); senão use só 'Oi, tudo bem?'. Escolhe 3 sub-serviços de estética pro bloco 3 (variar por lead) e UM deles com ticket alto pro bloco 5 (microagulhamento, harmonização, peeling, botox).",
+    "Escreva a mensagem fria de WhatsApp seguindo a estrutura exata de 9 blocos do system prompt. Extrai um nome próprio do business_name pro bloco 1 quando ele aparecer literal (ex: 'Clínica Dra. Larissa Rodrigues' → 'Dra. Larissa'); senão use só 'Oi, tudo bem?'. Pros 3 sub-serviços do bloco 3, siga a ordem de prioridade: reviews > business_name > fallback genérico.",
   );
   return lines.join("\n");
 }
