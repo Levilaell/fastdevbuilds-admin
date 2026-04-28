@@ -4,7 +4,9 @@ import { getAuthUser, unauthorizedResponse } from "@/lib/supabase/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN,
+  PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_PT,
   buildPreviewFirstOutreachUserPrompt,
+  buildPreviewFirstOutreachUserPromptBR,
 } from "@/lib/prompts";
 import { withViewMarker } from "@/lib/preview-tracking";
 import { SCORE_REASON_LABELS, type Lead } from "@/lib/types";
@@ -76,11 +78,23 @@ export async function POST(
   const lead = leadRes.data as Lead;
   const project = projectRes.data;
 
-  if (lead.country !== "US" || lead.outreach_channel === "email") {
+  // Preview-first lives on the WhatsApp channel for both US-WA and BR-WA-PREVIEW.
+  // Reject email leads (Instantly handles those) and any country we don't have
+  // a localized preview-first prompt for.
+  if (lead.outreach_channel === "email") {
     return Response.json(
       {
         error:
-          "compose-preview is only supported for US WhatsApp leads (country=US, channel=whatsapp)",
+          "compose-preview is not supported for email channel — use Instantly for email outreach",
+      },
+      { status: 400 },
+    );
+  }
+  if (lead.country !== "US" && lead.country !== "BR") {
+    return Response.json(
+      {
+        error:
+          "compose-preview only supports country=US or country=BR (WhatsApp preview-first)",
       },
       { status: 400 },
     );
@@ -100,19 +114,26 @@ export async function POST(
 
   const trackedUrl = withViewMarker(previewUrl, place_id);
 
+  // Pick locale-specific prompt. PT mirrors EN structurally but compresses
+  // 6 blocks into 5 and embeds Levi's BR offer (R$ 997 50/50, refund on
+  // upfront only). EN keeps the curiosity-only US-WA shape.
+  const isBR = lead.country === "BR";
+  const systemPrompt = isBR
+    ? PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_PT
+    : PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN;
+  const userPromptText = isBR
+    ? buildPreviewFirstOutreachUserPromptBR(lead, reasonsText, trackedUrl)
+    : buildPreviewFirstOutreachUserPrompt(lead, reasonsText, trackedUrl);
+
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 300,
-    system: PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN,
+    system: systemPrompt,
     messages: [
       {
         role: "user",
-        content: buildPreviewFirstOutreachUserPrompt(
-          lead,
-          reasonsText,
-          trackedUrl,
-        ),
+        content: userPromptText,
       },
     ],
   });

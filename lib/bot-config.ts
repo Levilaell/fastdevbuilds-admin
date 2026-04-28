@@ -8,6 +8,28 @@ export interface NicheGroup {
   items: readonly string[]
 }
 
+/**
+ * Optional pre-message qualification filters applied by the prospect-bot
+ * during collect/score before any project or outreach is generated.
+ *
+ * - `minRating`: drop leads with `rating < minRating`. Null rating is treated
+ *   as below threshold (no Google traction → no signal of being active).
+ * - `recentReviewMonths`: drop leads whose newest review is older than N
+ *   months. Uses `reviews[0].time` (Unix seconds) from Place Details.
+ *   Implies the business is dead/abandoned even if not flagged closed.
+ * - `requireOperational`: drop anything other than `business_status ==
+ *   'OPERATIONAL'` (rejects CLOSED_TEMPORARILY and CLOSED_PERMANENTLY).
+ * - `franchiseBlacklist`: substring match (case-insensitive, accent-folded)
+ *   against `business_name`. Any hit disqualifies. Use to exclude national
+ *   chains where the local franchisee lacks budget authority.
+ */
+export interface QualificationFilters {
+  minRating?: number
+  recentReviewMonths?: number
+  requireOperational?: boolean
+  franchiseBlacklist?: readonly string[]
+}
+
 export interface CountryConfig {
   code: string
   name: string
@@ -17,7 +39,45 @@ export interface CountryConfig {
   channel: 'whatsapp' | 'email' | 'sms'
   niches: readonly NicheGroup[]
   cities: readonly string[]
+  /**
+   * When true, the bot creates a Project (with Claude Code prompt) instead
+   * of dispatching outreach. Levi runs Claude Code locally, pastes the
+   * preview URL, then admin sends the cold message with URL embedded.
+   * Mirrors the US-WA flow.
+   */
+  previewFirst?: boolean
+  /**
+   * Optional pre-qualification filters applied by the bot before scoring.
+   * Independent of pain_score / opportunity_score (those run after).
+   */
+  qualificationFilters?: QualificationFilters
 }
+
+/**
+ * Franchise/chain names blacklisted across aesthetic clinics (BR).
+ * Local franchisees lack budget authority and the chain typically has a
+ * national web presence already, so neither side of the funnel converts.
+ *
+ * Match is substring + case-insensitive + accent-folded — see prospect-bot's
+ * qualify step for the actual matcher. To add a name discovered during
+ * outreach, edit this list and redeploy admin (the bot reads it via
+ * externalConfig).
+ */
+export const ESTHETICS_FRANCHISE_BLACKLIST_BR: readonly string[] = [
+  'Onodera',
+  'Jacques Janine',
+  'Body Lab',
+  'Body Tech',
+  'Dr. Hair',
+  "L'Officiel",
+  'Espaço Laser',
+  'Espaçolaser',
+  'Vialaser',
+  'Pello Menos',
+  'Spazio Laser',
+  'Belezix',
+  'Beleza Natural',
+] as const
 
 export const COUNTRIES: readonly CountryConfig[] = [
   {
@@ -110,6 +170,43 @@ export const COUNTRIES: readonly CountryConfig[] = [
       'Belém, PA', 'Manaus, AM', 'Recife, PE', 'Fortaleza, CE',
       // ── Prioridade 6 — Grandes capitais (por último) ──
       'Salvador, BA', 'Brasília, DF', 'Rio de Janeiro, RJ', 'São Paulo, SP',
+    ],
+  },
+  // ─── BR-WA-PREVIEW: BR preview-first replica of US-WA. Bot prospects only
+  // (creates Project with Claude Code prompt + images, no outreach send) so
+  // Levi runs Claude Code locally, pastes the Vercel URL, then admin
+  // dispatches the cold WhatsApp message with that URL embedded — same flow
+  // the US-WA campaign uses.
+  //
+  // Phase 1 scope: aesthetic clinics only, in 3 cities. Kill switch at
+  // 14 days / 100 messages: < 1% reply or 0 sales → revisit offer; ≥ 1
+  // sale or ≥ 3% reply → expand to next niche (vet) under Phase 2.
+  {
+    code: 'BR-WA-PREVIEW',
+    name: 'BR (Preview-First)',
+    flag: '🇧🇷',
+    country: 'BR',
+    lang: 'pt',
+    channel: 'whatsapp',
+    previewFirst: true,
+    qualificationFilters: {
+      minRating: 3.5,
+      recentReviewMonths: 12,
+      requireOperational: true,
+      franchiseBlacklist: ESTHETICS_FRANCHISE_BLACKLIST_BR,
+    },
+    niches: [
+      {
+        category: 'Foco validação (Fase 1)',
+        items: [
+          'clínicas de estética',
+        ],
+      },
+    ],
+    cities: [
+      'Ribeirão Preto, SP',
+      'Sorocaba, SP',
+      'Londrina, PR',
     ],
   },
   {
@@ -327,6 +424,9 @@ export const COUNTRIES: readonly CountryConfig[] = [
     country: 'US',
     lang: 'en',
     channel: 'whatsapp',
+    // US-WA was preview-first all along; the flag is now explicit so UI and
+    // bot can branch on the property instead of comparing the code string.
+    previewFirst: true,
     niches: [
       {
         category: 'Solo Operator Services',

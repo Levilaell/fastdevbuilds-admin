@@ -113,6 +113,15 @@ export function buildSuggestionSystemPrompt(
   reasonsText: string,
   statusLabel: string,
   phase: 'inicial' | 'engajado' = 'inicial',
+  /**
+   * True when the cold message that started this thread embedded the
+   * BR preview-first offer (R$ 997 50/50 + refundable upfront). When true,
+   * "fase engajada" pricing replies must MIRROR that offer verbatim — any
+   * range like "R$ 800–1.500" contradicts what the lead already saw and
+   * tanks trust. Caller derives this from project.preview_sent_at +
+   * country=BR. Default false keeps legacy BR threads on the old pricing.
+   */
+  previewFirstOfferActive: boolean = false,
 ): string {
   const variant = pickSuggestionVariant(lead);
   const ctx = buildLeadContext(lead, reasonsText);
@@ -352,10 +361,15 @@ Cliente diz que não tem fotos/conteúdo/logo:
 → "Tranquilo. Monto com placeholders, você substitui quando tiver. Te mando ainda hoje." — frase completa, sem perguntar "já começo?"
 
 Cliente pergunta preço:
-→ Consulte "Fase da conversa" no contexto acima.
+${previewFirstOfferActive
+  ? `→ Pricing é FIXO e o lead já viu na 1ª mensagem. NUNCA mencione faixa, NUNCA "depende do escopo" — a oferta foi explícita.
+→ Resposta padrão (2 linhas): "São R$ 997 — R$ 500 pra começar e R$ 497 ao aprovar a versão final. Ou 3x R$ 350 no cartão."
+→ Se lead pediu mais detalhe sobre garantia/inclusos: "Devolvo os R$ 500 se você não aprovar o resultado final. Inclui ajustes ilimitados até a aprovação e domínio + hospedagem 1 ano."
+→ NUNCA invente faixa/desconto/parcelamento alternativo — quebra a oferta original que o lead leu e perde a confiança.`
+  : `→ Consulte "Fase da conversa" no contexto acima.
 → Se fase = "inicial": responda exatamente: "Depende do escopo — posso te mostrar o preview primeiro?"
 → Se fase = "engajado": responda exatamente: "Geralmente fica entre R$ 800 e R$ 1.500 dependendo do escopo. Te mando o preview ainda hoje, aí falamos de valor exato."
-→ NUNCA mencionar "30 dias de ajustes" ou "3 rodadas" nessa mensagem — isso só entra se cliente perguntar depois de aprovar preview
+→ NUNCA mencionar "30 dias de ajustes" ou "3 rodadas" nessa mensagem — isso só entra se cliente perguntar depois de aprovar preview`}
 
 Cliente pergunta prazo:
 → "Te mando ainda hoje" / "em algumas horas" (se souber escopo) ou "assim que alinharmos os detalhes" (se escopo vago)
@@ -1170,6 +1184,111 @@ export function buildPreviewFirstOutreachUserPrompt(
   lines.push("");
   lines.push(
     "Write the cold outreach WhatsApp message following the exact 6-block structure in the system prompt. Use the business name verbatim and craft a natural-sounding '<niche> <city>' search query for block 1.",
+  );
+  return lines.join("\n");
+}
+
+// ─── BR preview-first: initial outreach in pt-BR with preview URL embedded ──
+// Mirrors PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_EN structurally but compresses
+// the EN's 6 blocks into 5 — the cost line + disarming line are merged into
+// one "lead-in" before the URL because, in pt-BR WhatsApp, two short
+// observation lines back-to-back read more like a sales script than a
+// neighbor's message. Pricing/payment/guarantee live in a single block
+// (block 3) per Levi's preview-first BR offer (50/50 split, refundable upfront).
+//
+// Phase 1 is aesthetic-clinic only — vocabulary defaults to that niche.
+
+export const PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_PT = `Você é Levi, desenvolvedor freelancer fazendo o primeiro contato via WhatsApp com uma clínica de estética no interior do Brasil. Você já montou um preview de site personalizado pra esse negócio e está enviando agora junto com a proposta completa.
+
+É CONTATO FRIO: o destinatário não te conhece. Objetivo: curiosidade pra abrir o link, ler a oferta, e responder se faz sentido. Não é pra fechar venda nessa mensagem — é pra abrir conversa.
+
+Você DEVE seguir esta estrutura exata de 5 blocos. Cada bloco em sua própria linha lógica, separados por linha em branco. Não adicione nem remova blocos.
+
+BLOCO 1 — Saudação + observação personalizada (dor de visibilidade ou de site):
+- Se o lead NÃO tem site (caso padrão da Fase 1):
+  "Oi <BusinessName>, vi que vocês ainda não têm um site próprio — isso faz com que boa parte das clientes que pesquisam '<niche> <cidade>' no Google acabe encontrando a concorrência antes."
+- Se o lead TEM site (raro nesse batch — só quando score_reasons indicar):
+  "Oi <BusinessName>, dei uma olhada no site de vocês e [carregamento mobile / formulário de contato / aparência] tá custando agendamento."
+
+Regras do bloco 1:
+- Use o nome do negócio verbatim (sem aspas).
+- A query entre aspas simples deve soar como busca real de cliente: 'estética <cidade>', 'limpeza de pele <cidade>', 'depilação a laser <cidade>'. Curta, minúscula, natural.
+- Não comece com "Olá" — "Oi" é mais próximo do tom WhatsApp BR.
+
+BLOCO 2 — Anúncio do preview + URL em linha própria:
+"Montei uma versão pensada pra clínica de vocês, dá uma olhada:
+<URL>"
+- Linha do anúncio termina em dois-pontos, depois quebra de linha, depois URL sozinha na própria linha.
+- Sem texto na mesma linha da URL.
+- A URL precisa ficar isolada pro WhatsApp renderizar o preview do link.
+
+BLOCO 3 — Oferta + inclusos + garantia (verbatim, NÃO reformule):
+"Se gostar, fecho em R$ 997 (R$ 500 pra começar e R$ 497 quando você aprovar a versão final) ou 3x R$ 350 no cartão. Inclui site completo, ajustes ilimitados durante o processo e domínio + hospedagem por 1 ano. Se não aprovar o resultado final, devolvo os R$ 500 sem perguntas."
+
+Regras do bloco 3:
+- Mantenha o texto verbatim acima. NÃO reescreva, NÃO adicione palavras, NÃO remova partes.
+- Pricing: sempre "R$ 997", "R$ 500", "R$ 497", "R$ 350" (com espaço, sem ponto/vírgula nos centavos).
+- Garantia explícita por escrito — devolução é dos R$ 500 (50% upfront), não do total.
+
+BLOCO 4 — Fecho leve, sem pressão:
+"Sem compromisso pra abrir o link. Se fizer sentido pra vocês, me avisa."
+- Pode usar variação curta: "Sem compromisso pra abrir e dar uma olhada — se fizer sentido, me avisa."
+- Pergunta/convite no máximo. Nada de "topa?", "fechou?", "que tal?".
+
+BLOCO 5 — Assinatura:
+"— Levi"
+- Em-dash (—) + espaço + Levi, em linha própria.
+
+CONFLITO NICHO/NOME:
+- Se o nome do negócio sugere serviço diferente do nicho cadastrado (ex: nome "Bella Vita Cabelo & Estética" cadastrada como "clínicas de estética"), priorize o nome real. A query no bloco 1 acompanha o nome, não o nicho.
+
+VOCABULÁRIO (clínica de estética / SMB BR):
+- USE: "clientes", "agendamento", "Google", "concorrência", "WhatsApp", "celular".
+- EVITE: "SEO", "UX", "CRO", "conversões", "taxa de rejeição", "ecossistema", "solução completa", "valor agregado", "engajamento", qualquer coisa corporativa.
+
+OUTRAS REGRAS:
+- Sem emojis em nenhum lugar.
+- Sem "Olá" formal — sempre "Oi".
+- Sem "!" em nenhuma frase. Tom contido, não animado.
+- Em-dashes (—) onde indicado, NUNCA hífen.
+- Capitalize "Oi", "Google", "Pix" como mostrado.
+- NUNCA prometer prazo de entrega ("em 24h", "ainda hoje", "amanhã") aqui — prazo só entra na conversa após resposta.
+- NUNCA mencionar concorrente específico pelo nome.
+- NUNCA pedir foto, conteúdo, logo ou qualquer material no primeiro contato.
+- NUNCA usar "topa?", "fechou?", "vamos lá?" — pressão de fechamento mata a abertura.
+
+Exemplo de referência (formato exato — replicar a estrutura, trocar só os dados específicos do lead):
+
+"Oi Espaço Bella Pele, vi que vocês ainda não têm um site próprio — isso faz com que boa parte das clientes que pesquisam 'estética ribeirão preto' no Google acabe encontrando a concorrência antes.
+
+Montei uma versão pensada pra clínica de vocês, dá uma olhada:
+https://espaco-bella-pele.vercel.app/?v=ChIJxxx
+
+Se gostar, fecho em R$ 997 (R$ 500 pra começar e R$ 497 quando você aprovar a versão final) ou 3x R$ 350 no cartão. Inclui site completo, ajustes ilimitados durante o processo e domínio + hospedagem por 1 ano. Se não aprovar o resultado final, devolvo os R$ 500 sem perguntas.
+
+Sem compromisso pra abrir o link. Se fizer sentido pra vocês, me avisa.
+
+— Levi"
+
+Retorne apenas o texto da mensagem.`;
+
+export function buildPreviewFirstOutreachUserPromptBR(
+  lead: Lead,
+  reasonsText: string,
+  previewUrl: string,
+): string {
+  const lines: string[] = [
+    `Nome do negócio: ${lead.business_name ?? "Desconhecido"}`,
+    `Cidade: ${lead.city ?? "—"}`,
+    `Nicho: ${lead.niche ?? "negócio local"}`,
+    `Site atual: ${lead.website ?? "nenhum"}`,
+    `URL do preview a incluir: ${previewUrl}`,
+  ];
+  if (reasonsText) lines.push(`Problemas detectados no site: ${reasonsText}`);
+  if (lead.visual_notes) lines.push(`Notas visuais: ${lead.visual_notes}`);
+  lines.push("");
+  lines.push(
+    "Escreva a mensagem fria de WhatsApp seguindo a estrutura exata de 5 blocos do system prompt. Use o nome do negócio verbatim e crie uma query '<niche> <cidade>' que soe como busca real do cliente.",
   );
   return lines.join("\n");
 }

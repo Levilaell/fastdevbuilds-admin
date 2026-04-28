@@ -24,6 +24,19 @@ interface AutoParams {
    * values are rejected with 400 to avoid silently no-op runs.
    */
   per_instance_send?: Record<string, number>
+  /**
+   * Optional UI override of the campaign's `qualificationFilters`. Replaces
+   * the bot-config defaults for this run only — used to calibrate filters
+   * during validation without redeploying. Shape mirrors QualificationFilters
+   * from lib/bot-config.ts; partial overrides allowed (UI fields not set
+   * fall back to defaults on the client side).
+   */
+  qualification_filters?: {
+    minRating?: number
+    recentReviewMonths?: number
+    requireOperational?: boolean
+    franchiseBlacklist?: string[]
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -108,6 +121,20 @@ export async function POST(request: NextRequest) {
           lang: cc.lang,
           country: cc.country,
           channel: cc.channel,
+          // Preview-first campaigns make the bot create Projects (with
+          // Claude Code prompts + images) instead of dispatching outreach.
+          // The bot reads this flag to switch flow (see steps/auto.js).
+          ...(cc.previewFirst ? { previewFirst: true } : {}),
+          // Qualification filters: UI override (params.qualification_filters)
+          // wins over bot-config defaults. UI fields left empty already fell
+          // back to defaults on the client (resolveQualificationFilters in
+          // bot-client.tsx), so by the time we get here, the body either has
+          // a complete override object or none at all.
+          ...(params.qualification_filters
+            ? { qualificationFilters: params.qualification_filters }
+            : cc.qualificationFilters
+              ? { qualificationFilters: cc.qualificationFilters }
+              : {}),
         } : {}),
         evolutionInstances,
         evolutionApiUrl: process.env.EVOLUTION_API_URL,

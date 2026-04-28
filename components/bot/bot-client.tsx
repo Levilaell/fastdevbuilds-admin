@@ -111,6 +111,93 @@ export default function BotClient() {
   const [runs, setRuns] = useState<BotRun[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  // Qualification filter overrides (preview-first campaigns only).
+  // Persisted in localStorage per-campaign so calibration across runs
+  // doesn't require a redeploy. Defaults come from bot-config.ts; UI
+  // values override them on Run-click without mutating the source config.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [minRatingOverride, setMinRatingOverride] = useState<string>("");
+  const [recentReviewMonthsOverride, setRecentReviewMonthsOverride] =
+    useState<string>("");
+  const [blacklistOverride, setBlacklistOverride] = useState<string>("");
+
+  // Load persisted overrides when the campaign changes.
+  useEffect(() => {
+    if (!countryConfig.qualificationFilters) {
+      setMinRatingOverride("");
+      setRecentReviewMonthsOverride("");
+      setBlacklistOverride("");
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`bot-qualfilters-${countryConfig.code}`);
+      if (raw) {
+        const saved = JSON.parse(raw) as {
+          minRating?: string;
+          recentReviewMonths?: string;
+          blacklist?: string;
+        };
+        setMinRatingOverride(saved.minRating ?? "");
+        setRecentReviewMonthsOverride(saved.recentReviewMonths ?? "");
+        setBlacklistOverride(saved.blacklist ?? "");
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    // No persisted state — show config defaults as placeholder text only,
+    // not as real input values. Empty = "use config default".
+    setMinRatingOverride("");
+    setRecentReviewMonthsOverride("");
+    setBlacklistOverride("");
+  }, [countryConfig.code, countryConfig.qualificationFilters]);
+
+  // Persist overrides on every keystroke (debounced via React batching).
+  useEffect(() => {
+    if (!countryConfig.qualificationFilters) return;
+    try {
+      localStorage.setItem(
+        `bot-qualfilters-${countryConfig.code}`,
+        JSON.stringify({
+          minRating: minRatingOverride,
+          recentReviewMonths: recentReviewMonthsOverride,
+          blacklist: blacklistOverride,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    countryConfig.code,
+    countryConfig.qualificationFilters,
+    minRatingOverride,
+    recentReviewMonthsOverride,
+    blacklistOverride,
+  ]);
+
+  /** Build the qualificationFilters object the server should use this run.
+   *  Empty UI fields fall back to the campaign's defaults from bot-config. */
+  function resolveQualificationFilters() {
+    const base = countryConfig.qualificationFilters;
+    if (!base) return undefined;
+    const minR = minRatingOverride.trim();
+    const months = recentReviewMonthsOverride.trim();
+    const list = blacklistOverride
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return {
+      ...base,
+      ...(minR !== "" && !Number.isNaN(Number(minR))
+        ? { minRating: Number(minR) }
+        : {}),
+      ...(months !== "" && !Number.isNaN(Number(months))
+        ? { recentReviewMonths: Number(months) }
+        : {}),
+      ...(list.length > 0 ? { franchiseBlacklist: list } : {}),
+    };
+  }
+
   const running = status === "running";
 
   // ─── Fetch runs ───
@@ -332,11 +419,12 @@ export default function BotClient() {
   async function handleRunAuto() {
     if (running) return;
 
-    // US-WA doesn't dispatch outreach — the bot creates Projects and Levi
-    // takes it from there. Treat "not dry" as the go signal; Enviar/chips
-    // are irrelevant for this campaign.
-    const isUsWa = countryConfig.code === "US-WA";
-    const willSend = isUsWa ? false : autoSend && !autoDryRun;
+    // Preview-first campaigns (US-WA, BR-WA-PREVIEW, …) don't dispatch
+    // outreach from the bot — the bot creates Projects and Levi takes it
+    // from there. Treat "not dry" as the go signal; Enviar/chips are
+    // irrelevant for these campaigns.
+    const isPreviewFirst = !!countryConfig.previewFirst;
+    const willSend = isPreviewFirst ? false : autoSend && !autoDryRun;
     let perInstanceSend: Record<string, number> | undefined;
     if (willSend && countryConfig.channel === "whatsapp") {
       if (instanceUsage.length === 0) {
@@ -382,8 +470,8 @@ export default function BotClient() {
           .join(",")
       : "";
 
-    const minScoreFlag = isUsWa ? "" : ` --min-score ${autoMinScore}`;
-    const maxProjectsFlag = isUsWa ? ` --max-projects ${autoMaxProjects}` : "";
+    const minScoreFlag = isPreviewFirst ? "" : ` --min-score ${autoMinScore}`;
+    const maxProjectsFlag = isPreviewFirst ? ` --max-projects ${autoMaxProjects}` : "";
 
     setLines([
       {
@@ -397,6 +485,9 @@ export default function BotClient() {
     ]);
 
     try {
+      const overrideFilters = isPreviewFirst
+        ? resolveQualificationFilters()
+        : undefined;
       const res = await fetch("/api/bot/run-auto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -406,8 +497,11 @@ export default function BotClient() {
           dry_run: autoDryRun,
           send: willSend,
           market: country,
-          ...(isUsWa && { max_projects: autoMaxProjects }),
+          ...(isPreviewFirst && { max_projects: autoMaxProjects }),
           ...(perInstanceSend && { per_instance_send: perInstanceSend }),
+          ...(overrideFilters
+            ? { qualification_filters: overrideFilters }
+            : {}),
         }),
       });
 
@@ -557,7 +651,7 @@ export default function BotClient() {
                   US-WA doesn't send directly (admin dispatches), so chip
                   config isn't required to run that campaign. */}
               {countryConfig.channel === "whatsapp" &&
-                countryConfig.code !== "US-WA" &&
+                !countryConfig.previewFirst &&
                 !usageLoading &&
                 instanceUsage.length === 0 && (
                   <div className="bg-sidebar border border-warning/30 rounded-lg p-3 text-xs text-muted space-y-1.5">
@@ -581,7 +675,7 @@ EVOLUTION_API_KEY_X=...`}
                   US-WA — that campaign doesn't send from the bot, so chip
                   volumes don't apply. Admin picks a chip at dispatch time. */}
               {countryConfig.channel === "whatsapp" &&
-                countryConfig.code !== "US-WA" &&
+                !countryConfig.previewFirst &&
                 instanceUsage.length > 0 && (
                 <div className="bg-sidebar border border-border rounded-lg p-2.5">
                   <div className="flex items-center justify-between mb-2">
@@ -694,7 +788,7 @@ EVOLUTION_API_KEY_X=...`}
                 websites. US-WA targets only no-website leads (pain=10 auto),
                 so the knob becomes "max previews" (hard cap on project
                 creation per run). */}
-            {countryConfig.code === "US-WA" ? (
+            {countryConfig.previewFirst ? (
               <div>
                 <label
                   className="block text-xs text-muted mb-1.5"
@@ -732,6 +826,116 @@ EVOLUTION_API_KEY_X=...`}
             )}
           </div>
 
+          {/* Qualification filter overrides — preview-first only. Empty fields
+              fall back to the campaign defaults from bot-config.ts. Persisted
+              in localStorage per-campaign so calibration survives reloads
+              without redeploying. */}
+          {countryConfig.previewFirst && countryConfig.qualificationFilters && (
+            <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setFiltersOpen(!filtersOpen)}
+                className="w-full flex items-center justify-between px-3 py-2 hover:bg-background"
+              >
+                <span className="text-[10px] uppercase tracking-wider text-muted">
+                  Filtros de qualificação
+                  {(minRatingOverride !== "" ||
+                    recentReviewMonthsOverride !== "" ||
+                    blacklistOverride !== "") && (
+                    <span className="ml-1.5 text-[10px] text-accent">●</span>
+                  )}
+                </span>
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className={`transition-transform text-muted ${
+                    filtersOpen ? "rotate-90" : ""
+                  }`}
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+              {filtersOpen && (
+                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-border">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-muted mb-1">
+                        Rating mín.
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={0}
+                        max={5}
+                        value={minRatingOverride}
+                        onChange={(e) => setMinRatingOverride(e.target.value)}
+                        placeholder={String(
+                          countryConfig.qualificationFilters.minRating ?? "—",
+                        )}
+                        className="w-full h-8 px-2 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-muted mb-1">
+                        Review máx. (meses)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        step={1}
+                        value={recentReviewMonthsOverride}
+                        onChange={(e) =>
+                          setRecentReviewMonthsOverride(e.target.value)
+                        }
+                        placeholder={String(
+                          countryConfig.qualificationFilters
+                            .recentReviewMonths ?? "—",
+                        )}
+                        className="w-full h-8 px-2 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-muted mb-1">
+                      Blacklist (1 nome por linha)
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={blacklistOverride}
+                      onChange={(e) => setBlacklistOverride(e.target.value)}
+                      placeholder={
+                        countryConfig.qualificationFilters.franchiseBlacklist
+                          ?.slice(0, 4)
+                          .join("\n") + "\n…"
+                      }
+                      className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent font-mono leading-relaxed resize-y"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-muted leading-snug">
+                      Campos vazios usam padrão do{" "}
+                      <code className="text-text">bot-config.ts</code>.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setMinRatingOverride("");
+                        setRecentReviewMonthsOverride("");
+                        setBlacklistOverride("");
+                      }}
+                      className="text-[10px] text-muted hover:text-text underline-offset-2 hover:underline"
+                    >
+                      Resetar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Dry Run + Send toggles. "Enviar" is hidden for US-WA because
               the bot doesn't dispatch outreach on that campaign — it creates
               Projects and waits for Levi to paste a preview URL. Running
@@ -750,7 +954,7 @@ EVOLUTION_API_KEY_X=...`}
             >
               Dry Run
             </button>
-            {countryConfig.code !== "US-WA" && (
+            {!countryConfig.previewFirst && (
               <button
                 onClick={() => {
                   if (!autoDryRun) setAutoSend(!autoSend);
@@ -797,7 +1001,7 @@ EVOLUTION_API_KEY_X=...`}
                 (autoSend &&
                   !autoDryRun &&
                   countryConfig.channel === "whatsapp" &&
-                  countryConfig.code !== "US-WA" &&
+                  !countryConfig.previewFirst &&
                   (instanceUsage.length === 0 ||
                     instanceUsage.some(
                       (i) =>

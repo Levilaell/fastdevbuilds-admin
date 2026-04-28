@@ -215,7 +215,7 @@ export default function MetricsDashboard({ initialData }: Props) {
     return () => clearInterval(interval)
   }, [period])
 
-  const { cohortSize, funnel, rates, revenue } = data
+  const { cohortSize, funnel, rates, revenue, financialHealth } = data
   const hasData = cohortSize > 0 || revenue.paidCount > 0
 
   const segmentRows =
@@ -328,6 +328,13 @@ export default function MetricsDashboard({ initialData }: Props) {
                   rate={rates.preview_vs_accepted}
                   baseCount={funnel.sent}
                   color="bg-violet-500/70"
+                />
+                <FunnelRow
+                  label="Preview aberto"
+                  count={funnel.preview_opened}
+                  rate={rates.opened_vs_preview_sent}
+                  baseCount={funnel.sent}
+                  color="bg-purple-500/70"
                 />
                 <FunnelRow
                   label="Ajustando"
@@ -458,6 +465,92 @@ export default function MetricsDashboard({ initialData }: Props) {
                 </ul>
               </div>
             )}
+          </div>
+
+          {/* Saúde financeira */}
+          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text">Saúde financeira</h2>
+              <span
+                className="text-[11px] text-muted"
+                title={`Custos: IA ~${fmtCurrency.format(financialHealth.assumptions.aiCostPerPreviewBRL)}/preview · hospedagem ${fmtCurrency.format(financialHealth.assumptions.hostingPerYearBRL)}/ano · domínio ${fmtCurrency.format(financialHealth.assumptions.domainPerYearBRL)}/ano · taxa pagamento ${(financialHealth.assumptions.paymentFeePct * 100).toFixed(1)}% · reserva reembolso ${(financialHealth.assumptions.refundReservePct * 100).toFixed(1)}%`}
+              >
+                premissas (hover)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard
+                label="Previews gerados"
+                value={fmtNumber.format(financialHealth.previewsGenerated)}
+                sub={`IA total: ${fmtCurrency.format(financialHealth.aiSpentBRL)}`}
+              />
+              <KpiCard
+                label="CAC IA / venda"
+                value={
+                  financialHealth.paidInPeriodCount > 0
+                    ? fmtCurrency.format(financialHealth.cacAiPerPaid)
+                    : '—'
+                }
+                sub={
+                  financialHealth.paidInPeriodCount > 0
+                    ? `${financialHealth.previewsGenerated} previews ÷ ${financialHealth.paidInPeriodCount} vendas (período)`
+                    : 'sem vendas no período'
+                }
+              />
+              <KpiCard
+                label="Margem bruta / venda"
+                value={
+                  financialHealth.paidInPeriodCount > 0
+                    ? fmtCurrency.format(financialHealth.grossMarginPerPaid)
+                    : '—'
+                }
+                sub={
+                  financialHealth.paidInPeriodCount > 0
+                    ? `${(financialHealth.grossMarginPctPerPaid * 100).toFixed(1)}% do ticket`
+                    : 'sem vendas no período'
+                }
+                accent={
+                  financialHealth.paidInPeriodCount > 0
+                    ? financialHealth.grossMarginPctPerPaid < 0.3
+                      ? 'warning'
+                      : financialHealth.grossMarginPctPerPaid > 0.5
+                        ? 'success'
+                        : 'accent'
+                    : undefined
+                }
+              />
+              <KpiCard
+                label="Status"
+                value={
+                  financialHealth.paidInPeriodCount === 0
+                    ? '—'
+                    : financialHealth.grossMarginPctPerPaid < 0.3
+                      ? 'cortar custo'
+                      : financialHealth.grossMarginPctPerPaid <= 0.5
+                        ? 'viável'
+                        : 'saudável'
+                }
+                sub={
+                  financialHealth.paidInPeriodCount === 0
+                    ? 'precisa fechar 1ª venda'
+                    : financialHealth.grossMarginPctPerPaid < 0.3
+                      ? 'otimizar conversão antes de escalar'
+                      : financialHealth.grossMarginPctPerPaid <= 0.5
+                        ? 'modelo viável, otimizar copy'
+                        : 'pode escalar'
+                }
+                accent={
+                  financialHealth.paidInPeriodCount === 0
+                    ? undefined
+                    : financialHealth.grossMarginPctPerPaid < 0.3
+                      ? 'warning'
+                      : financialHealth.grossMarginPctPerPaid > 0.5
+                        ? 'success'
+                        : 'accent'
+                }
+              />
+            </div>
           </div>
         </>
       )}

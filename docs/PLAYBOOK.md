@@ -47,50 +47,52 @@ passa a ser R$ 8.000+ ou recusa.
 
 ## 2. Preço e pagamento
 
-### Faixa
+### Fase 1 (BR-WA-PREVIEW — clínicas estética, ativo desde 2026-04-28)
 
-**R$ 800 a R$ 1.500.** Mediana target: R$ 1.200.
+**Preço fixo R$ 997.** Sem faixa, sem negociação.
 
-### Critérios pra cobrar mais (perto de R$ 1.500)
+Pagamento 50/50:
+- **R$ 500 upfront** (Pix) pra começar o processo
+- **R$ 497 ao aprovar** a versão final → publicação (domínio + hospedagem
+  liberados)
+- Alternativa cartão: **3x de R$ 350** (total R$ 1.050; absorve a taxa do
+  cartão na 3a parcela)
 
-- Cliente tem Instagram ativo = fotos reais pra usar
-- Cliente tem site antigo WordPress = migração com redirect
-- Nicho premium (advocacia, estética avançada, imobiliária)
-- Cliente demonstrou pressa ("preciso pra semana")
+Inclui:
+- Site completo (Next.js + Tailwind, mobile-first)
+- Ajustes ilimitados durante o processo (até a aprovação)
+- 14 dias de ajustes pequenos após publicação (typo, cor, troca de foto)
+- Domínio + hospedagem por 1 ano
 
-### Critérios pra cobrar menos (perto de R$ 800)
+Garantia (regra dura):
+- Se não aprovar o resultado final, devolvo os R$ 500 upfront sem
+  perguntas. Devolução só dos R$ 500 — não há reembolso de pagamento
+  total. (CAC IA + reserva de reembolso já está no modelo financeiro;
+  reembolso total quebra a margem.)
 
-- Cliente pechincha de forma respeitosa
-- Cliente cabeça aberta ("sou simples, não precisa nada mirabolante")
-- Nicho comoditizado (barbearia, padaria)
+Comunicação na conversa:
+- A oferta inteira (preço + parcelas + inclusos + garantia) já vai na
+  **mensagem inicial** com o link do preview (ver
+  `PREVIEW_FIRST_OUTREACH_SYSTEM_PROMPT_PT`).
+- Quando o lead pergunta preço de novo na conversa, **espelhar
+  exatamente** a oferta inicial — nada de faixa, nada de "depende do
+  escopo". O suggester já é gated por `previewFirstOfferActive`.
 
-### Mínimo absoluto
+Critério de transição (kill switch — Fase 1 → Fase 2):
+- 14 dias / 100+ mensagens enviadas em estética
+- 0 vendas E reply rate < 1% → revisar oferta antes de expandir
+- 1+ venda OU reply rate ≥ 3% → expandir pra veterinária (Fase 2)
 
-**R$ 800.** Sem exceção. Se cliente pedir menos:
-- Reduz escopo (sem galeria, 1 seção a menos, sem SEO avançado)
-- Nunca reduz preço mantendo escopo
+### Histórico — modelo antigo BR (descontinuado em 2026-04-28)
 
-Frase padrão: "a R$ 600 consigo fazer landing enxuta, 1 seção. O pacote
-completo começa em R$ 800."
+Mantido só pra contexto de leads pré-Fase-1 que ainda estão na conversa:
 
-### Pagamento
+> Faixa R$ 800–1.500, mediana R$ 1.200. 100% via Pix na aprovação do
+> preview. Preço só na fase engajada — fase inicial desvia pro preview.
 
-**100% via PIX na aprovação do preview.**
-
-Por que funciona:
-- Preview é grátis → baixa barreira de entrada
-- Cliente já viu o produto final → comprado emocionalmente
-- PIX imediato elimina "vou pagar depois"
-- Se cliente desaparecer depois do preview aprovado, perco só 20 min
-
-### Comunicação do preço
-
-- **Outreach**: não menciona preço
-- **Fase inicial (cliente perguntou preço nos primeiros 2 turnos)**: desvia
-  pro preview — "depende do escopo, posso te mostrar o preview primeiro?"
-- **Fase engajada (cliente engajado, 3+ mensagens, aceitou processo)**:
-  "geralmente fica entre R$ 800 e R$ 1.500 dependendo do escopo. Te mando
-  o preview ainda hoje, aí falamos de valor exato."
+Esse modelo NÃO se aplica a leads coletados pelo preset BR-WA-PREVIEW.
+Toda lead nova de estética em Ribeirão/Sorocaba/Londrina entra direto no
+fluxo da Fase 1 acima.
 
 ---
 

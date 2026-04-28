@@ -10,6 +10,32 @@ import { extractCity } from "@/lib/extract-city";
  * timeline without a `collected_at` column (schema doesn't have one).
  */
 
+// ─── Cost assumptions for financial health ──────────────────────────────────
+// Hardcoded defaults — edit here when reality drifts. No UI yet because the
+// Phase 1 goal is to validate the BR-WA-PREVIEW funnel, not to instrument
+// every cost. If/when costs become a moving target, lift to a `cost_assumptions`
+// table and expose in /metrics settings.
+
+/** Average IA cost per generated preview (Opus prompt + Getimg images).
+ *  US$ 0.72 × ~6.0 BRL/USD ≈ R$ 4.32. Recompute when models or rates shift. */
+export const AI_COST_PER_PREVIEW_BRL = 4.32;
+
+/** Annual hosting cost per site. Vercel Hobby = R$ 0; Pro plan amortized
+ *  over typical client headcount lands around R$ 0–60/site/year. */
+export const HOSTING_COST_PER_YEAR_BRL = 0;
+
+/** Annual domain cost (.com.br via Registro.br). Update if you switch
+ *  registrars or use international TLDs. */
+export const DOMAIN_COST_PER_YEAR_BRL = 40;
+
+/** Effective payment fee blended across Pix and 3x cartão.
+ *  Pix ≈ 0%; 3x cartão ≈ 7%. Assume 50/50 split until we have real data. */
+export const PAYMENT_FEE_PCT = 0.035;
+
+/** Reserve set aside per sale to fund refunds (R$ 500 upfront refundable).
+ *  Conservative 5% buys roughly 1-in-20 refunds without dipping into margin. */
+export const REFUND_RESERVE_PCT = 0.05;
+
 export interface SegmentRow {
   name: string;
   sent: number;
@@ -21,6 +47,42 @@ export interface SegmentRow {
   closeRate: number;
 }
 
+/**
+ * Aggregate financial-health snapshot. All values in BRL unless noted.
+ *
+ * `cacAiPerPaid` is the IA cost per closed sale — total IA spend on previews
+ * (including those that didn't convert) divided by paid count. This is the
+ * key viability number: if it's eating margin, the model can't scale.
+ *
+ * `grossMarginPerPaid` is avg ticket minus all per-sale costs (IA, hosting,
+ * domain, payment fees, refund reserve). Doesn't include Levi's time, since
+ * Phase 1 doesn't pay him a salary.
+ */
+export interface FinancialHealth {
+  /** Previews generated within the selected period (projects with claude_code_prompt). */
+  previewsGenerated: number;
+  /** Approximate IA spend on those previews (previewsGenerated × per-preview cost). */
+  aiSpentBRL: number;
+  /** Sales closed within the period — denominator for cacAiPerPaid. Distinct
+   *  from `revenue.paidCount` which stays global to keep "Ticket médio" stable. */
+  paidInPeriodCount: number;
+  /** IA cost amortized per period-closed sale (aiSpentBRL ÷ paidInPeriodCount). 0 if no sales yet. */
+  cacAiPerPaid: number;
+  /** Per-sale gross margin: avgTicket − cacAi − hosting − domain − fee − reserve.
+   *  Uses global avgTicket as anchor (small-N period averages would be noisy). */
+  grossMarginPerPaid: number;
+  /** Margin as fraction of avgTicket. Use to decide scale: <0.30 cut/optimize, 0.30–0.50 ok, >0.50 healthy. */
+  grossMarginPctPerPaid: number;
+  /** Surfaced for UI tooltip — what the calc assumes about non-IA costs. */
+  assumptions: {
+    aiCostPerPreviewBRL: number;
+    hostingPerYearBRL: number;
+    domainPerYearBRL: number;
+    paymentFeePct: number;
+    refundReservePct: number;
+  };
+}
+
 export interface MetricsData {
   period: string;
   cohortSize: number; // = funnel.sent
@@ -29,6 +91,9 @@ export interface MetricsData {
     replied: number;
     accepted: number;
     preview_sent: number;
+    /** Subset of preview_sent that logged at least one beacon hit — i.e.,
+     *  the lead actually opened the link. Sourced from preview_views. */
+    preview_opened: number;
     adjusting: number;
     delivered: number;
     paid: number;
@@ -37,6 +102,8 @@ export interface MetricsData {
     replied_vs_sent: number;
     accepted_vs_replied: number;
     preview_vs_accepted: number;
+    /** Open rate of the sent preview — preview_opened ÷ preview_sent. */
+    opened_vs_preview_sent: number;
     adjusting_vs_preview: number;
     delivered_vs_adjusting: number;
     paid_vs_delivered: number;
@@ -60,6 +127,8 @@ export interface MetricsData {
       paid_at: string;
     }[];
   };
+  /** Financial health — IA cost amortization + per-sale margin. Phase 1 lever. */
+  financialHealth: FinancialHealth;
 }
 
 interface LeadRow {
@@ -81,6 +150,8 @@ interface ProjectRow {
   status: string | null;
   price: number | null;
   paid_at: string | null;
+  claude_code_prompt: string | null;
+  created_at: string | null;
 }
 
 function getPeriodStart(period: string): Date | null {
@@ -228,11 +299,15 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
   }
 
   // All projects — needed for funnel staging + revenue. We don't period-filter
-  // here because a project started outside the period is still the correct
-  // stage for a lead whose outreach_sent_at is inside.
+  // the query because a project started outside the period is still the correct
+  // stage for a lead whose outreach_sent_at is inside. `created_at` is read so
+  // financial-health can filter previewsGenerated to the period in-memory.
+  // `claude_code_prompt` is fetched so we can count IA-generated previews
+  // (each ~R$ 4.32) for the financial-health calc, even when the lead never
+  // converted.
   const projectsQuery = supabase
     .from("projects")
-    .select("place_id, status, price, paid_at");
+    .select("place_id, status, price, paid_at, claude_code_prompt, created_at");
 
   const [leadsRes, projectsRes] = await Promise.all([
     leadsQuery,
@@ -253,22 +328,46 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
     stage: stageOf(l, projectByPlace.get(l.place_id)),
   }));
 
+  // Preview-open beacon hits — distinct place_ids in preview_views that
+  // intersect with the cohort. The endpoint /api/preview-view is gated by
+  // ?v={place_id}, so each row represents a real lead-side click. We only
+  // need the set of place_ids; counts/timestamps drive the LeadCard but
+  // aren't relevant for the global funnel.
+  const cohortPlaceIds = leads.map((l) => l.place_id);
+  const openedPlaceIds = new Set<string>();
+  if (cohortPlaceIds.length > 0) {
+    const { data: viewsData } = await supabase
+      .from("preview_views")
+      .select("place_id")
+      .in("place_id", cohortPlaceIds);
+    for (const row of viewsData ?? []) {
+      openedPlaceIds.add((row as { place_id: string }).place_id);
+    }
+  }
+
   // === A. Cumulative funnel + rates ===
   const funnel: MetricsData["funnel"] = {
     sent: 0,
     replied: 0,
     accepted: 0,
     preview_sent: 0,
+    preview_opened: 0,
     adjusting: 0,
     delivered: 0,
     paid: 0,
   };
   for (const p of pairs) addToCumulative(funnel, p.stage);
+  // preview_opened sits orthogonally to the cumulative funnel — it's a count
+  // of cohort leads who clicked the link, regardless of where they ended up.
+  for (const p of pairs) {
+    if (openedPlaceIds.has(p.lead.place_id)) funnel.preview_opened++;
+  }
 
   const rates: MetricsData["rates"] = {
     replied_vs_sent: rate(funnel.replied, funnel.sent),
     accepted_vs_replied: rate(funnel.accepted, funnel.replied),
     preview_vs_accepted: rate(funnel.preview_sent, funnel.accepted),
+    opened_vs_preview_sent: rate(funnel.preview_opened, funnel.preview_sent),
     adjusting_vs_preview: rate(funnel.adjusting, funnel.preview_sent),
     delivered_vs_adjusting: rate(funnel.delivered, funnel.adjusting),
     paid_vs_delivered: rate(funnel.paid, funnel.delivered),
@@ -373,6 +472,62 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
     };
   });
 
+  // === E. Financial health ===
+  // Count every project whose Claude Code prompt was generated within the
+  // selected period — that's the moment IA money actually leaves the bank.
+  // Period-filtered (via projects.created_at) so the dashboard's period
+  // toggle drives the financial KPIs as well, matching the kill-switch
+  // criteria ("14 dias / 100 mensagens").
+  // Falls back to created_at IS NOT NULL — older projects without that
+  // column still count globally when period='all'.
+  const periodStartIso = periodStart ? periodStart.toISOString() : null;
+  const projectsInPeriod = periodStartIso
+    ? projects.filter((p) => p.created_at && p.created_at >= periodStartIso)
+    : projects;
+  const previewsGenerated = projectsInPeriod.filter((p) => !!p.claude_code_prompt).length;
+  const aiSpentBRL = previewsGenerated * AI_COST_PER_PREVIEW_BRL;
+
+  // CAC IA per paid sale — also period-coherent: paidInPeriod uses paid_at
+  // because that's when revenue lands. avgTicket below stays global to keep
+  // the existing "Ticket médio" KPI stable.
+  const paidInPeriod = periodStartIso
+    ? paidProjects.filter((p) => p.paid_at && p.paid_at >= periodStartIso)
+    : paidProjects;
+  const cacAiPerPaid =
+    paidInPeriod.length > 0 ? aiSpentBRL / paidInPeriod.length : 0;
+
+  // Per-sale gross margin. Hosting + domain are "amortized over 1 year per
+  // client" — same horizon as what the offer promises ("hosting + domain por
+  // 1 ano"). After year 1 it's a separate maintenance conversation.
+  const perSaleAmortizedFixed =
+    HOSTING_COST_PER_YEAR_BRL + DOMAIN_COST_PER_YEAR_BRL;
+  const grossMarginPerPaid =
+    avgTicket > 0
+      ? avgTicket
+        - cacAiPerPaid
+        - perSaleAmortizedFixed
+        - avgTicket * PAYMENT_FEE_PCT
+        - avgTicket * REFUND_RESERVE_PCT
+      : 0;
+  const grossMarginPctPerPaid =
+    avgTicket > 0 ? grossMarginPerPaid / avgTicket : 0;
+
+  const financialHealth: FinancialHealth = {
+    previewsGenerated,
+    aiSpentBRL,
+    paidInPeriodCount: paidInPeriod.length,
+    cacAiPerPaid,
+    grossMarginPerPaid,
+    grossMarginPctPerPaid,
+    assumptions: {
+      aiCostPerPreviewBRL: AI_COST_PER_PREVIEW_BRL,
+      hostingPerYearBRL: HOSTING_COST_PER_YEAR_BRL,
+      domainPerYearBRL: DOMAIN_COST_PER_YEAR_BRL,
+      paymentFeePct: PAYMENT_FEE_PCT,
+      refundReservePct: REFUND_RESERVE_PCT,
+    },
+  };
+
   return {
     period,
     cohortSize: funnel.sent,
@@ -392,5 +547,6 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
       monthlyTrend,
       recentPaid,
     },
+    financialHealth,
   };
 }

@@ -45,6 +45,10 @@ export async function GET(request: Request) {
           lang: countryConfig?.lang,
           country: countryConfig?.country,
           channel: countryConfig?.channel,
+          ...(countryConfig?.previewFirst ? { previewFirst: true } : {}),
+          ...(countryConfig?.qualificationFilters
+            ? { qualificationFilters: countryConfig.qualificationFilters }
+            : {}),
           evolutionInstances: instances.map(i => ({
             name: i.name,
             apiKey: i.apiKey,
