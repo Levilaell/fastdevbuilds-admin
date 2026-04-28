@@ -173,7 +173,9 @@ export async function POST(
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 300,
+    // See compose-preview/route.ts — same rationale (BR 9-block template +
+    // PT-BR tokenization overhead).
+    max_tokens: 1024,
     system: systemPrompt,
     messages: [
       {
@@ -182,6 +184,14 @@ export async function POST(
       },
     ],
   });
+
+  if (response.stop_reason === "max_tokens") {
+    console.warn(
+      "[dispatch-preview] hit max_tokens for place_id",
+      place_id,
+      "— message likely truncated; consider raising the cap",
+    );
+  }
 
   const message =
     response.content[0]?.type === "text"

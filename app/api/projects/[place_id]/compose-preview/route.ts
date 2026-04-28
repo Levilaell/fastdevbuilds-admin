@@ -128,7 +128,11 @@ export async function POST(
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 300,
+    // Raised from 300 — the BR 9-block template runs ~260 tokens of pure
+    // text and PT-BR tokenization is heavier than EN (accents, longer
+    // word forms). 300 truncated mid-offer in production. 1024 leaves
+    // generous headroom for both EN and PT outputs.
+    max_tokens: 1024,
     system: systemPrompt,
     messages: [
       {
@@ -137,6 +141,14 @@ export async function POST(
       },
     ],
   });
+
+  if (response.stop_reason === "max_tokens") {
+    console.warn(
+      "[compose-preview] hit max_tokens for place_id",
+      place_id,
+      "— message likely truncated; consider raising the cap",
+    );
+  }
 
   const message =
     response.content[0]?.type === "text"
