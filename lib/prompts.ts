@@ -585,6 +585,13 @@ If no site: "Cliente sem site — não há análise técnica."]
 - next/font com Plus Jakarta Sans ou DM Sans
 - Favicon via metadata com emoji relevante ao nicho (ex: 🦷 para dentista, 💇 para salão)
 - Metadata SEO completa: title descritivo com nome do negócio + cidade, description de 150-160 caracteres
+- TRACKER OBRIGATÓRIO no app/layout.tsx — sem isso, o admin não detecta abertura do preview e a métrica de conversão fica zerada. Importar \`Script\` de \`next/script\` e colocar antes do </body>:
+  \`\`\`tsx
+  import Script from 'next/script'
+  // dentro do <body>:
+  <Script src="https://fastdevbuilds-admin.vercel.app/track.js" strategy="afterInteractive" />
+  \`\`\`
+  O script é gated por \`?v=\` na URL — só dispara beacon quando o lead abre via link da mensagem, nunca quando alguém abre o preview cru.
 
 ## Paleta de cores
 [CHOOSE ONE:
