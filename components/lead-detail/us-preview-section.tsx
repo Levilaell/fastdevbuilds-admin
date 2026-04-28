@@ -21,17 +21,24 @@ interface InstanceOption {
 }
 
 /**
- * US-WhatsApp preview-first workflow UI. Two send modes:
+ * Preview-first workflow UI — renders for US-WA and BR-WA-PREVIEW. Two send
+ * modes:
  *
  *   - Manual (Levi sends from phone): "Copiar mensagem" → generates via
- *     Claude, copies to clipboard, shows textarea. Then "Marcar enviado"
- *     records the outbound row + sets preview_sent_at without calling
- *     Evolution.
+ *     Claude (compose-preview), copies to clipboard, shows textarea. Then
+ *     "Marcar enviado" records the outbound row + sets preview_sent_at
+ *     without calling Evolution.
  *   - Auto: "Enviar via WhatsApp" hits dispatch-preview which generates and
  *     dispatches via Evolution in one shot.
  *
+ * Both endpoints pick the locale prompt by lead.country (PT for BR, EN for
+ * US) — see app/api/projects/[place_id]/{compose,dispatch}-preview/route.ts.
+ *
  * Hidden until claude_code_prompt is populated; switches to a sent-state
  * summary once preview_sent_at is set.
+ *
+ * Component name kept as USPreviewSection for git-history continuity; it is
+ * no longer US-specific. Rename when a wider refactor touches this file.
  */
 export default function USPreviewSection({ placeId, project, previewViews }: USPreviewSectionProps) {
   const router = useRouter()
@@ -208,7 +215,7 @@ export default function USPreviewSection({ placeId, project, previewViews }: USP
     <div className="bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
-          Preview · US
+          Preview (1º contato)
         </h2>
         {alreadySent && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400">
