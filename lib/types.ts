@@ -222,6 +222,7 @@ export type LeadCard = Pick<
   | "status_updated_at"
   | "niche"
   | "country"
+  | "outreach_sent_at"
 > & {
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
@@ -231,12 +232,49 @@ export type LeadCard = Pick<
   project_preview_url?: string | null;
   /** Timestamp of when the outreach with preview was dispatched. */
   project_preview_sent_at?: string | null;
+  /** When the project row was created — used to tell preview-first apart
+   *  from BR-traditional flows (preview-first creates the project before
+   *  any outreach goes out; BR-traditional creates it after the lead replies). */
+  project_created_at?: string | null;
   /** Earliest beacon hit logged by public/track.js — when the lead first
    *  opened the preview. Null = never opened (or tracker missing). */
   preview_first_view_at?: string | null;
   /** Total beacon hits across all opens. */
   preview_view_count?: number;
 };
+
+/**
+ * Decide whether a lead belongs in the preview-first pipeline (US-WA,
+ * BR-WA-PREVIEW) or the traditional outreach-then-reply pipeline.
+ *
+ * Inferred from timestamps rather than a DB column to avoid a migration
+ * for what is structurally derivable: in preview-first the project is
+ * created during prospecting (before any outreach), in traditional flows
+ * the project is created after the lead replies.
+ *
+ * If this gets brittle as more campaigns appear, replace with an explicit
+ * `leads.preview_first BOOLEAN` column populated by the bot at upsert time.
+ */
+export function isPreviewFirstLead(
+  outreachSentAt: string | null | undefined,
+  projectCreatedAt: string | null | undefined,
+  projectClaudeCodePrompt: string | null | undefined,
+): boolean {
+  // No prompt → no preview ever generated → traditional flow.
+  if (!projectClaudeCodePrompt) return false;
+  // Prompt exists but no outreach yet: the project was created during
+  // prospecting (preview-first by definition) OR Levi started building
+  // a preview manually but hasn't dispatched. Either way the next action
+  // is "paste URL + dispatch", which is the preview-first kanban.
+  if (!outreachSentAt) return true;
+  // Outreach went out but we don't know when the project was created
+  // (legacy projects pre-created_at column) — default to traditional
+  // since adding old leads to BR-PREVIEW retroactively would be confusing.
+  if (!projectCreatedAt) return false;
+  // Project predates the outreach → preview-first that progressed past
+  // dispatch (lead.outreach_sent_at was set by dispatch-preview).
+  return projectCreatedAt <= outreachSentAt;
+}
 
 // Kanban columns are a derived view over (lead.status, project.status) pairs,
 // not a 1:1 mapping with either enum. "Respondeu" specifically means "a real
@@ -273,11 +311,15 @@ export const PIPELINE_COLUMN_COLORS: Record<PipelineColumn, string> = {
   delivered: "bg-emerald-500/20 text-emerald-400",
 };
 
-// US pipeline is preview-first: bot qualifies → admin creates Project + prompt
-// → Levi runs Claude Code locally + pastes URL → admin sends outreach with
-// URL embedded. There is no "prospected" or "sent" state here — the lead
-// doesn't exist in the pipeline until the Project (with prompt) is built,
-// and sending always includes a preview URL.
+// Preview-first pipeline (US-WA, BR-WA-PREVIEW, …): bot qualifies → admin
+// creates Project + prompt → Levi runs Claude Code locally + pastes URL →
+// admin sends outreach with URL embedded. There is no "prospected" or
+// "sent" state here — the lead doesn't exist in the pipeline until the
+// Project (with prompt) is built, and sending always includes a preview URL.
+//
+// Names kept as US_* for back-compat with imports across the codebase.
+// The PREVIEW_FIRST_* aliases at the bottom of this block are the
+// preferred names for new code — the flow is country-agnostic.
 export const US_PIPELINE_COLUMNS = [
   "prompt_ready",
   "preview_sent",
@@ -413,3 +455,24 @@ export function getPipelineColumn(
 
   return null;
 }
+
+// ─── Preview-first aliases — preferred names for new code ─────────────────
+// The flow is identical for every country with previewFirst=true campaigns,
+// so referring to it as US_* in new code is misleading. Aliases below point
+// to the same values so refactors don't need to ripple through every import.
+
+export const PREVIEW_FIRST_PIPELINE_COLUMNS = US_PIPELINE_COLUMNS;
+export const PREVIEW_FIRST_PIPELINE_COLUMN_LABELS = US_PIPELINE_COLUMN_LABELS;
+export const PREVIEW_FIRST_PIPELINE_COLUMN_COLORS = US_PIPELINE_COLUMN_COLORS;
+export type PreviewFirstPipelineColumn = USPipelineColumn;
+export const getPreviewFirstPipelineColumn = getUSPipelineColumn;
+
+/**
+ * Market codes recognized by the pipeline UI. Each is a separate kanban
+ * tab with its own column set + filtering rules:
+ *   - 'BR'         → traditional outreach-then-reply, lead-status driven
+ *   - 'US'         → preview-first (US-WA campaign), project-state driven
+ *   - 'BR-PREVIEW' → preview-first BR (BR-WA-PREVIEW campaign), same flow
+ *                    as US but country=BR + isPreviewFirstLead() = true
+ */
+export type PipelineMarket = "BR" | "US" | "BR-PREVIEW";

@@ -11,14 +11,15 @@ import {
   PIPELINE_COLUMNS,
   PIPELINE_COLUMN_LABELS,
   PROJECT_COLUMNS,
-  US_PIPELINE_COLUMNS,
-  US_PIPELINE_COLUMN_LABELS,
+  PREVIEW_FIRST_PIPELINE_COLUMNS,
+  PREVIEW_FIRST_PIPELINE_COLUMN_LABELS,
   getPipelineColumn,
-  getUSPipelineColumn,
+  getPreviewFirstPipelineColumn,
+  isPreviewFirstLead,
   type LeadCard,
   type LeadStatus,
   type PipelineColumn,
-  type USPipelineColumn,
+  type PipelineMarket,
   type ProjectStatus,
 } from '@/lib/types'
 import LeadCardComponent from './lead-card'
@@ -74,7 +75,7 @@ export function KanbanSkeleton() {
 
 interface KanbanBoardProps {
   initialLeads: LeadCard[]
-  market?: 'BR' | 'US'
+  market?: PipelineMarket
 }
 
 export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoardProps) {
@@ -84,6 +85,11 @@ export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoard
   const [minScore, setMinScore] = useState(0)
   const [niche, setNiche] = useState('')
   const [toast, setToast] = useState('')
+
+  // Both US-WA and BR-WA-PREVIEW are project-state-driven kanbans with the
+  // same columns. The traditional BR tab is the only outlier (lead-status
+  // driven, drag-and-drop enabled).
+  const isPreviewFirstFlow = market === 'US' || market === 'BR-PREVIEW'
 
   const niches = useMemo(() => {
     const set = new Set<string>()
@@ -99,7 +105,25 @@ export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoard
       // tab. Server already filters but cached responses or data drift can
       // leak — belt and suspenders.
       if (market === 'US' && l.country !== 'US') return false
-      if (market === 'BR' && l.country !== 'BR' && l.country !== null) return false
+      if (
+        (market === 'BR' || market === 'BR-PREVIEW') &&
+        l.country !== 'BR' &&
+        l.country !== null
+      ) {
+        return false
+      }
+      // Within country=BR the two tabs split by preview-first inference. The
+      // server already partitioned but a stale client cache (eg. drag-and-drop
+      // optimistic update) could leave a lead on the wrong tab momentarily.
+      if (market === 'BR' || market === 'BR-PREVIEW') {
+        const pf = isPreviewFirstLead(
+          l.outreach_sent_at,
+          l.project_created_at,
+          l.project_claude_code_prompt,
+        )
+        if (market === 'BR-PREVIEW' && !pf) return false
+        if (market === 'BR' && pf) return false
+      }
       if (search && !(l.business_name ?? '').toLowerCase().includes(search.toLowerCase())) return false
       if (channel && l.outreach_channel !== channel) return false
       if (minScore > 0 && (l.pain_score ?? 0) < minScore) return false
@@ -108,36 +132,36 @@ export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoard
     })
   }, [leads, search, channel, minScore, niche, market])
 
-  const columns = market === 'US' ? US_PIPELINE_COLUMNS : PIPELINE_COLUMNS
-  const columnLabels =
-    market === 'US'
-      ? (US_PIPELINE_COLUMN_LABELS as Record<string, string>)
-      : (PIPELINE_COLUMN_LABELS as Record<string, string>)
+  const columns = isPreviewFirstFlow
+    ? PREVIEW_FIRST_PIPELINE_COLUMNS
+    : PIPELINE_COLUMNS
+  const columnLabels = isPreviewFirstFlow
+    ? (PREVIEW_FIRST_PIPELINE_COLUMN_LABELS as Record<string, string>)
+    : (PIPELINE_COLUMN_LABELS as Record<string, string>)
 
   const grouped = useMemo(() => {
     const map: Record<string, LeadCard[]> = {}
     for (const c of columns) map[c] = []
     filtered.forEach((l) => {
-      const col =
-        market === 'US'
-          ? getUSPipelineColumn(
-              l.status,
-              l.project_status ?? null,
-              l.project_claude_code_prompt ?? null,
-              l.project_preview_url ?? null,
-              l.project_preview_sent_at ?? null,
-            )
-          : getPipelineColumn(l.status, l.project_status ?? null)
+      const col = isPreviewFirstFlow
+        ? getPreviewFirstPipelineColumn(
+            l.status,
+            l.project_status ?? null,
+            l.project_claude_code_prompt ?? null,
+            l.project_preview_url ?? null,
+            l.project_preview_sent_at ?? null,
+          )
+        : getPipelineColumn(l.status, l.project_status ?? null)
       if (col && map[col]) map[col].push(l)
     })
     return map
-  }, [filtered, columns, market])
+  }, [filtered, columns, isPreviewFirstFlow])
 
   const handleDragEnd = useCallback(async (result: DropResult) => {
-    // US pipeline is driven by project/send state (not draggable — each column
-    // transition requires a concrete action like "paste URL", "send preview").
-    // Block drag-and-drop on the US tab to prevent accidental state writes.
-    if (market === 'US') return
+    // Preview-first kanbans are driven by project/send state (not draggable —
+    // each column transition requires a concrete action like "paste URL",
+    // "send preview"). Block drag-and-drop to prevent accidental state writes.
+    if (isPreviewFirstFlow) return
 
     const { draggableId, destination, source } = result
     if (!destination) return
@@ -220,7 +244,7 @@ export default function KanbanBoard({ initialLeads, market = 'BR' }: KanbanBoard
       setToast('Erro de conexão — status revertido')
       setTimeout(() => setToast(''), 4000)
     }
-  }, [leads])
+  }, [leads, isPreviewFirstFlow])
 
   return (
     <>

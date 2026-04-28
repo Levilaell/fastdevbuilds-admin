@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import type { LeadCard } from '@/lib/types'
+import { isPreviewFirstLead, type LeadCard, type PipelineMarket } from '@/lib/types'
 import PipelineTabs from '@/components/pipeline/pipeline-tabs'
 import { KanbanSkeleton } from '@/components/pipeline/kanban-board'
 
@@ -9,29 +9,31 @@ import { KanbanSkeleton } from '@/components/pipeline/kanban-board'
 export const dynamic = 'force-dynamic'
 
 const CARD_COLUMNS =
-  'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche, country'
+  'place_id, business_name, city, pain_score, outreach_channel, evolution_instance, status, status_updated_at, niche, country, outreach_sent_at'
 
-async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
+async function PipelineBoard({ market }: { market: PipelineMarket }) {
   const supabase = await createClient()
 
-  // BR only cares about lead-level statuses; US pulls anything not terminal
-  // because the pipeline is driven by the Project row (prompt / URL / sent),
-  // not by lead.status.
-  const leadStatusFilter =
-    market === 'BR'
-      ? ['prospected', 'sent', 'replied', 'negotiating']
-      : ['prospected', 'sent', 'replied', 'negotiating']
+  // BR-PREVIEW shares country=BR with the traditional BR tab — the split
+  // happens in JS via isPreviewFirstLead(). DB query pulls all BR leads
+  // (or all US leads) in one shot; we partition after joining projects.
+  const countryFilter: 'BR' | 'US' = market === 'US' ? 'US' : 'BR'
+
+  // All non-terminal lead statuses qualify regardless of market — the
+  // preview-first tab is project-state driven, the traditional tab is
+  // lead-status driven, but both filter terminal states the same way.
+  const leadStatusFilter = ['prospected', 'sent', 'replied', 'negotiating']
 
   const [leadsRes, projectsRes, unreadsRes, viewsRes] = await Promise.all([
     supabase
       .from('leads')
       .select(CARD_COLUMNS)
-      .eq('country', market)
+      .eq('country', countryFilter)
       .in('status', leadStatusFilter)
       .order('status_updated_at', { ascending: false, nullsFirst: false }),
     supabase
       .from('projects')
-      .select('place_id, status, claude_code_prompt, preview_url, preview_sent_at'),
+      .select('place_id, status, claude_code_prompt, preview_url, preview_sent_at, created_at'),
     supabase
       .from('conversations')
       .select('place_id')
@@ -63,6 +65,7 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
       claude_code_prompt: string | null
       preview_url: string | null
       preview_sent_at: string | null
+      created_at: string | null
     }
   >()
   for (const p of projectsRes.data ?? []) {
@@ -81,7 +84,7 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
     }
   }
 
-  const leads: LeadCard[] = (leadsRes.data ?? []).map((lead) => {
+  const allLeads: LeadCard[] = (leadsRes.data ?? []).map((lead) => {
     const proj = projectMap.get(lead.place_id)
     const views = viewsByPlace.get(lead.place_id)
     return {
@@ -91,9 +94,22 @@ async function PipelineBoard({ market }: { market: 'BR' | 'US' }) {
       project_claude_code_prompt: proj?.claude_code_prompt ?? null,
       project_preview_url: proj?.preview_url ?? null,
       project_preview_sent_at: proj?.preview_sent_at ?? null,
+      project_created_at: proj?.created_at ?? null,
       preview_first_view_at: views?.firstAt ?? null,
       preview_view_count: views?.count ?? 0,
     }
+  })
+
+  // Partition by flow. BR and BR-PREVIEW share the same country query, so
+  // route each lead based on whether the project pre-existed the outreach.
+  const leads = allLeads.filter((l) => {
+    if (market === 'US') return true
+    const pf = isPreviewFirstLead(
+      l.outreach_sent_at,
+      l.project_created_at,
+      l.project_claude_code_prompt,
+    )
+    return market === 'BR-PREVIEW' ? pf : !pf
   })
 
   return <PipelineTabs market={market} initialLeads={leads} />
@@ -105,7 +121,12 @@ export default async function PipelinePage({
   searchParams: Promise<{ market?: string }>
 }) {
   const { market: marketParam } = await searchParams
-  const market: 'BR' | 'US' = marketParam === 'US' ? 'US' : 'BR'
+  const market: PipelineMarket =
+    marketParam === 'US'
+      ? 'US'
+      : marketParam === 'BR-PREVIEW'
+        ? 'BR-PREVIEW'
+        : 'BR'
 
   return (
     <Suspense fallback={<KanbanSkeleton />}>
