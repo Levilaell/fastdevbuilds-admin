@@ -174,9 +174,10 @@ interface Props {
   initialData: MetricsData
 }
 
-type SegmentTab = 'niche' | 'city' | 'instance' | 'channel'
+type SegmentTab = 'campaign' | 'niche' | 'city' | 'instance' | 'channel'
 
 const SEGMENT_TABS: { key: SegmentTab; label: string }[] = [
+  { key: 'campaign', label: 'Campanha' },
   { key: 'niche', label: 'Nicho' },
   { key: 'city', label: 'Cidade' },
   { key: 'instance', label: 'Instance' },
@@ -185,70 +186,122 @@ const SEGMENT_TABS: { key: SegmentTab; label: string }[] = [
 
 export default function MetricsDashboard({ initialData }: Props) {
   const [period, setPeriod] = useState('all')
+  // 'all' = no campaign filter. Anything else = single campaign cohort.
+  // The dropdown options come from `data.campaigns` which is computed
+  // server-side against the unfiltered cohort, so it stays stable as the
+  // user toggles. See lib/metrics.ts.
+  const [campaign, setCampaign] = useState<string>('all')
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
-  const [segmentTab, setSegmentTab] = useState<SegmentTab>('niche')
+  const [segmentTab, setSegmentTab] = useState<SegmentTab>('campaign')
 
-  const changePeriod = useCallback(async (newPeriod: string) => {
-    setPeriod(newPeriod)
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/metrics?period=${newPeriod}`)
-      if (res.ok) {
-        const json: MetricsData = await res.json()
-        setData(json)
+  const refetch = useCallback(
+    async (nextPeriod: string, nextCampaign: string) => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams({ period: nextPeriod })
+        if (nextCampaign && nextCampaign !== 'all') {
+          params.set('campaign', nextCampaign)
+        }
+        const res = await fetch(`/api/metrics?${params.toString()}`)
+        if (res.ok) {
+          const json: MetricsData = await res.json()
+          setData(json)
+        }
+      } finally {
+        setLoading(false)
       }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    },
+    [],
+  )
+
+  const changePeriod = useCallback(
+    (newPeriod: string) => {
+      setPeriod(newPeriod)
+      void refetch(newPeriod, campaign)
+    },
+    [campaign, refetch],
+  )
+
+  const changeCampaign = useCallback(
+    (newCampaign: string) => {
+      setCampaign(newCampaign)
+      void refetch(period, newCampaign)
+    },
+    [period, refetch],
+  )
 
   useEffect(() => {
     const interval = setInterval(async () => {
       if (document.visibilityState === 'hidden') return
-      const res = await fetch(`/api/metrics?period=${period}`)
+      const params = new URLSearchParams({ period })
+      if (campaign && campaign !== 'all') params.set('campaign', campaign)
+      const res = await fetch(`/api/metrics?${params.toString()}`)
       if (res.ok) {
         const json: MetricsData = await res.json()
         setData(json)
       }
     }, 60_000)
     return () => clearInterval(interval)
-  }, [period])
+  }, [period, campaign])
 
-  const { cohortSize, funnel, rates, revenue, financialHealth } = data
+  const { cohortSize, funnel, rates, revenue, financialHealth, campaigns } = data
   const hasData = cohortSize > 0 || revenue.paidCount > 0
 
   const segmentRows =
-    segmentTab === 'niche'
-      ? data.byNiche
-      : segmentTab === 'city'
-        ? data.byCity
-        : segmentTab === 'instance'
-          ? data.byInstance
-          : data.byChannel
+    segmentTab === 'campaign'
+      ? data.byCampaign
+      : segmentTab === 'niche'
+        ? data.byNiche
+        : segmentTab === 'city'
+          ? data.byCity
+          : segmentTab === 'instance'
+            ? data.byInstance
+            : data.byChannel
 
   const maxMonthly = Math.max(...revenue.monthlyTrend.map((m) => m.revenue), 1)
 
   return (
     <div className="px-3 sm:px-6 pt-6 pb-10 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-semibold text-text">Métricas</h1>
-        <div className="flex gap-1 bg-card border border-border rounded-lg p-0.5">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => changePeriod(p.key)}
+        <div className="flex items-center gap-2">
+          {/* Campaign filter — shows up once at least one lead has been
+              tagged. Falls back to a no-op state otherwise so legacy data
+              still renders without a dropdown. */}
+          {campaigns.length > 0 && (
+            <select
+              value={campaign}
+              onChange={(e) => changeCampaign(e.target.value)}
               disabled={loading}
-              className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                period === p.key
-                  ? 'bg-accent text-white'
-                  : 'text-muted hover:text-text'
-              } disabled:opacity-50`}
+              className="bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-text disabled:opacity-50"
+              aria-label="Filtrar por campanha"
             >
-              {p.label}
-            </button>
-          ))}
+              <option value="all">Todas as campanhas</option>
+              {campaigns.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-1 bg-card border border-border rounded-lg p-0.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => changePeriod(p.key)}
+                disabled={loading}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                  period === p.key
+                    ? 'bg-accent text-white'
+                    : 'text-muted hover:text-text'
+                } disabled:opacity-50`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -85,6 +85,14 @@ export interface FinancialHealth {
 
 export interface MetricsData {
   period: string;
+  /** When set, the dashboard shows ONLY leads with this campaign_code.
+   *  Pre-instrumentation leads have NULL campaign_code and disappear when
+   *  filtered. Use the backfill SQL to populate retroactively. */
+  campaign: string | null;
+  /** Distinct, non-null campaign_codes present in the cohort — used to
+   *  populate the UI dropdown without an extra round-trip. Computed against
+   *  the unfiltered cohort so the dropdown stays stable as user filters. */
+  campaigns: string[];
   cohortSize: number; // = funnel.sent
   funnel: {
     sent: number;
@@ -109,6 +117,7 @@ export interface MetricsData {
     paid_vs_delivered: number;
     overall_sent_to_paid: number;
   };
+  byCampaign: SegmentRow[];
   byNiche: SegmentRow[];
   byCity: SegmentRow[];
   byInstance: SegmentRow[];
@@ -143,6 +152,7 @@ interface LeadRow {
   city: string | null;
   address: string | null;
   business_name: string | null;
+  campaign_code: string | null;
 }
 
 interface ProjectRow {
@@ -280,17 +290,24 @@ function monthKeyFromIso(iso: string): string {
   return monthKey(new Date(iso));
 }
 
-export async function fetchMetrics(period: string): Promise<MetricsData> {
+export async function fetchMetrics(
+  period: string,
+  campaign?: string | null,
+): Promise<MetricsData> {
   const supabase = await createClient();
   const periodStart = getPeriodStart(period);
 
   // Leads cohort: everyone the bot has sent to. Period filter, when set, is
   // applied to outreach_sent_at so "30 dias" means "sent in the last 30 days",
   // not "any lead whose status happened to change in the last 30 days".
+  //
+  // campaign filter (optional) restricts the cohort to a single experiment.
+  // We query UNFILTERED by campaign so the dropdown of available campaigns
+  // stays stable when the user toggles, then apply the filter in-memory.
   let leadsQuery = supabase
     .from("leads")
     .select(
-      "place_id, status, outreach_sent, outreach_sent_at, outreach_channel, evolution_instance, last_human_reply_at, niche, city, address, business_name",
+      "place_id, status, outreach_sent, outreach_sent_at, outreach_channel, evolution_instance, last_human_reply_at, niche, city, address, business_name, campaign_code",
     )
     .eq("outreach_sent", true)
     .not("outreach_sent_at", "is", null);
@@ -317,8 +334,22 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
   if (leadsRes.error) throw new Error(leadsRes.error.message);
   if (projectsRes.error) throw new Error(projectsRes.error.message);
 
-  const leads = (leadsRes.data ?? []) as LeadRow[];
+  const allLeads = (leadsRes.data ?? []) as LeadRow[];
   const projects = (projectsRes.data ?? []) as ProjectRow[];
+
+  // Distinct campaign codes in the period — drives the UI dropdown. Computed
+  // before campaign filter is applied so the dropdown stays stable.
+  const campaignsSet = new Set<string>();
+  for (const l of allLeads) {
+    if (l.campaign_code) campaignsSet.add(l.campaign_code);
+  }
+  const campaigns = [...campaignsSet].sort();
+
+  // Apply campaign filter in-memory (kept off the SQL query so the
+  // campaigns dropdown above sees the full set).
+  const leads = campaign
+    ? allLeads.filter((l) => l.campaign_code === campaign)
+    : allLeads;
 
   const projectByPlace = new Map<string, ProjectRow>();
   for (const p of projects) projectByPlace.set(p.place_id, p);
@@ -375,6 +406,9 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
   };
 
   // === B. Segmentation ===
+  const byCampaign = topSegments(
+    groupByKey(pairs, (l) => l.campaign_code?.trim() || null),
+  );
   const byNiche = topSegments(
     groupByKey(pairs, (l) => {
       const n = l.niche?.trim();
@@ -530,9 +564,12 @@ export async function fetchMetrics(period: string): Promise<MetricsData> {
 
   return {
     period,
+    campaign: campaign ?? null,
+    campaigns,
     cohortSize: funnel.sent,
     funnel,
     rates,
+    byCampaign,
     byNiche,
     byCity,
     byInstance,

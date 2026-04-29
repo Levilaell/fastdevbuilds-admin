@@ -97,6 +97,12 @@ export interface Lead {
   last_human_reply_at: string | null;
   last_auto_reply_at: string | null;
   outreach_error: string | null;
+
+  // experiment tracking — see supabase/migrations/20260428_experiment_tracking.sql
+  campaign_code: string | null;
+  outreach_variant: string | null;
+  bot_run_id: string | null;
+  owner_probability: number | null;
 }
 
 export interface Conversation {
@@ -150,6 +156,7 @@ export interface BotRun {
   started_at: string;
   finished_at: string | null;
   server_run_id: string | null;
+  campaign_code: string | null;
 }
 
 // ─── Projects ───

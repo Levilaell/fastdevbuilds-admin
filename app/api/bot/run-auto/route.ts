@@ -51,12 +51,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Create bot_run record
+  // Create bot_run record. campaign_code stamps which experiment this run
+  // belongs to; the bot-server propagates it onto every lead it upserts.
+  // See GTM_LAB_ARCHITECTURE.md and supabase/migrations/20260428_experiment_tracking.sql.
   const supabase = createServiceClient()
   const { data: run } = await supabase
     .from('bot_runs')
     .insert({
       status: 'running',
+      campaign_code: params.market,
     })
     .select('id')
     .single()
@@ -115,6 +118,14 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         ...params,
+        // Experiment tracking. Bot-server is expected to:
+        //   1. propagate campaign_code onto every upserted lead (COALESCE on
+        //      conflict so first run wins),
+        //   2. stamp bot_run_id onto every lead it creates this run.
+        // If bot-server doesn't yet read these, the fields are inert — admin
+        // side still records campaign_code on bot_runs above.
+        campaign_code: params.market,
+        ...(run?.id ? { bot_run_id: run.id } : {}),
         ...(cc ? {
           niches: cc.niches.flatMap(g => [...g.items]),
           cities: [...cc.cities],
