@@ -1,43 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Normalize a phone to the canonical form used for matching and sending.
- *
- *   BR → 55 + DDD + number (12-13 digits)
- *   US → 1 + area code + number (11 digits)
- *
- * When `country` is omitted we auto-detect by prefix; this is the webhook
- * path where the caller doesn't know the lead's country yet. When no prefix
- * matches we fall back to BR because the historical default of this project
- * was BR-only — legacy callers keep working.
+ * Normalize a phone to the BR canonical form: 55 + DDD + number (12-13 digits).
  */
-export function normalizePhone(phone: string, country?: string): string {
+export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-
-  if (country === "US") {
-    if (digits.startsWith("1") && digits.length === 11) return digits;
-    if (digits.length === 10) return `1${digits}`;
+  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) {
     return digits;
   }
-
-  if (country === "BR" || country === undefined) {
-    if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13)
-      return digits;
-    if (country === undefined && digits.startsWith("1") && digits.length === 11)
-      return digits;
-    const clean = digits.startsWith("0") ? digits.slice(1) : digits;
-    if (clean.length >= 10 && clean.length <= 11) return `55${clean}`;
-  }
-
+  const clean = digits.startsWith("0") ? digits.slice(1) : digits;
+  if (clean.length >= 10 && clean.length <= 11) return `55${clean}`;
   return digits;
-}
-
-/** Check if two phone strings match after normalization. */
-export function phoneMatch(a: string, b: string): boolean {
-  const na = normalizePhone(a);
-  const nb = normalizePhone(b);
-  if (!na || !nb) return false;
-  return na === nb;
 }
 
 // ─── Multi-instance Evolution API support ────────────────────────────────────
@@ -219,38 +192,14 @@ export async function getOrAssignInstance(
  *   US → 1 + 10 digits (11 total) — does NOT distinguish mobile vs landline,
  *        US doesn't encode that in the number. Downstream dispatch catches
  *        landline via the provider's "number not reachable" error.
- *
- * Without `country` we auto-detect by prefix — used by code paths that
- * don't know the lead's country yet (webhook, LID resolution).
  */
-export function isValidPhone(phone: string, country?: string): boolean {
-  if (country === "US") return /^1\d{10}$/.test(phone);
-  if (country === "BR") return /^55\d{10,11}$/.test(phone);
-  if (phone.startsWith("55")) return /^55\d{10,11}$/.test(phone);
-  if (phone.startsWith("1")) return /^1\d{10}$/.test(phone);
-  return false;
+export function isValidPhone(phone: string): boolean {
+  return /^55\d{10,11}$/.test(phone);
 }
 
 /**
- * Decide which JID to persist when current and incoming forms differ.
- *
- * Evolution migrates contacts between `@s.whatsapp.net` (phone-based,
- * canonical) and `@lid` (opaque, session-scoped). A naïve "overwrite on
- * every event" strategy causes the stored JID to flap, which in turn
- * breaks JID-exact matching for the other side of the flap.
- *
- * Rules (strictly ordered):
- *   1. incoming is NULL → keep current (nothing to do).
- *   2. current is NULL → take incoming.
- *   3. values equal → keep current (no-op).
- *   4. current @s.whatsapp.net, incoming @lid → keep current
- *      (do NOT downgrade the canonical phone-JID).
- *   5. current @lid, incoming @s.whatsapp.net → take incoming
- *      (upgrade to canonical).
- *   6. anything else (unexpected mix) → keep current (conservative).
- *
- * Returns the JID that SHOULD be stored. Callers write only when the
- * returned value differs from `current`.
+ * Decide which JID to persist when current and incoming differ.
+ * Simple BR-only rule: take whatever's non-null and prefer the incoming.
  */
 export function pickCanonicalJid(
   current: string | null,
@@ -259,94 +208,7 @@ export function pickCanonicalJid(
   if (!incoming) return current;
   if (!current) return incoming;
   if (current === incoming) return current;
-
-  const currentIsPhone = current.endsWith("@s.whatsapp.net");
-  const incomingIsPhone = incoming.endsWith("@s.whatsapp.net");
-  const currentIsLid = current.endsWith("@lid");
-  const incomingIsLid = incoming.endsWith("@lid");
-
-  if (currentIsPhone && incomingIsLid) return current;
-  if (currentIsLid && incomingIsPhone) return incoming;
-
-  return current;
-}
-
-/**
- * Resolve a LID (Link ID) to a real phone number via Evolution API.
- * Evolution API v1.x sends LID format (240552629022900@lid) in webhooks
- * which does NOT contain the phone number and cannot be used for sending.
- *
- * Strategy: get the LID contact's profilePictureUrl, then find the
- * @s.whatsapp.net contact with the same picture — that has the real number.
- */
-export async function resolvePhoneFromLid(
-  lid: string,
-  instanceName?: string,
-  instanceApiKey?: string,
-): Promise<string | null> {
-  const evoUrl = process.env.EVOLUTION_API_URL;
-  const fallback = getInstances()[0];
-  const instance = instanceName || fallback?.name;
-  const apiKey = instanceApiKey || fallback?.apiKey;
-
-  if (!evoUrl || !instance || !apiKey) return null;
-
-  const headers = { "Content-Type": "application/json", apikey: apiKey };
-
-  try {
-    const lidRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ where: { id: `${lid}@lid` } }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!lidRes.ok) return null;
-
-    const lidContacts = await lidRes.json();
-    if (!Array.isArray(lidContacts) || lidContacts.length === 0) return null;
-
-    const lidPic: string = lidContacts[0].profilePictureUrl ?? "";
-    if (!lidPic) {
-      console.log(
-        "[whatsapp] LID contact has no profile picture, cannot resolve",
-      );
-      return null;
-    }
-
-    const matchRes = await fetch(`${evoUrl}/chat/findContacts/${instance}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ where: { profilePictureUrl: lidPic } }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!matchRes.ok) return null;
-
-    const matchContacts = await matchRes.json();
-    if (!Array.isArray(matchContacts)) return null;
-
-    const match = matchContacts.find(
-      (c: { id: string; profilePictureUrl?: string }) =>
-        c.id.endsWith("@s.whatsapp.net") && c.profilePictureUrl === lidPic,
-    );
-
-    if (match) {
-      const realPhone = match.id.split("@")[0].replace(/\D/g, "");
-      console.log("[whatsapp] resolved LID", lid, "→", realPhone);
-      return realPhone;
-    }
-
-    console.log(
-      "[whatsapp] no @s.whatsapp.net match found for LID profile picture",
-    );
-    return null;
-  } catch (err) {
-    if (err instanceof Error && err.name === "TimeoutError") {
-      console.error("[whatsapp] resolvePhoneFromLid timeout for LID", lid);
-    } else {
-      console.error("[whatsapp] resolvePhoneFromLid error:", err);
-    }
-    return null;
-  }
+  return incoming;
 }
 
 export type SendResult =
@@ -444,8 +306,8 @@ export async function lookupJidFromPhone(
   }
 
   // Normalize by recipient country, not chip country. Chip is agnostic.
-  const cleanPhone = normalizePhone(phone, country);
-  if (!isValidPhone(cleanPhone, country)) {
+  const cleanPhone = normalizePhone(phone);
+  if (!isValidPhone(cleanPhone)) {
     console.log("[whatsapp:lookup] invalid phone after normalization:", cleanPhone);
     return null;
   }
@@ -588,8 +450,8 @@ export async function sendWhatsApp(
     }
   }
 
-  const cleanPhone = normalizePhone(phone, country);
-  if (!isValidPhone(cleanPhone, country)) {
+  const cleanPhone = normalizePhone(phone);
+  if (!isValidPhone(cleanPhone)) {
     return { ok: false, reason: "invalid_phone" };
   }
 
