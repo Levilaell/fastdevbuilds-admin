@@ -130,6 +130,25 @@ export default function ExperimentDetailPage({
     }
   }
 
+  async function runVariant(variantId: string, variantName: string) {
+    if (!confirm(`Disparar bot pra variant "${variantName}"?`)) return
+    try {
+      const res = await fetch(`/api/experiments/${id}/run-variant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variant_id: variantId, dry_run: false, send: false, limit: 30 }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error ?? `HTTP ${res.status}`)
+      }
+      const body = await res.json()
+      alert(`Bot disparado. botRunId=${body.botRunId}`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro')
+    }
+  }
+
   async function handleDelete() {
     if (!confirm('Deletar experimento? Variants vão junto. Leads ficam sem tag.')) {
       return
@@ -258,6 +277,14 @@ export default function ExperimentDetailPage({
                       <span>target: {variant.target_volume}</span>
                     </div>
                   </div>
+                  {experiment.status === 'running' && (
+                    <button
+                      onClick={() => runVariant(variant.id, variant.name)}
+                      className="h-8 px-3 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90 shrink-0"
+                    >
+                      Rodar bot
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-border">
