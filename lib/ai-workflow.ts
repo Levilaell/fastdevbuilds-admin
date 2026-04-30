@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
-import { SCORE_REASON_LABELS, type Lead, type Conversation, type Project, type GeneratedImages, type ModelTier } from '@/lib/types'
+import type { Lead, Conversation, Project, GeneratedImages, ModelTier } from '@/lib/types'
 import {
   CLAUDE_CODE_SITE_SYSTEM_PROMPT,
   buildClaudeCodeUserPrompt,
@@ -29,15 +29,6 @@ function serviceClient() {
   )
 }
 
-function translateReasons(lead: Lead): string {
-  return (lead.score_reasons ?? '')
-    .split(',')
-    .map(r => r.trim())
-    .filter(Boolean)
-    .map(r => SCORE_REASON_LABELS[r] ?? r)
-    .join(', ')
-}
-
 // ─── Generate Claude Code Prompt ───
 
 export async function generateClaudeCodePrompt(
@@ -63,7 +54,7 @@ export async function generateClaudeCodePrompt(
     }
   }
 
-  const reasonsText = translateReasons(lead)
+  const reasonsText = ''
 
   const response = await anthropic.messages.create({
     model: MODEL_SMART,

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createServiceClient } from '@/lib/supabase/service'
-import { SCORE_REASON_LABELS, STATUS_LABELS, type Lead, type Conversation } from '@/lib/types'
+import { STATUS_LABELS, type Lead, type Conversation } from '@/lib/types'
 import {
   buildSuggestionSystemPrompt,
   SUGGESTION_USER_WITH_HISTORY,
@@ -43,12 +43,7 @@ export async function POST(request: NextRequest) {
   const conversations = (convResult.data ?? []) as Conversation[]
   const project = projectResult.data as { preview_sent_at: string | null } | null
 
-  const reasons = (lead.score_reasons ?? '')
-    .split(',')
-    .map((r) => r.trim())
-    .filter(Boolean)
-    .map((r) => SCORE_REASON_LABELS[r] ?? r)
-    .join(', ')
+  const reasons = ''
 
   const historyText = conversations
     .map((c) => `[${c.direction === 'out' ? 'Levi' : 'Lead'}] ${c.message}`)

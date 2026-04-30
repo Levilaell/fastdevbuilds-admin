@@ -2,47 +2,13 @@ import type { Lead, Project } from "@/lib/types";
 
 // ─── Helpers used by prompt builders ───
 
-/** Classify PageSpeed performance into qualitative levels. */
-function perfLabel(
-  mobileScore: number | null,
-  lcp: number | null,
-): string | null {
-  if (mobileScore != null) {
-    if (mobileScore < 30) return "desempenho muito ruim";
-    if (mobileScore < 50) return "desempenho ruim";
-    if (mobileScore < 70) return "desempenho mediano";
-    return "desempenho bom";
-  }
-  if (lcp != null) {
-    if (lcp > 6000) return "carregamento muito lento";
-    if (lcp > 4000) return "carregamento lento";
-    if (lcp > 2500) return "carregamento mediano";
-    return "carregamento rápido";
-  }
-  return null;
-}
-
 function buildLeadContext(lead: Lead, reasonsText: string): string {
   const lines = [
     `- Negócio: ${lead.business_name ?? "Desconhecido"}`,
     `- Cidade: ${lead.city ?? "—"}`,
     `- Site: ${lead.website ?? "sem site"}`,
-    `- Tech stack: ${lead.tech_stack ?? "—"}`,
-    `- Score de dor: ${lead.pain_score ?? "—"}/10`,
-    `- Problemas detectados: ${reasonsText || "Nenhum"}`,
   ];
-  const perf = perfLabel(lead.mobile_score, lead.lcp);
-  if (perf) lines.push(`- PageSpeed (testado pelo Google): ${perf}`);
-  if (lead.has_ssl === false) lines.push("- SSL: NÃO tem (site inseguro)");
-  if (lead.is_mobile_friendly === false)
-    lines.push("- Mobile: NÃO é otimizado para celular");
-  if (lead.visual_score != null)
-    lines.push(`- Visual score: ${lead.visual_score}/10`);
-  if (lead.visual_notes) lines.push(`- Visual notes: ${lead.visual_notes}`);
-  if (lead.scrape_failed)
-    lines.push(
-      "- Análise do site: FALHOU (site pode estar offline ou bloqueando)",
-    );
+  if (reasonsText) lines.push(`- Notas: ${reasonsText}`);
   return lines.join("\n");
 }
 
@@ -339,8 +305,8 @@ THE "prompt" FIELD MUST FOLLOW THIS EXACT STRUCTURE (include ALL sections, in th
 - If client has NO website (no_website=true): "O cliente não tem site. O objetivo é criar o primeiro site profissional do negócio do zero."]
 
 ## Problemas detectados no site atual
-[If the client has a site: describe the visual_score, visual_notes, pain_score, score_reasons, tech_stack, and PageSpeed data in plain language. This explains WHY the client needs a new site — frame it as context, not a bug report.
-If no site: "Cliente sem site — não há análise técnica."]
+[If the client has a site: brief plain-language note about why the new site is being made (extracted from any "Notas" line in the briefing).
+If no site: "Cliente sem site — primeiro site do negócio."]
 
 ## O que o cliente disse
 [Include the relevant conversation messages provided. If the client mentioned specific services, colors, features, or preferences — mark them with ⚠️ PRIORIDADE and note they override any niche-based inference.]
@@ -714,32 +680,14 @@ export function buildClaudeCodeUserPrompt(
     }
   }
 
-  lines.push("ANÁLISE TÉCNICA DO SITE ATUAL:");
   if (hasWebsite) {
+    lines.push("SITE ATUAL:");
     lines.push(
-      `- Tech stack atual: ${lead.tech_stack ?? "desconhecido"} (NÃO replicar — o novo site será Next.js 15)`,
+      `- ${lead.website} — acessar e extrair paleta, serviços e textos úteis pra o novo site (Next.js 15).`,
     );
-    lines.push(`- Pain score: ${lead.pain_score ?? "—"}/10`);
-    lines.push(`- Problemas detectados: ${reasonsText || "Nenhum"}`);
-    if (lead.visual_score != null)
-      lines.push(`- Visual score: ${lead.visual_score}/10`);
-    if (lead.visual_notes?.length) {
-      const notes = Array.isArray(lead.visual_notes)
-        ? lead.visual_notes.join("; ")
-        : lead.visual_notes;
-      lines.push(`- Notas visuais da IA: ${notes}`);
-    }
-    const perf = perfLabel(lead.mobile_score, lead.lcp);
-    if (perf) lines.push(`- Performance mobile: ${perf}`);
-    if (lead.mobile_score != null)
-      lines.push(`- Mobile score: ${lead.mobile_score}/100`);
-    if (lead.lcp != null) lines.push(`- LCP: ${lead.lcp}ms`);
-    if (lead.has_ssl === false) lines.push("- SSL: NÃO tem (site inseguro)");
-    if (lead.is_mobile_friendly === false) lines.push("- Mobile-friendly: NÃO");
+    if (reasonsText) lines.push(`- Notas: ${reasonsText}`);
   } else {
-    lines.push(
-      "- Cliente sem site — não há análise técnica. Criar o primeiro site do zero.",
-    );
+    lines.push("SITE ATUAL: cliente sem site — criar o primeiro do zero.");
   }
   lines.push("");
 

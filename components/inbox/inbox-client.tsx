@@ -16,7 +16,6 @@ import {
 import SharedReplyBox from '@/components/shared/reply-box'
 import MarkLostModal from '@/components/lead-detail/mark-lost-modal'
 import WorkflowBar from '@/components/inbox/workflow-bar'
-import OrphanMessages from '@/components/inbox/orphan-messages'
 import PaidPriceModal from '@/components/lead-detail/paid-price-modal'
 
 // ─── Conversation list item ───
@@ -505,8 +504,6 @@ export default function InboxClient() {
             />
           </div>
         </div>
-
-        <OrphanMessages onResolved={fetchInbox} />
 
         {/* List */}
         <div className="flex-1 overflow-y-auto divide-y divide-border">

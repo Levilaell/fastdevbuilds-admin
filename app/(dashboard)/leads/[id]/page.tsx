@@ -10,8 +10,6 @@ import {
   type Conversation,
   type Project,
 } from '@/lib/types'
-import TechAnalysis from '@/components/lead-detail/tech-analysis'
-import PainScoreCard from '@/components/lead-detail/pain-score-card'
 import OutreachCard from '@/components/lead-detail/outreach-card'
 import LeadStatusControls from '@/components/lead-detail/lead-status-controls'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
@@ -175,12 +173,6 @@ async function LeadDetailContent({ id }: { id: string }) {
               )}
             </div>
           </div>
-
-          {/* Tech Analysis */}
-          <TechAnalysis lead={lead} />
-
-          {/* Pain Score */}
-          <PainScoreCard lead={lead} />
 
           {/* Outreach */}
           <OutreachCard lead={lead} />
