@@ -147,6 +147,9 @@ export async function POST(
         lang: "pt",
         country: "BR",
         channel: "whatsapp",
+        // Bot interpolates {nome}, {cidade}, {vertical} per-lead and skips
+        // the Claude generateMessages call.
+        message_template: variant.message_template,
         ...(variant.qualification_filters
           ? { qualificationFilters: variant.qualification_filters }
           : {}),
