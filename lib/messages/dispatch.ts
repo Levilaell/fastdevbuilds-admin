@@ -5,22 +5,18 @@ import {
   lookupJidFromPhone,
 } from "@/lib/whatsapp";
 import { resolvePhoneForLead } from "@/lib/messages/resolve-phone";
-import { sendEmail } from "@/lib/messages/send-email";
 import { recordOutboundMessage } from "@/lib/messages/record-outbound";
 
 export interface DispatchOptions {
   supabase: SupabaseClient;
   place_id: string;
   message: string;
-  channel: "whatsapp" | "email" | "sms";
   subject?: string;
   suggestedByAi?: boolean;
   lead: {
     phone: string | null;
-    email: string | null;
     evolution_instance: string | null;
     whatsapp_jid: string | null;
-    country?: string | null;
   };
 }
 
@@ -48,7 +44,6 @@ export async function dispatchMessage(
     supabase,
     place_id,
     message,
-    channel,
     subject,
     suggestedByAi,
     lead,
@@ -57,163 +52,79 @@ export async function dispatchMessage(
 
   // ── 1. Send ────────────────────────────────────────────────────────────
 
-  let sendRemoteJid: string | undefined;
-  let sendProviderMessageId: string | undefined;
-  const dispatchContext: { phone: string | null; instance: string | null } = {
-    phone: null,
-    instance: null,
-  };
+  const resolved = await resolvePhoneForLead({
+    place_id,
+    phone: lead.phone,
+    whatsapp_jid: lead.whatsapp_jid,
+    evolution_instance: lead.evolution_instance,
+  });
 
-  if (channel === "whatsapp") {
-    const resolved = await resolvePhoneForLead({
-      place_id,
-      phone: lead.phone,
-      whatsapp_jid: lead.whatsapp_jid,
-      evolution_instance: lead.evolution_instance,
-      country: lead.country ?? null,
-    });
+  if (!resolved) {
+    return {
+      ok: false,
+      error: "Lead não tem telefone cadastrado",
+      httpStatus: 400,
+    };
+  }
 
-    if (!resolved) {
-      return {
-        ok: false,
-        error: "Lead não tem telefone cadastrado",
-        httpStatus: 400,
-      };
-    }
+  if (resolved.shouldBackfill) {
+    await supabase
+      .from("leads")
+      .update({ phone: resolved.phone })
+      .eq("place_id", place_id);
+  }
 
-    if (resolved.shouldBackfill) {
-      await supabase
-        .from("leads")
-        .update({ phone: resolved.phone })
-        .eq("place_id", place_id);
-    }
+  const instance = await getOrAssignInstance(supabase, place_id);
+  const result = await sendWhatsApp(resolved.phone, message, instance?.name);
 
-    const instance = await getOrAssignInstance(supabase, place_id);
-    const result = await sendWhatsApp(
-      resolved.phone,
-      message,
-      instance?.name,
-      lead.country ?? undefined,
-    );
+  if (!result.ok) {
+    console.error("[dispatch] whatsapp failed:", result);
 
-    // Capture phone+instance so we can backfill the JID after send even if
-    // the Evolution response didn't include a remoteJid we could parse.
-    dispatchContext.phone = resolved.phone;
-    dispatchContext.instance = instance?.name ?? null;
-
-    if (!result.ok) {
-      console.error("[dispatch] whatsapp failed:", result);
-
-      // Invalid WhatsApp number — disqualify immediately, never retry
-      if (result.reason === "number_not_on_whatsapp") {
-        await supabase
-          .from("leads")
-          .update({
-            status: "disqualified" as const,
-            outreach_error: "invalid_whatsapp_number",
-            status_updated_at: now,
-          })
-          .eq("place_id", place_id);
-
-        return {
-          ok: false,
-          error: "Número não existe no WhatsApp",
-          httpStatus: 400,
-        };
-      }
-
+    // Invalid WhatsApp number — disqualify immediately, never retry
+    if (result.reason === "number_not_on_whatsapp") {
       await supabase
         .from("leads")
         .update({
-          outreach_error: JSON.stringify(result).slice(0, 1000),
+          status: "disqualified" as const,
+          outreach_error: "invalid_whatsapp_number",
           status_updated_at: now,
         })
         .eq("place_id", place_id);
 
       return {
         ok: false,
-        error: "Falha ao enviar WhatsApp",
-        httpStatus: 502,
-        detail: result,
+        error: "Número não existe no WhatsApp",
+        httpStatus: 400,
       };
     }
 
-    sendRemoteJid = result.remoteJid;
-    sendProviderMessageId = result.providerMessageId;
-  } else if (channel === "sms") {
-    // Twilio integration is not wired up yet. Fail loudly so the reply-box in
-    // the admin never silently "succeeds" without a message actually leaving.
-    // When 10DLC registration + Twilio API keys are in place, replace this
-    // with a real provider call that returns { remoteJid?, providerMessageId? }.
-    const errorDetail = "SMS provider not configured (Twilio integration pending 10DLC registration)";
     await supabase
       .from("leads")
       .update({
-        outreach_error: errorDetail,
+        outreach_error: JSON.stringify(result).slice(0, 1000),
         status_updated_at: now,
       })
       .eq("place_id", place_id);
 
     return {
       ok: false,
-      error: errorDetail,
-      httpStatus: 501,
+      error: "Falha ao enviar WhatsApp",
+      httpStatus: 502,
+      detail: result,
     };
-  } else {
-    const email = lead.email?.trim();
-    if (!email) {
-      return {
-        ok: false,
-        error: "Lead não tem email cadastrado",
-        httpStatus: 400,
-      };
-    }
-
-    const result = await sendEmail({ email, message, subject });
-
-    if (!result.ok) {
-      console.error("[dispatch] email failed:", result);
-
-      const errorDetail =
-        result.reason === "not_configured"
-          ? "Instantly not configured (missing API key or campaign ID)"
-          : (result.body ?? result.reason);
-
-      await supabase
-        .from("leads")
-        .update({
-          outreach_error: errorDetail.slice(0, 1000),
-          status_updated_at: now,
-        })
-        .eq("place_id", place_id);
-
-      return {
-        ok: false,
-        error: errorDetail,
-        httpStatus: result.reason === "not_configured" ? 501 : 502,
-      };
-    }
   }
 
-  // ── 2. JID fallback (WhatsApp only) ───────────────────────────────────
+  const sendRemoteJid = result.remoteJid;
+  const sendProviderMessageId = result.providerMessageId;
+
+  // ── 2. JID fallback ───────────────────────────────────────────────────
   // The Evolution send response doesn't always include a parseable remoteJid,
   // so we fall back to `/chat/whatsappNumbers/{instance}` which takes phone
-  // and returns the canonical JID (handles LID-migrated contacts too). This
-  // needs the phone+instance actually used for sending, which only dispatch
-  // knows — record-outbound takes the resolved JID as input.
+  // and returns the canonical JID. record-outbound takes the resolved JID
+  // as input.
   let jidToPersist: string | null = sendRemoteJid ?? null;
-  if (
-    channel === "whatsapp" &&
-    !jidToPersist &&
-    !lead.whatsapp_jid &&
-    dispatchContext.phone
-  ) {
-    jidToPersist = await lookupJidFromPhone(
-      dispatchContext.phone,
-      dispatchContext.instance ?? undefined,
-      undefined,
-      lead.country ?? undefined,
-    );
+  if (!jidToPersist && !lead.whatsapp_jid) {
+    jidToPersist = await lookupJidFromPhone(resolved.phone, instance?.name);
     console.log(
       "[dispatch:jid] fallback lookup for",
       place_id,
@@ -222,17 +133,11 @@ export async function dispatchMessage(
     );
   }
 
-  if (channel === "whatsapp" && jidToPersist && !lead.whatsapp_jid) {
-    console.log("[dispatch:jid] persisting", jidToPersist, "for", place_id);
-  } else if (channel === "whatsapp" && !jidToPersist && !lead.whatsapp_jid) {
-    console.warn("[dispatch:jid] could not resolve jid for", place_id);
-  }
-
-  // ── 3. Record outbound (shared with bot→CRM outreach endpoints) ───────
+  // ── 3. Record outbound ────────────────────────────────────────────────
   const recorded = await recordOutboundMessage({
     supabase,
     place_id,
-    channel,
+    channel: "whatsapp",
     message,
     subject,
     whatsapp_jid: jidToPersist,

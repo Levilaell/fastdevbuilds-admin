@@ -132,10 +132,6 @@ export async function POST(request: NextRequest) {
           lang: cc.lang,
           country: cc.country,
           channel: cc.channel,
-          // Preview-first campaigns make the bot create Projects (with
-          // Claude Code prompts + images) instead of dispatching outreach.
-          // The bot reads this flag to switch flow (see steps/auto.js).
-          ...(cc.previewFirst ? { previewFirst: true } : {}),
           // Qualification filters: UI override (params.qualification_filters)
           // wins over bot-config defaults. UI fields left empty already fell
           // back to defaults on the client (resolveQualificationFilters in

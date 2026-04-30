@@ -186,12 +186,8 @@ export interface Project {
   info_request_message: string | null;
   prompt_updated_at: string | null;
   generated_images: GeneratedImages | null;
-  /**
-   * Vercel preview URL of the generated site. In the US-WhatsApp
-   * preview-first flow this URL is what the outreach message embeds —
-   * the lead clicks straight into a working site.
-   * Populated when Levi pastes it from his local Claude Code run.
-   */
+  /** Vercel preview URL of the generated site, pasted by Levi from his
+   *  local Claude Code run. */
   preview_url: string | null;
 }
 
@@ -233,15 +229,9 @@ export type LeadCard = Pick<
 > & {
   project_status?: ProjectStatus | null;
   has_unread?: boolean;
-  /** Present when the Project row has a Claude Code prompt generated. */
   project_claude_code_prompt?: string | null;
-  /** Present when Levi pasted the Vercel preview URL. */
   project_preview_url?: string | null;
-  /** Timestamp of when the outreach with preview was dispatched. */
   project_preview_sent_at?: string | null;
-  /** When the project row was created — used to tell preview-first apart
-   *  from BR-traditional flows (preview-first creates the project before
-   *  any outreach goes out; BR-traditional creates it after the lead replies). */
   project_created_at?: string | null;
   /** Earliest beacon hit logged by public/track.js — when the lead first
    *  opened the preview. Null = never opened (or tracker missing). */
@@ -250,46 +240,8 @@ export type LeadCard = Pick<
   preview_view_count?: number;
 };
 
-/**
- * Decide whether a lead belongs in the preview-first pipeline (US-WA,
- * BR-WA-PREVIEW) or the traditional outreach-then-reply pipeline.
- *
- * Inferred from timestamps rather than a DB column to avoid a migration
- * for what is structurally derivable: in preview-first the project is
- * created during prospecting (before any outreach), in traditional flows
- * the project is created after the lead replies.
- *
- * If this gets brittle as more campaigns appear, replace with an explicit
- * `leads.preview_first BOOLEAN` column populated by the bot at upsert time.
- */
-export function isPreviewFirstLead(
-  outreachSentAt: string | null | undefined,
-  projectCreatedAt: string | null | undefined,
-  projectClaudeCodePrompt: string | null | undefined,
-): boolean {
-  // No prompt → no preview ever generated → traditional flow.
-  if (!projectClaudeCodePrompt) return false;
-  // Prompt exists but no outreach yet: the project was created during
-  // prospecting (preview-first by definition) OR Levi started building
-  // a preview manually but hasn't dispatched. Either way the next action
-  // is "paste URL + dispatch", which is the preview-first kanban.
-  if (!outreachSentAt) return true;
-  // Outreach went out but we don't know when the project was created
-  // (legacy projects pre-created_at column) — default to traditional
-  // since adding old leads to BR-PREVIEW retroactively would be confusing.
-  if (!projectCreatedAt) return false;
-  // Project predates the outreach → preview-first that progressed past
-  // dispatch (lead.outreach_sent_at was set by dispatch-preview).
-  return projectCreatedAt <= outreachSentAt;
-}
-
 // Kanban columns are a derived view over (lead.status, project.status) pairs,
-// not a 1:1 mapping with either enum. "Respondeu" specifically means "a real
-// human reply landed and the user hasn't built a preview yet" — that's the
-// triage backlog. Auto-replies don't count: they never set lead.status to
-// `replied` (the webhook routes them to the auto-reply branch that stamps
-// last_auto_reply_at only), so they stay in Enviado until a real reply
-// arrives or the user gives up.
+// not a 1:1 mapping with either enum.
 export const PIPELINE_COLUMNS = [
   "prospected",
   "sent",
@@ -318,105 +270,6 @@ export const PIPELINE_COLUMN_COLORS: Record<PipelineColumn, string> = {
   delivered: "bg-emerald-500/20 text-emerald-400",
 };
 
-// Preview-first pipeline (US-WA, BR-WA-PREVIEW, …): bot qualifies → admin
-// creates Project + prompt → Levi runs Claude Code locally + pastes URL →
-// admin sends outreach with URL embedded. There is no "prospected" or
-// "sent" state here — the lead doesn't exist in the pipeline until the
-// Project (with prompt) is built, and sending always includes a preview URL.
-//
-// Names kept as US_* for back-compat with imports across the codebase.
-// The PREVIEW_FIRST_* aliases at the bottom of this block are the
-// preferred names for new code — the flow is country-agnostic.
-export const US_PIPELINE_COLUMNS = [
-  "prompt_ready",
-  "preview_sent",
-  "replied",
-  "adjusting",
-  "delivered",
-] as const;
-export type USPipelineColumn = (typeof US_PIPELINE_COLUMNS)[number];
-
-export const US_PIPELINE_COLUMN_LABELS: Record<USPipelineColumn, string> = {
-  prompt_ready: "Prompt pronto",
-  preview_sent: "Preview enviado",
-  replied: "Respondeu",
-  adjusting: "Ajustando",
-  delivered: "Versão final enviada",
-};
-
-export const US_PIPELINE_COLUMN_COLORS: Record<USPipelineColumn, string> = {
-  prompt_ready: "bg-amber-500/20 text-amber-400",
-  preview_sent: "bg-violet-500/20 text-violet-400",
-  replied: "bg-yellow-500/20 text-yellow-400",
-  adjusting: "bg-fuchsia-500/20 text-fuchsia-400",
-  delivered: "bg-emerald-500/20 text-emerald-400",
-};
-
-/** US pipeline columns driven by project state; adjusting/delivered take
- * precedence over anything earlier. */
-export const US_PROJECT_COLUMNS: USPipelineColumn[] = [
-  "preview_sent",
-  "adjusting",
-  "delivered",
-];
-
-/**
- * Resolve the US-market kanban column for a lead. Returns null when the
- * lead is terminal (closed/lost/disqualified) or the project is terminal
- * (paid/cancelled), matching the BR pipeline's hiding rules.
- *
- * Semantics:
- *   - prompt_ready: project exists with a prompt generated, no preview URL
- *     pasted yet → Levi needs to run Claude Code and paste the URL
- *   - preview_sent: URL pasted + outreach msg sent; lead is stewing
- *     (includes leads that already replied — they jump to replied)
- *   - replied: real reply landed and no preview/adjusting happening yet
- *   - adjusting / delivered: mirror BR semantics
- */
-export function getUSPipelineColumn(
-  leadStatus: LeadStatus,
-  projectStatus: ProjectStatus | null | undefined,
-  projectClaudeCodePrompt: string | null | undefined,
-  projectPreviewUrl: string | null | undefined,
-  projectPreviewSentAt: string | null | undefined,
-): USPipelineColumn | null {
-  if (
-    leadStatus === "closed" ||
-    leadStatus === "lost" ||
-    leadStatus === "disqualified"
-  ) {
-    return null;
-  }
-  if (projectStatus === "paid" || projectStatus === "cancelled") {
-    return null;
-  }
-
-  if (projectStatus === "delivered") return "delivered";
-  if (projectStatus === "adjusting") return "adjusting";
-
-  if (leadStatus === "replied" || leadStatus === "negotiating") {
-    // Preview already went out and lead responded → Respondeu.
-    // If project says preview_sent but lead also replied, replied wins —
-    // the conversation is now the actionable thing, not the preview.
-    return "replied";
-  }
-
-  if (projectStatus === "preview_sent" || projectPreviewSentAt) {
-    return "preview_sent";
-  }
-
-  if (projectClaudeCodePrompt && !projectPreviewUrl) {
-    return "prompt_ready";
-  }
-
-  if (projectClaudeCodePrompt && projectPreviewUrl && !projectPreviewSentAt) {
-    // Edge: URL pasted but admin hasn't dispatched yet — still ours to act on.
-    return "prompt_ready";
-  }
-
-  return null;
-}
-
 /** Columns whose drop target is a project-state change (require active project). */
 export const PROJECT_COLUMNS: PipelineColumn[] = [
   "preview_sent",
@@ -433,7 +286,6 @@ export function getPipelineColumn(
   leadStatus: LeadStatus,
   projectStatus: ProjectStatus | null | undefined,
 ): PipelineColumn | null {
-  // Terminal / archived states leave the pipeline entirely.
   if (leadStatus === "closed" || leadStatus === "lost" || leadStatus === "disqualified") {
     return null;
   }
@@ -441,15 +293,10 @@ export function getPipelineColumn(
     return null;
   }
 
-  // Project-state columns take precedence — once a preview has shipped, the
-  // lead is driven by project.status regardless of lead.status.
   if (projectStatus === "delivered") return "delivered";
   if (projectStatus === "adjusting") return "adjusting";
   if (projectStatus === "preview_sent") return "preview_sent";
 
-  // Real human reply with no preview yet → Respondeu (triage backlog).
-  // project=approved sits here too: the user created the project but hasn't
-  // sent the preview yet, which is the same as "waiting for me to act".
   if (
     projectStatus === "approved" ||
     leadStatus === "negotiating" ||
@@ -462,24 +309,3 @@ export function getPipelineColumn(
 
   return null;
 }
-
-// ─── Preview-first aliases — preferred names for new code ─────────────────
-// The flow is identical for every country with previewFirst=true campaigns,
-// so referring to it as US_* in new code is misleading. Aliases below point
-// to the same values so refactors don't need to ripple through every import.
-
-export const PREVIEW_FIRST_PIPELINE_COLUMNS = US_PIPELINE_COLUMNS;
-export const PREVIEW_FIRST_PIPELINE_COLUMN_LABELS = US_PIPELINE_COLUMN_LABELS;
-export const PREVIEW_FIRST_PIPELINE_COLUMN_COLORS = US_PIPELINE_COLUMN_COLORS;
-export type PreviewFirstPipelineColumn = USPipelineColumn;
-export const getPreviewFirstPipelineColumn = getUSPipelineColumn;
-
-/**
- * Market codes recognized by the pipeline UI. Each is a separate kanban
- * tab with its own column set + filtering rules:
- *   - 'BR'         → traditional outreach-then-reply, lead-status driven
- *   - 'US'         → preview-first (US-WA campaign), project-state driven
- *   - 'BR-PREVIEW' → preview-first BR (BR-WA-PREVIEW campaign), same flow
- *                    as US but country=BR + isPreviewFirstLead() = true
- */
-export type PipelineMarket = "BR" | "US" | "BR-PREVIEW";

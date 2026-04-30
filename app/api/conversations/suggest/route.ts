@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       {
         role: 'user',
         content: historyText
-          ? SUGGESTION_USER_WITH_HISTORY(historyText, lead)
+          ? SUGGESTION_USER_WITH_HISTORY(historyText)
           : SUGGESTION_USER_NO_HISTORY,
       },
     ],

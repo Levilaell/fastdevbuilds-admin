@@ -6,7 +6,6 @@ import { createServiceClient } from '@/lib/supabase/service'
 import {
   STATUS_LABELS,
   STATUS_COLORS,
-  isPreviewFirstLead,
   type Lead,
   type Conversation,
   type Project,
@@ -18,7 +17,6 @@ import LeadStatusControls from '@/components/lead-detail/lead-status-controls'
 import ConversationPanel from '@/components/lead-detail/conversation-panel'
 import ProjectStatusSection from '@/components/lead-detail/project-status'
 import CreateProjectButton from '@/components/lead-detail/create-project-button'
-import USPreviewSection from '@/components/lead-detail/us-preview-section'
 import LeadDetailShell from '@/components/lead-detail/lead-detail-shell'
 
 function LeadDetailSkeleton() {
@@ -53,7 +51,7 @@ async function LeadDetailContent({ id }: { id: string }) {
   const supabase = await createClient()
   const svc = createServiceClient()
 
-  const [leadResult, convResult, projectResult, viewsResult] = await Promise.all([
+  const [leadResult, convResult, projectResult] = await Promise.all([
     supabase.from('leads').select('*').eq('place_id', id).single(),
     svc
       .from('conversations')
@@ -67,11 +65,6 @@ async function LeadDetailContent({ id }: { id: string }) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    svc
-      .from('preview_views')
-      .select('viewed_at')
-      .eq('place_id', id)
-      .order('viewed_at', { ascending: true }),
   ])
 
   if (leadResult.error && leadResult.error.code === 'PGRST116') {
@@ -89,11 +82,6 @@ async function LeadDetailContent({ id }: { id: string }) {
   const lead = leadResult.data as Lead
   const conversations = (convResult.data ?? []) as Conversation[]
   const project = (projectResult.data as Project | null) ?? null
-  const previewViews = (viewsResult.data ?? []) as { viewed_at: string }[]
-  const previewViewSummary = {
-    firstAt: previewViews[0]?.viewed_at ?? null,
-    count: previewViews.length,
-  }
 
   // Mark inbound unread messages as read
   const unreadIds = conversations
@@ -207,27 +195,6 @@ async function LeadDetailContent({ id }: { id: string }) {
             />
           </div>
 
-          {/* Preview-first flow: Claude Code prompt + URL paste + send.
-              Renders for US-WA (always) and BR-WA-PREVIEW (when the project
-              was created during prospecting). The send buttons here use
-              compose/dispatch-preview which generate the cold preview-first
-              outreach (5-block prompt) — distinct from the legacy
-              ProjectStatusSection input that calls send-preview (delivery
-              message, "Tá ai: link"), which is wrong for first contact. */}
-          {project &&
-            (lead.country === 'US' ||
-              isPreviewFirstLead(
-                lead.outreach_sent_at,
-                project.created_at,
-                project.claude_code_prompt,
-              )) && (
-              <USPreviewSection
-                placeId={lead.place_id}
-                project={project}
-                previewViews={previewViewSummary}
-              />
-            )}
-
           {/* Project — create button when none exists, status section otherwise */}
           {project ? (
             <ProjectStatusSection
@@ -248,13 +215,6 @@ async function LeadDetailContent({ id }: { id: string }) {
           <ConversationPanel
             placeId={lead.place_id}
             initialConversations={conversations}
-            channel={
-              lead.outreach_channel === 'email'
-                ? 'email'
-                : lead.outreach_channel === 'sms'
-                ? 'sms'
-                : 'whatsapp'
-            }
           />
         </>
       }

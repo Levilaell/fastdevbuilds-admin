@@ -423,7 +423,7 @@ export default function BotClient() {
     // outreach from the bot — the bot creates Projects and Levi takes it
     // from there. Treat "not dry" as the go signal; Enviar/chips are
     // irrelevant for these campaigns.
-    const isPreviewFirst = !!countryConfig.previewFirst;
+    const isPreviewFirst = !!false;
     const willSend = isPreviewFirst ? false : autoSend && !autoDryRun;
     let perInstanceSend: Record<string, number> | undefined;
     if (willSend && countryConfig.channel === "whatsapp") {
@@ -497,7 +497,7 @@ export default function BotClient() {
           dry_run: autoDryRun,
           send: willSend,
           market: country,
-          ...(isPreviewFirst && { max_projects: autoMaxProjects }),
+          ...(isPreviewFirst ? { max_projects: autoMaxProjects } : {}),
           ...(perInstanceSend && { per_instance_send: perInstanceSend }),
           ...(overrideFilters
             ? { qualification_filters: overrideFilters }
@@ -651,7 +651,7 @@ export default function BotClient() {
                   US-WA doesn't send directly (admin dispatches), so chip
                   config isn't required to run that campaign. */}
               {countryConfig.channel === "whatsapp" &&
-                !countryConfig.previewFirst &&
+                !false &&
                 !usageLoading &&
                 instanceUsage.length === 0 && (
                   <div className="bg-sidebar border border-warning/30 rounded-lg p-3 text-xs text-muted space-y-1.5">
@@ -675,7 +675,7 @@ EVOLUTION_API_KEY_X=...`}
                   US-WA — that campaign doesn't send from the bot, so chip
                   volumes don't apply. Admin picks a chip at dispatch time. */}
               {countryConfig.channel === "whatsapp" &&
-                !countryConfig.previewFirst &&
+                !false &&
                 instanceUsage.length > 0 && (
                 <div className="bg-sidebar border border-border rounded-lg p-2.5">
                   <div className="flex items-center justify-between mb-2">
@@ -788,7 +788,7 @@ EVOLUTION_API_KEY_X=...`}
                 websites. US-WA targets only no-website leads (pain=10 auto),
                 so the knob becomes "max previews" (hard cap on project
                 creation per run). */}
-            {countryConfig.previewFirst ? (
+            {false ? (
               <div>
                 <label
                   className="block text-xs text-muted mb-1.5"
@@ -830,7 +830,7 @@ EVOLUTION_API_KEY_X=...`}
               fall back to the campaign defaults from bot-config.ts. Persisted
               in localStorage per-campaign so calibration survives reloads
               without redeploying. */}
-          {countryConfig.previewFirst && countryConfig.qualificationFilters && (
+          {false && countryConfig.qualificationFilters && (
             <div className="bg-sidebar border border-border rounded-lg overflow-hidden">
               <button
                 onClick={() => setFiltersOpen(!filtersOpen)}
@@ -873,7 +873,7 @@ EVOLUTION_API_KEY_X=...`}
                         value={minRatingOverride}
                         onChange={(e) => setMinRatingOverride(e.target.value)}
                         placeholder={String(
-                          countryConfig.qualificationFilters.minRating ?? "—",
+                          countryConfig.qualificationFilters?.minRating ?? "—",
                         )}
                         className="w-full h-8 px-2 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
                       />
@@ -892,8 +892,7 @@ EVOLUTION_API_KEY_X=...`}
                           setRecentReviewMonthsOverride(e.target.value)
                         }
                         placeholder={String(
-                          countryConfig.qualificationFilters
-                            .recentReviewMonths ?? "—",
+                          countryConfig.qualificationFilters?.recentReviewMonths ?? "—",
                         )}
                         className="w-full h-8 px-2 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent tabular-nums"
                       />
@@ -908,9 +907,9 @@ EVOLUTION_API_KEY_X=...`}
                       value={blacklistOverride}
                       onChange={(e) => setBlacklistOverride(e.target.value)}
                       placeholder={
-                        countryConfig.qualificationFilters.franchiseBlacklist
+                        (countryConfig.qualificationFilters?.franchiseBlacklist
                           ?.slice(0, 4)
-                          .join("\n") + "\n…"
+                          .join("\n") ?? "") + "\n…"
                       }
                       className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background text-text focus:outline-none focus:ring-1 focus:ring-accent font-mono leading-relaxed resize-y"
                     />
@@ -954,7 +953,7 @@ EVOLUTION_API_KEY_X=...`}
             >
               Dry Run
             </button>
-            {!countryConfig.previewFirst && (
+            {!false && (
               <button
                 onClick={() => {
                   if (!autoDryRun) setAutoSend(!autoSend);
@@ -1001,7 +1000,7 @@ EVOLUTION_API_KEY_X=...`}
                 (autoSend &&
                   !autoDryRun &&
                   countryConfig.channel === "whatsapp" &&
-                  !countryConfig.previewFirst &&
+                  !false &&
                   (instanceUsage.length === 0 ||
                     instanceUsage.some(
                       (i) =>

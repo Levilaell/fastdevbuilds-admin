@@ -7,16 +7,15 @@ export async function POST(request: NextRequest) {
   if (!(await getAuthUser())) return unauthorizedResponse();
 
   const body = await request.json();
-  const { place_id, message, channel, subject } = body as {
+  const { place_id, message, subject } = body as {
     place_id: string;
     message: string;
-    channel: "whatsapp" | "email" | "sms";
     subject?: string;
   };
 
-  if (!place_id || !message || !channel) {
+  if (!place_id || !message) {
     return Response.json(
-      { error: "place_id, message, and channel are required" },
+      { error: "place_id and message are required" },
       { status: 400 },
     );
   }
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("phone, email, evolution_instance, whatsapp_jid, country")
+    .select("phone, evolution_instance, whatsapp_jid")
     .eq("place_id", place_id)
     .maybeSingle();
 
@@ -41,14 +40,11 @@ export async function POST(request: NextRequest) {
     supabase,
     place_id,
     message,
-    channel,
     subject,
     lead: {
       phone: lead.phone,
-      email: lead.email,
       evolution_instance: lead.evolution_instance,
       whatsapp_jid: lead.whatsapp_jid,
-      country: lead.country,
     },
   });
 
