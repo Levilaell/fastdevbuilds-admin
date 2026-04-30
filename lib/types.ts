@@ -103,6 +103,62 @@ export interface Lead {
   outreach_variant: string | null;
   bot_run_id: string | null;
   owner_probability: number | null;
+
+  // lab — see supabase/migrations/20260430_experiments_lab.sql
+  experiment_id: string | null;
+  experiment_variant_id: string | null;
+}
+
+// ─── Lab de experimentos ───
+
+export const EXPERIMENT_STATUSES = [
+  "draft",
+  "running",
+  "completed",
+  "aborted",
+] as const;
+
+export type ExperimentStatus = (typeof EXPERIMENT_STATUSES)[number];
+
+export const EXPERIMENT_STATUS_LABELS: Record<ExperimentStatus, string> = {
+  draft: "Rascunho",
+  running: "Rodando",
+  completed: "Concluído",
+  aborted: "Abortado",
+};
+
+export interface Experiment {
+  id: string;
+  name: string;
+  hypothesis: string | null;
+  status: ExperimentStatus;
+  started_at: string | null;
+  ended_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ExperimentQualificationFilters {
+  minRating?: number;
+  recentReviewMonths?: number;
+  requireOperational?: boolean;
+  franchiseBlacklist?: string[];
+}
+
+export interface ExperimentVariant {
+  id: string;
+  experiment_id: string;
+  name: string;
+  niches: string[];
+  cities: string[];
+  message_template: string;
+  target_volume: number;
+  qualification_filters: ExperimentQualificationFilters | null;
+  created_at: string;
+}
+
+export interface ExperimentWithVariants extends Experiment {
+  variants: ExperimentVariant[];
 }
 
 export interface Conversation {
