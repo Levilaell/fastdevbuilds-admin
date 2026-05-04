@@ -37,6 +37,13 @@ export interface CountryConfig {
   niches: readonly NicheGroup[]
   cities: readonly string[]
   qualificationFilters?: QualificationFilters
+  /**
+   * Cold outreach template enviado pelo bot quando run-auto dispara.
+   * Suporta interpolação de {nome}, {negocio}, {cidade}, {vertical}.
+   * Quando setado, bot pula o generateMessages() via Claude (economiza
+   * ~$0.003/lead) e usa o texto literal pra cada lead.
+   */
+  defaultMessageTemplate?: string
 }
 
 export const COUNTRIES: readonly CountryConfig[] = [
@@ -57,6 +64,9 @@ export const COUNTRIES: readonly CountryConfig[] = [
         ],
       },
     ],
+    defaultMessageTemplate: `Oi, {nome}! Tudo certo?
+Reparei que a {negocio} não tem site — só Instagram. O problema é que cliente que pesquisa no Google antes de fechar acaba indo pra concorrência que aparece lá.
+Faço sites e entrego no mesmo dia. Inclusive posso montar uma prévia do seu pra você ver antes de decidir qualquer coisa. Quer que eu mande?`,
     cities: [
       // ── Prioridade 1 — Interior SP ──
       'Campinas, SP', 'Santo André, SP', 'Ribeirão Preto, SP',

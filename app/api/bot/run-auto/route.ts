@@ -150,6 +150,13 @@ export async function POST(request: NextRequest) {
             : cc.qualificationFilters
               ? { qualificationFilters: cc.qualificationFilters }
               : {}),
+          // Default cold template — bot interpola direto, sem Claude.
+          // Experiments podem override via /run-variant (cuja rota envia
+          // message_template específico do variant); pra run-auto normal,
+          // o default vem daqui.
+          ...(cc.defaultMessageTemplate
+            ? { message_template: cc.defaultMessageTemplate }
+            : {}),
         } : {}),
         evolutionInstances,
         evolutionApiUrl: process.env.EVOLUTION_API_URL,
