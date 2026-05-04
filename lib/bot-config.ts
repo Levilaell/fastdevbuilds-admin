@@ -49,38 +49,11 @@ export const COUNTRIES: readonly CountryConfig[] = [
     channel: 'whatsapp',
     niches: [
       {
-        category: 'Alta prioridade',
+        category: 'Foco atual',
         items: [
-          'clínicas odontológicas',
-          'clínicas de estética',
-          'clínicas veterinárias',
-          'clínicas de psicologia',
-          'imobiliárias',
-          'escritórios de contabilidade',
-        ],
-      },
-      {
-        category: 'Média prioridade',
-        items: [
-          'academias',
-          'estúdios de pilates',
-          'salões de beleza',
-          'barbearias',
-          'pet shops',
-          'autoescolas',
-          'escolas de idiomas',
-          'clínicas médicas',
-          'fisioterapeutas',
           'nutricionistas',
-        ],
-      },
-      {
-        category: 'Baixa prioridade',
-        items: [
-          'restaurantes',
-          'padarias e confeitarias',
-          'lojas de roupas',
-          'floriculturas',
+          'psicólogos',
+          'fisioterapeutas',
         ],
       },
     ],
