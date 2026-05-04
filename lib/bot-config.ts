@@ -64,7 +64,7 @@ export const COUNTRIES: readonly CountryConfig[] = [
         ],
       },
     ],
-    defaultMessageTemplate: `Oi, {nome}! Tudo certo?
+    defaultMessageTemplate: `Oi! Tudo certo?
 Reparei que a {negocio} não tem site — só Instagram. O problema é que cliente que pesquisa no Google antes de fechar acaba indo pra concorrência que aparece lá.
 Faço sites e entrego no mesmo dia. Inclusive posso montar uma prévia do seu pra você ver antes de decidir qualquer coisa. Quer que eu mande?`,
     cities: [
