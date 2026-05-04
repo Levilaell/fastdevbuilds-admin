@@ -81,6 +81,9 @@ export default function BotClient() {
   const [autoMaxProjects, setAutoMaxProjects] = useState<number>(5);
   const [autoSend, setAutoSend] = useState(false);
   const [autoDryRun, setAutoDryRun] = useState(false);
+  // Pivot v2: oferta foca microempresa sem site. Default true pra evitar
+  // queimar Claude/PageSpeed analisando sites que nem entram na oferta.
+  const [autoNoWebsiteOnly, setAutoNoWebsiteOnly] = useState(true);
   // Daily usage + cap per Evolution instance (fetched from /api/bot/instance-usage)
   const [instanceUsage, setInstanceUsage] = useState<InstanceUsage[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
@@ -502,6 +505,7 @@ export default function BotClient() {
           ...(overrideFilters
             ? { qualification_filters: overrideFilters }
             : {}),
+          ...(autoNoWebsiteOnly ? { no_website_only: true } : {}),
         }),
       });
 
@@ -939,7 +943,7 @@ EVOLUTION_API_KEY_X=...`}
               the bot doesn't dispatch outreach on that campaign — it creates
               Projects and waits for Levi to paste a preview URL. Running
               "Dry" shows the queue preview without collecting. */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center flex-wrap">
             <button
               onClick={() => {
                 setAutoDryRun(!autoDryRun);
@@ -959,15 +963,28 @@ EVOLUTION_API_KEY_X=...`}
                   if (!autoDryRun) setAutoSend(!autoSend);
                 }}
                 disabled={autoDryRun}
+                title={autoDryRun ? "Desligue Dry Run pra ativar Enviar" : "Toggle: clica pra ligar/desligar envio"}
                 className={`px-3 py-1.5 text-xs rounded-lg border disabled:opacity-30 ${
                   autoSend && !autoDryRun
                     ? "border-success text-success bg-success/10"
                     : "border-border text-muted hover:text-text"
                 }`}
               >
-                Enviar
+                Enviar {autoSend && !autoDryRun ? "✓" : ""}
               </button>
             )}
+            <label
+              className="flex items-center gap-1.5 text-xs text-muted hover:text-text cursor-pointer select-none"
+              title="Pula sites com presença online — só processa leads sem site"
+            >
+              <input
+                type="checkbox"
+                checked={autoNoWebsiteOnly}
+                onChange={(e) => setAutoNoWebsiteOnly(e.target.checked)}
+                className="accent-accent"
+              />
+              Apenas sem site
+            </label>
           </div>
 
           {/* Run / Cancel */}

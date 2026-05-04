@@ -37,6 +37,13 @@ interface AutoParams {
     requireOperational?: boolean
     franchiseBlacklist?: string[]
   }
+  /**
+   * When true, bot drops with-website leads after collect+phone-filter and
+   * processes only no-website leads. Skips analyze/visual/score entirely
+   * on the with-website pile — cheap pivot-v2 path that avoids the per-lead
+   * Claude + PageSpeed spend when the offer only targets sites-from-zero.
+   */
+  no_website_only?: boolean
 }
 
 export async function POST(request: NextRequest) {
@@ -126,6 +133,7 @@ export async function POST(request: NextRequest) {
         // side still records campaign_code on bot_runs above.
         campaign_code: params.market,
         ...(run?.id ? { bot_run_id: run.id } : {}),
+        ...(params.no_website_only ? { noWebsiteOnly: true } : {}),
         ...(cc ? {
           niches: cc.niches.flatMap(g => [...g.items]),
           cities: [...cc.cities],
