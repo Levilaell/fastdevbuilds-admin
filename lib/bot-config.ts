@@ -59,8 +59,6 @@ export const COUNTRIES: readonly CountryConfig[] = [
         category: 'Foco atual',
         items: [
           'nutricionistas',
-          'psicólogos',
-          'fisioterapeutas',
         ],
       },
     ],
